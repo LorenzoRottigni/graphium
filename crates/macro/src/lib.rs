@@ -24,6 +24,7 @@ enum NodeExpr {
 
 struct GraphInput {
     name: Ident,
+    context: Path,
     nodes: NodeExpr,
 }
 
@@ -82,6 +83,14 @@ impl Parse for GraphInput {
         let name: Ident = input.parse()?;
         input.parse::<Token![,]>()?;
 
+        let context_label: Ident = input.parse()?;
+        if context_label != "context" {
+            return Err(input.error("expected `context`"));
+        }
+        input.parse::<Token![:]>()?;
+        let context: Path = input.parse()?;
+        input.parse::<Token![,]>()?;
+
         let nodes_label: Ident = input.parse()?;
         if nodes_label != "nodes" {
             return Err(input.error("expected `nodes`"));
@@ -93,19 +102,19 @@ impl Parse for GraphInput {
         syn::bracketed!(bracket_content in input);
         let nodes: NodeExpr = bracket_content.parse()?;
 
-        Ok(GraphInput { name, nodes })
+        Ok(GraphInput { name, context, nodes })
     }
 }
 
 #[proc_macro]
 pub fn graph(input: TokenStream) -> TokenStream {
-    let GraphInput { name, nodes } = parse_macro_input!(input as GraphInput);
+    let GraphInput { name, context, nodes } = parse_macro_input!(input as GraphInput);
 
     let run_body = generate_node_calls(&nodes);
 
     let expanded = quote! {
         pub mod #name {
-            pub fn run(ctx: &mut crate::node::Context) {
+            pub fn run(ctx: &mut #context) {
                 #run_body
             }
         }
@@ -143,6 +152,7 @@ fn generate_node_calls(node_expr: &NodeExpr) -> proc_macro2::TokenStream {
 
 struct ControllerInput {
     name: Ident,
+    context: Path,
     graphs: ExprArray,
 }
 
@@ -156,6 +166,14 @@ impl Parse for ControllerInput {
         let name: Ident = input.parse()?;
         input.parse::<Token![,]>()?;
 
+        let context_label: Ident = input.parse()?;
+        if context_label != "context" {
+            return Err(input.error("expected `context`"));
+        }
+        input.parse::<Token![:]>()?;
+        let context: Path = input.parse()?;
+        input.parse::<Token![,]>()?;
+
         let graphs_label: Ident = input.parse()?;
         if graphs_label != "graphs" {
             return Err(input.error("expected `graphs`"));
@@ -163,13 +181,13 @@ impl Parse for ControllerInput {
         input.parse::<Token![:]>()?;
         let graphs: ExprArray = input.parse()?;
 
-        Ok(ControllerInput { name, graphs })
+        Ok(ControllerInput { name, context, graphs })
     }
 }
 
 #[proc_macro]
 pub fn controller(input: TokenStream) -> TokenStream {
-    let ControllerInput { name, graphs } = parse_macro_input!(input as ControllerInput);
+    let ControllerInput { name, context, graphs } = parse_macro_input!(input as ControllerInput);
 
     let graph_calls: Vec<_> = graphs.elems.iter().map(|g| quote! { #g::run(&mut ctx); }).collect();
 
@@ -178,7 +196,7 @@ pub fn controller(input: TokenStream) -> TokenStream {
 
         impl #name {
             pub fn run() {
-                let mut ctx = crate::node::Context::default();
+                let mut ctx = #context::default();
                 #( #graph_calls )*
             }
         }

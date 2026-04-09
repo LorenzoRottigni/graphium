@@ -6,6 +6,7 @@ use graph::data_pipeline;
 
 controller! {
     name: MyController,
+    context: crate::node::Context,
     graphs: [data_pipeline]
 }
 
