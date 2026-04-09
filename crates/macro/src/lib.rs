@@ -14,9 +14,62 @@ pub fn node(input: TokenStream) -> TokenStream {
 
 // ------------------ graph! macro ------------------
 
+/// Represents a node or group of nodes in the graph
+#[derive(Clone)]
+enum NodeExpr {
+    Single(Ident),
+    Sequence(Vec<NodeExpr>),    // A > B > C
+    Parallel(Vec<NodeExpr>),    // A & B & C
+}
+
 struct GraphInput {
     name: Ident,
-    nodes: ExprArray,
+    nodes: NodeExpr,
+}
+
+impl Parse for NodeExpr {
+    fn parse(input: ParseStream) -> Result<Self> {
+        parse_sequence_expr(input)
+    }
+}
+
+/// Parse sequential expressions (lowest precedence): A > B > C
+/// Parallel expressions bind tighter, so: A > B & C > D means A > (B & C) > D
+fn parse_sequence_expr(input: ParseStream) -> Result<NodeExpr> {
+    let mut exprs = vec![parse_parallel_expr(input)?];
+    
+    while input.peek(Token![>]) {
+        input.parse::<Token![>]>()?;
+        exprs.push(parse_parallel_expr(input)?);
+    }
+    
+    if exprs.len() == 1 {
+        Ok(exprs.into_iter().next().unwrap())
+    } else {
+        Ok(NodeExpr::Sequence(exprs))
+    }
+}
+
+/// Parse parallel expressions (higher precedence): A & B & C
+fn parse_parallel_expr(input: ParseStream) -> Result<NodeExpr> {
+    let mut exprs = vec![parse_primary_expr(input)?];
+    
+    while input.peek(Token![&]) {
+        input.parse::<Token![&]>()?;
+        exprs.push(parse_primary_expr(input)?);
+    }
+    
+    if exprs.len() == 1 {
+        Ok(exprs.into_iter().next().unwrap())
+    } else {
+        Ok(NodeExpr::Parallel(exprs))
+    }
+}
+
+/// Parse primary expressions: identifiers
+fn parse_primary_expr(input: ParseStream) -> Result<NodeExpr> {
+    let ident: Ident = input.parse()?;
+    Ok(NodeExpr::Single(ident))
 }
 
 impl Parse for GraphInput {
@@ -34,7 +87,11 @@ impl Parse for GraphInput {
             return Err(input.error("expected `nodes`"));
         }
         input.parse::<Token![:]>()?;
-        let nodes: ExprArray = input.parse()?;
+        
+        // Parse the bracket-delimited node expression
+        let bracket_content;
+        syn::bracketed!(bracket_content in input);
+        let nodes: NodeExpr = bracket_content.parse()?;
 
         Ok(GraphInput { name, nodes })
     }
@@ -44,18 +101,43 @@ impl Parse for GraphInput {
 pub fn graph(input: TokenStream) -> TokenStream {
     let GraphInput { name, nodes } = parse_macro_input!(input as GraphInput);
 
-    // Extract the identifiers from the ExprArray
-    let node_idents: Vec<_> = nodes.elems.iter().map(|expr| quote! { #expr }).collect();
+    let run_body = generate_node_calls(&nodes);
 
     let expanded = quote! {
         pub mod #name {
             use crate::node::*;
             pub fn run(ctx: &mut Context) {
-                #( #node_idents(ctx); )*
+                #run_body
             }
         }
     };
     TokenStream::from(expanded)
+}
+
+/// Generate the appropriate call sequence based on the node structure
+fn generate_node_calls(node_expr: &NodeExpr) -> proc_macro2::TokenStream {
+    match node_expr {
+        NodeExpr::Single(ident) => {
+            quote! { #ident(ctx); }
+        }
+        NodeExpr::Sequence(nodes) => {
+            // Execute nodes sequentially (each depends on the previous)
+            let calls: Vec<_> = nodes.iter().map(generate_node_calls).collect();
+            quote! {
+                #( #calls )*
+            }
+        }
+        NodeExpr::Parallel(nodes) => {
+            // Execute nodes in parallel (they're independent)
+            // For now, we execute them sequentially but mark them as parallel
+            // In a real implementation, you'd use a thread pool or async
+            let calls: Vec<_> = nodes.iter().map(generate_node_calls).collect();
+            quote! {
+                // Parallel execution (currently sequential for simplicity)
+                #( #calls )*
+            }
+        }
+    }
 }
 
 // ------------------ controller! macro ------------------
