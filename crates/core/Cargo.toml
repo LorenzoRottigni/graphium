@@ -1,0 +1,9 @@
+[package]
+name = "graphio"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "graphio"
+
+[dependencies]
