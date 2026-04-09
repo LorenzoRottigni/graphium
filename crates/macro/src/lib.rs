@@ -18,7 +18,7 @@ pub fn node(input: TokenStream) -> TokenStream {
 #[derive(Clone)]
 enum NodeExpr {
     Single(Ident),
-    Sequence(Vec<NodeExpr>),    // A > B > C
+    Sequence(Vec<NodeExpr>),    // A >> B >> C
     Parallel(Vec<NodeExpr>),    // A & B & C
 }
 
@@ -33,13 +33,13 @@ impl Parse for NodeExpr {
     }
 }
 
-/// Parse sequential expressions (lowest precedence): A > B > C
-/// Parallel expressions bind tighter, so: A > B & C > D means A > (B & C) > D
+/// Parse sequential expressions (lowest precedence): A >> B >> C
+/// Parallel expressions bind tighter, so: A >> B & C >> D means A >> (B & C) >> D
 fn parse_sequence_expr(input: ParseStream) -> Result<NodeExpr> {
     let mut exprs = vec![parse_parallel_expr(input)?];
     
-    while input.peek(Token![>]) {
-        input.parse::<Token![>]>()?;
+    while input.peek(Token![>>]) {
+        input.parse::<Token![>>]>()?;
         exprs.push(parse_parallel_expr(input)?);
     }
     
