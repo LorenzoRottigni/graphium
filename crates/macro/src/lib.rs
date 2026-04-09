@@ -1,7 +1,7 @@
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{
-    parse_macro_input, parse::{Parse, ParseStream}, Ident, Result, Token, ItemFn, ExprArray,
+    parse_macro_input, parse::{Parse, ParseStream}, Ident, Result, Token, ItemFn, ExprArray, Path,
 };
 
 // ------------------ node! macro ------------------
@@ -17,7 +17,7 @@ pub fn node(input: TokenStream) -> TokenStream {
 /// Represents a node or group of nodes in the graph
 #[derive(Clone)]
 enum NodeExpr {
-    Single(Ident),
+    Single(Path),               // crate::node::get_data or just get_data
     Sequence(Vec<NodeExpr>),    // A >> B >> C
     Parallel(Vec<NodeExpr>),    // A & B & C
 }
@@ -66,10 +66,10 @@ fn parse_parallel_expr(input: ParseStream) -> Result<NodeExpr> {
     }
 }
 
-/// Parse primary expressions: identifiers
+/// Parse primary expressions: paths (crate::node::func or just func)
 fn parse_primary_expr(input: ParseStream) -> Result<NodeExpr> {
-    let ident: Ident = input.parse()?;
-    Ok(NodeExpr::Single(ident))
+    let path: Path = input.parse()?;
+    Ok(NodeExpr::Single(path))
 }
 
 impl Parse for GraphInput {
@@ -105,8 +105,7 @@ pub fn graph(input: TokenStream) -> TokenStream {
 
     let expanded = quote! {
         pub mod #name {
-            use crate::node::*;
-            pub fn run(ctx: &mut Context) {
+            pub fn run(ctx: &mut crate::node::Context) {
                 #run_body
             }
         }

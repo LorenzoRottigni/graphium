@@ -1,13 +1,6 @@
 use graphio_macro::graph;
 
-// Example: nodes with sequential (>>) and parallel (&) execution
-// This executes as:
-// 1. get_data
-// 2. validate_data (after get_data)
-// 3. normalize_data (after validate_data)
-// 4. print_data, send_email, publish_event (all parallel)
-// 5. disconnect_from_db (after parallel group)
 graph! {
     name: data_pipeline,
-    nodes: [get_data >> validate_data >> normalize_data >> print_data & send_email & publish_event >> disconnect_from_db]
+    nodes: [crate::node::get_data >> crate::node::validate_data >> crate::node::normalize_data >> crate::node::print_data & crate::node::send_email & crate::node::publish_event >> crate::node::disconnect_from_db]
 }
