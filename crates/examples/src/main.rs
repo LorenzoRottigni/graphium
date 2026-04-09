@@ -1,15 +1,8 @@
 mod node;
 mod graph;
 
-use graphio_macro::controller;
-use graph::data_pipeline;
-
-controller! {
-    name: MyController,
-    context: crate::node::Context,
-    graphs: [data_pipeline]
-}
+use graph::DataGraph;
 
 fn main() {
-    MyController::run();
+    DataGraph::run();
 }
