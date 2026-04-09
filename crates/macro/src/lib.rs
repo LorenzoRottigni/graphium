@@ -116,8 +116,7 @@ pub fn graph(input: TokenStream) -> TokenStream {
         pub struct #name;
 
         impl #name {
-            pub fn run() {
-                let mut ctx = #context::default();
+            pub fn run(ctx: &mut #context) {
                 #run_body
             }
         }
@@ -129,7 +128,7 @@ pub fn graph(input: TokenStream) -> TokenStream {
 fn generate_node_calls(node_expr: &NodeExpr) -> proc_macro2::TokenStream {
     match node_expr {
         NodeExpr::Single(ident) => {
-            quote! { #ident(&mut ctx); }
+            quote! { #ident(ctx); }
         }
         NodeExpr::Sequence(nodes) => {
             // Execute nodes sequentially (each depends on the previous)
