@@ -1,5 +1,5 @@
+use graphio::Node;
 use graphio_macro::node;
-
 #[derive(Default)]
 pub struct Context {
     pub data: String,

@@ -1,19 +1,60 @@
 use proc_macro::TokenStream;
-use quote::quote;
+use quote::{format_ident, quote};
 use syn::{
-    parse_macro_input,
     parse::{Parse, ParseStream},
-    Ident, Result, Token, ItemFn, Path, Expr,
+    parse_macro_input, Expr, Ident, ItemFn, Path, Result, Token,
 };
 
 // ===================================================
 //                    node! macro
 // ===================================================
-
 #[proc_macro]
 pub fn node(input: TokenStream) -> TokenStream {
     let func = parse_macro_input!(input as ItemFn);
-    TokenStream::from(quote! { #func })
+
+    let fn_name = &func.sig.ident;
+
+    // Convert to PascalCase
+    let struct_name = format_ident!(
+        "{}Node",
+        fn_name
+            .to_string()
+            .split('_')
+            .map(|s| {
+                let mut chars = s.chars();
+                match chars.next() {
+                    Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+                    None => String::new(),
+                }
+            })
+            .collect::<String>()
+    );
+
+    // extract &mut Context
+    let ctx_type = match func.sig.inputs.first() {
+        Some(syn::FnArg::Typed(pat)) => {
+            if let syn::Type::Reference(r) = &*pat.ty {
+                &r.elem
+            } else {
+                panic!("expected &mut Context");
+            }
+        }
+        _ => panic!("expected function with ctx argument"),
+    };
+
+    let expanded = quote! {
+        #func
+
+        pub struct #struct_name;
+
+        impl Node<#ctx_type> for #struct_name {
+            fn run(ctx: &mut #ctx_type) {
+                #fn_name(ctx);
+            }
+        }
+    };
+
+    TokenStream::from(expanded)
 }
 
 // ===================================================
@@ -97,7 +138,6 @@ fn parse_parallel(input: ParseStream) -> Result<NodeExpr> {
 // ===================================================
 
 fn parse_primary(input: ParseStream) -> Result<NodeExpr> {
-    // detect @route
     if input.peek(Token![@]) {
         input.parse::<Token![@]>()?;
         let ident: Ident = input.parse()?;
@@ -112,7 +152,6 @@ fn parse_primary(input: ParseStream) -> Result<NodeExpr> {
         return Ok(NodeExpr::Route(content.parse()?));
     }
 
-    // normal node path
     let path: Path = input.parse()?;
     Ok(NodeExpr::Single(path))
 }
@@ -148,19 +187,18 @@ impl Parse for RouteExpr {
                         let value: NodeExpr = content.parse()?;
 
                         routes.push((key_expr, value));
-
                         content.parse::<Token![,]>().ok();
                     }
 
                     input.parse::<Token![,]>().ok();
                 }
 
-                _ => return Err(input.error("expected `on` or `routes` in @route")),
+                _ => return Err(input.error("expected `on` or `routes`")),
             }
         }
 
         Ok(RouteExpr {
-            on: on.ok_or_else(|| input.error("missing `on` in @route"))?,
+            on: on.ok_or_else(|| input.error("missing `on`"))?,
             routes,
         })
     }
@@ -172,33 +210,28 @@ impl Parse for RouteExpr {
 
 impl Parse for GraphInput {
     fn parse(input: ParseStream) -> Result<Self> {
-        let name_label: Ident = input.parse()?;
-        if name_label != "name" {
-            return Err(input.error("expected `name`"));
-        }
+        let _: Ident = input.parse()?; // name
         input.parse::<Token![:]>()?;
         let name: Ident = input.parse()?;
         input.parse::<Token![,]>()?;
 
-        let context_label: Ident = input.parse()?;
-        if context_label != "context" {
-            return Err(input.error("expected `context`"));
-        }
+        let _: Ident = input.parse()?; // context
         input.parse::<Token![:]>()?;
         let context: Path = input.parse()?;
         input.parse::<Token![,]>()?;
 
-        let nodes_label: Ident = input.parse()?;
-        if nodes_label != "nodes" {
-            return Err(input.error("expected `nodes`"));
-        }
+        let _: Ident = input.parse()?; // nodes
         input.parse::<Token![:]>()?;
 
         let content;
         syn::bracketed!(content in input);
         let nodes: NodeExpr = content.parse()?;
 
-        Ok(GraphInput { name, context, nodes })
+        Ok(GraphInput {
+            name,
+            context,
+            nodes,
+        })
     }
 }
 
@@ -208,8 +241,11 @@ impl Parse for GraphInput {
 
 #[proc_macro]
 pub fn graph(input: TokenStream) -> TokenStream {
-    let GraphInput { name, context, nodes } =
-        parse_macro_input!(input as GraphInput);
+    let GraphInput {
+        name,
+        context,
+        nodes,
+    } = parse_macro_input!(input as GraphInput);
 
     let body = generate(&nodes);
 
@@ -218,6 +254,12 @@ pub fn graph(input: TokenStream) -> TokenStream {
 
         impl #name {
             pub fn run(ctx: &mut #context) {
+                #body
+            }
+        }
+
+        impl Node<#context> for #name {
+            fn run(ctx: &mut #context) {
                 #body
             }
         }
@@ -233,22 +275,30 @@ pub fn graph(input: TokenStream) -> TokenStream {
 fn generate(node: &NodeExpr) -> proc_macro2::TokenStream {
     match node {
         NodeExpr::Single(path) => {
-            quote! {
-                #path(ctx);
+            let is_run_path = match path.segments.last() {
+                Some(seg) => seg.ident == "run",
+                None => false,
+            };
+            if is_run_path {
+                quote! {
+                    #path(ctx);
+                }
+            } else {
+                quote! {
+                    <#path as Node<_>>::run(ctx);
+                }
             }
         }
 
         NodeExpr::Sequence(nodes) => {
             let parts = nodes.iter().map(generate);
-            quote! {
-                #( #parts )*
-            }
+            quote! { #( #parts )* }
         }
 
         NodeExpr::Parallel(nodes) => {
             let parts = nodes.iter().map(generate);
             quote! {
-                // parallel (currently sequential execution)
+                // TODO: real parallelism
                 #( #parts )*
             }
         }

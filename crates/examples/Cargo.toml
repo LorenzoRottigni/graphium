@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 graphio-macro = { version = "0.1.0", path = "../macro" }
+graphio = { version = "0.1.0", path = "../core" }

@@ -1,5 +1,6 @@
-use graphio_macro::graph;
 use crate::node::Context;
+use graphio::Node;
+use graphio_macro::graph;
 
 enum Status {
     Valid,
@@ -10,32 +11,31 @@ enum Status {
 graph! {
     name: DataGraph1,
     context: Context,
-    nodes: [crate::node::get_data >> crate::node::validate_data >> crate::node::normalize_data >> crate::node::print_data & crate::node::send_email & crate::node::publish_event >> crate::node::disconnect_from_db]
+    nodes: [crate::node::GetDataNode >> crate::node::ValidateDataNode >> crate::node::NormalizeDataNode >> crate::node::PrintDataNode & crate::node::SendEmailNode & crate::node::PublishEventNode >> crate::node::DisconnectFromDbNode]
 }
 
 graph! {
     name: DataGraph2,
     context: Context,
-    nodes: [crate::node::get_data >> crate::node::validate_data >> crate::node::normalize_data >> crate::node::print_data & crate::node::send_email & crate::node::publish_event >> crate::node::disconnect_from_db >> DataGraph1::run]
+    nodes: [crate::node::GetDataNode >> crate::node::ValidateDataNode >> crate::node::NormalizeDataNode >> crate::node::PrintDataNode & crate::node::SendEmailNode & crate::node::PublishEventNode >> crate::node::DisconnectFromDbNode >> DataGraph1::run]
 }
-
 
 graph! {
     name: DataGraph,
     context: Context,
     nodes: [
-        crate::node::get_data >>
-        crate::node::validate_data >>
+        crate::node::GetDataNode >>
+        crate::node::ValidateDataNode >>
         @route {
             on: |ctx: &mut Context| Status::Invalid,
             routes: {
-                Status::Valid => crate::node::print_data & crate::node::send_email,
-                Status::Invalid => crate::node::print_error,
-                Status::NeedsReview => crate::node::send_review,
+                Status::Valid => crate::node::PrintDataNode & crate::node::SendEmailNode,
+                Status::Invalid => crate::node::PrintErrorNode,
+                Status::NeedsReview => crate::node::SendReviewNode,
             }
         }
         >>
-        crate::node::disconnect_from_db
+        crate::node::DisconnectFromDbNode
     ]
 }
 
