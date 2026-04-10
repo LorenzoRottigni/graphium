@@ -33,6 +33,18 @@ node! {
 }
 
 node! {
+    pub fn print_error(ctx: &mut Context) {
+        println!("printError -> ERROR");
+    }
+}
+
+node! {
+    pub fn send_review(ctx: &mut Context) {
+        println!("sendReview -> {}", ctx.data);
+    }
+}
+
+node! {
     pub fn send_email(ctx: &mut Context) {
         println!("sendEmailWithData -> {}", ctx.data);
     }

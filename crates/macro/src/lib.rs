@@ -1,26 +1,46 @@
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{
-    parse_macro_input, parse::{Parse, ParseStream}, Ident, Result, Token, ItemFn, Path,
+    parse_macro_input,
+    parse::{Parse, ParseStream},
+    Ident, Result, Token, ItemFn, Path, Expr,
 };
 
-// ------------------ node! macro ------------------
+// ===================================================
+//                    node! macro
+// ===================================================
+
 #[proc_macro]
 pub fn node(input: TokenStream) -> TokenStream {
     let func = parse_macro_input!(input as ItemFn);
-    // Just output the function as-is
     TokenStream::from(quote! { #func })
 }
 
-// ------------------ graph! macro ------------------
+// ===================================================
+//                    GRAPH IR
+// ===================================================
 
-/// Represents a node or group of nodes in the graph
 #[derive(Clone)]
 enum NodeExpr {
-    Single(Path),               // crate::node::get_data or just get_data
-    Sequence(Vec<NodeExpr>),    // A >> B >> C
-    Parallel(Vec<NodeExpr>),    // A & B & C
+    Single(Path),
+    Sequence(Vec<NodeExpr>),
+    Parallel(Vec<NodeExpr>),
+    Route(RouteExpr),
 }
+
+// ===================================================
+//                    ROUTE IR
+// ===================================================
+
+#[derive(Clone)]
+struct RouteExpr {
+    on: Expr,
+    routes: Vec<(Expr, NodeExpr)>,
+}
+
+// ===================================================
+//                  GRAPH INPUT
+// ===================================================
 
 struct GraphInput {
     name: Ident,
@@ -28,50 +48,127 @@ struct GraphInput {
     nodes: NodeExpr,
 }
 
+// ===================================================
+//                NODE PARSING
+// ===================================================
+
 impl Parse for NodeExpr {
     fn parse(input: ParseStream) -> Result<Self> {
-        parse_sequence_expr(input)
+        parse_sequence(input)
     }
 }
 
-/// Parse sequential expressions (lowest precedence): A >> B >> C
-/// Parallel expressions bind tighter, so: A >> B & C >> D means A >> (B & C) >> D
-fn parse_sequence_expr(input: ParseStream) -> Result<NodeExpr> {
-    let mut exprs = vec![parse_parallel_expr(input)?];
-    
+// ---------------- sequence (>>) ----------------
+
+fn parse_sequence(input: ParseStream) -> Result<NodeExpr> {
+    let mut nodes = vec![parse_parallel(input)?];
+
     while input.peek(Token![>>]) {
         input.parse::<Token![>>]>()?;
-        exprs.push(parse_parallel_expr(input)?);
+        nodes.push(parse_parallel(input)?);
     }
-    
-    if exprs.len() == 1 {
-        Ok(exprs.into_iter().next().unwrap())
+
+    if nodes.len() == 1 {
+        Ok(nodes.remove(0))
     } else {
-        Ok(NodeExpr::Sequence(exprs))
+        Ok(NodeExpr::Sequence(nodes))
     }
 }
 
-/// Parse parallel expressions (higher precedence): A & B & C
-fn parse_parallel_expr(input: ParseStream) -> Result<NodeExpr> {
-    let mut exprs = vec![parse_primary_expr(input)?];
-    
+// ---------------- parallel (&) ----------------
+
+fn parse_parallel(input: ParseStream) -> Result<NodeExpr> {
+    let mut nodes = vec![parse_primary(input)?];
+
     while input.peek(Token![&]) {
         input.parse::<Token![&]>()?;
-        exprs.push(parse_primary_expr(input)?);
+        nodes.push(parse_primary(input)?);
     }
-    
-    if exprs.len() == 1 {
-        Ok(exprs.into_iter().next().unwrap())
+
+    if nodes.len() == 1 {
+        Ok(nodes.remove(0))
     } else {
-        Ok(NodeExpr::Parallel(exprs))
+        Ok(NodeExpr::Parallel(nodes))
     }
 }
 
-/// Parse primary expressions: paths (crate::node::func or just func)
-fn parse_primary_expr(input: ParseStream) -> Result<NodeExpr> {
+// ===================================================
+//                PRIMARY EXPRESSIONS
+// ===================================================
+
+fn parse_primary(input: ParseStream) -> Result<NodeExpr> {
+    // detect @route
+    if input.peek(Token![@]) {
+        input.parse::<Token![@]>()?;
+        let ident: Ident = input.parse()?;
+
+        if ident != "route" {
+            return Err(input.error("expected `route` after `@`"));
+        }
+
+        let content;
+        syn::braced!(content in input);
+
+        return Ok(NodeExpr::Route(content.parse()?));
+    }
+
+    // normal node path
     let path: Path = input.parse()?;
     Ok(NodeExpr::Single(path))
 }
+
+// ===================================================
+//                ROUTE PARSER
+// ===================================================
+
+impl Parse for RouteExpr {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let mut on: Option<Expr> = None;
+        let mut routes: Vec<(Expr, NodeExpr)> = vec![];
+
+        while !input.is_empty() {
+            let key: Ident = input.parse()?;
+            input.parse::<Token![:]>()?;
+
+            match key.to_string().as_str() {
+                "on" => {
+                    let expr: Expr = input.parse()?;
+                    on = Some(expr);
+                    input.parse::<Token![,]>().ok();
+                }
+
+                "routes" => {
+                    let content;
+                    syn::braced!(content in input);
+
+                    while !content.is_empty() {
+                        let key_expr: Expr = content.parse()?;
+                        content.parse::<Token![=>]>()?;
+
+                        let value: NodeExpr = content.parse()?;
+
+                        routes.push((key_expr, value));
+
+                        content.parse::<Token![,]>().ok();
+                    }
+
+                    input.parse::<Token![,]>().ok();
+                }
+
+                _ => return Err(input.error("expected `on` or `routes` in @route")),
+            }
+        }
+
+        Ok(RouteExpr {
+            on: on.ok_or_else(|| input.error("missing `on` in @route"))?,
+            routes,
+        })
+    }
+}
+
+// ===================================================
+//                GRAPH INPUT PARSER
+// ===================================================
 
 impl Parse for GraphInput {
     fn parse(input: ParseStream) -> Result<Self> {
@@ -96,57 +193,81 @@ impl Parse for GraphInput {
             return Err(input.error("expected `nodes`"));
         }
         input.parse::<Token![:]>()?;
-        
-        // Parse the bracket-delimited node expression
-        let bracket_content;
-        syn::bracketed!(bracket_content in input);
-        let nodes: NodeExpr = bracket_content.parse()?;
+
+        let content;
+        syn::bracketed!(content in input);
+        let nodes: NodeExpr = content.parse()?;
 
         Ok(GraphInput { name, context, nodes })
     }
 }
 
+// ===================================================
+//                GRAPH MACRO
+// ===================================================
+
 #[proc_macro]
 pub fn graph(input: TokenStream) -> TokenStream {
-    let GraphInput { name, context, nodes } = parse_macro_input!(input as GraphInput);
+    let GraphInput { name, context, nodes } =
+        parse_macro_input!(input as GraphInput);
 
-    let run_body = generate_node_calls(&nodes);
+    let body = generate(&nodes);
 
     let expanded = quote! {
         pub struct #name;
 
         impl #name {
             pub fn run(ctx: &mut #context) {
-                #run_body
+                #body
             }
         }
     };
+
     TokenStream::from(expanded)
 }
 
-/// Generate the appropriate call sequence based on the node structure
-fn generate_node_calls(node_expr: &NodeExpr) -> proc_macro2::TokenStream {
-    match node_expr {
-        NodeExpr::Single(ident) => {
-            quote! { #ident(ctx); }
-        }
-        NodeExpr::Sequence(nodes) => {
-            // Execute nodes sequentially (each depends on the previous)
-            let calls: Vec<_> = nodes.iter().map(generate_node_calls).collect();
+// ===================================================
+//                CODEGEN
+// ===================================================
+
+fn generate(node: &NodeExpr) -> proc_macro2::TokenStream {
+    match node {
+        NodeExpr::Single(path) => {
             quote! {
-                #( #calls )*
+                #path(ctx);
             }
         }
-        NodeExpr::Parallel(nodes) => {
-            // Execute nodes in parallel (they're independent)
-            // For now, we execute them sequentially but mark them as parallel
-            // In a real implementation, you'd use a thread pool or async
-            let calls: Vec<_> = nodes.iter().map(generate_node_calls).collect();
+
+        NodeExpr::Sequence(nodes) => {
+            let parts = nodes.iter().map(generate);
             quote! {
-                // Parallel execution (currently sequential for simplicity)
-                #( #calls )*
+                #( #parts )*
+            }
+        }
+
+        NodeExpr::Parallel(nodes) => {
+            let parts = nodes.iter().map(generate);
+            quote! {
+                // parallel (currently sequential execution)
+                #( #parts )*
+            }
+        }
+
+        NodeExpr::Route(route) => {
+            let on_expr = &route.on;
+
+            let routes = route.routes.iter().map(|(key, node)| {
+                let body = generate(node);
+                quote! {
+                    #key => { #body }
+                }
+            });
+
+            quote! {
+                match (#on_expr)(ctx) {
+                    #( #routes, )*
+                }
             }
         }
     }
 }
-

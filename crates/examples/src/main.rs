@@ -1,10 +1,10 @@
 mod node;
 mod graph;
 
-use graph::DataGraph2;
+use graph::DataGraph;
 use node::Context;
 
 fn main() {
     let mut ctx = Context::default();
-    DataGraph2::run(&mut ctx);
+    DataGraph::run(&mut ctx);
 }
