@@ -1,0 +1,20 @@
+# GraphIO
+
+- nested @route
+- should be @route or @if or @switch? or maybe should be @if @elif @else for binary decisions and @switch for match.
+- @loop modifier, it also should allow nesting
+- @while modifier
+- @fallback modifier, maybe?
+- @repeat 5 modifier
+- @until modifier
+- @race, @parallel against the syntax &?
+- @try @catch modifiers
+- @retry 3 modifier
+- @group modifier
+- @pipe modifier, maybe?
+- @break @continue
+- make node! proc-macro to transform function in a struct name, func, input, output
+- track graph performances at each node
+- automated isolated unit testing on nodes
+- visualize graphs
+- allow metrics tracking as a node! configuration
