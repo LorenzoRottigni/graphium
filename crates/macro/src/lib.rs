@@ -47,8 +47,14 @@ pub fn node(input: TokenStream) -> TokenStream {
 
         pub struct #struct_name;
 
+
+        impl #struct_name {
+            pub const NAME: &'static str = stringify!(#fn_name);
+        }
+
         impl Node<#ctx_type> for #struct_name {
             fn run(ctx: &mut #ctx_type) {
+                println!("Running node: {}", Self::NAME);
                 #fn_name(ctx);
             }
         }
