@@ -61,3 +61,19 @@ node! {
         println!("disconnectFromDb");
     }
 }
+
+node! {
+    #[outputs(data1, data2, data3)]
+    pub fn node1(_ctx: &mut Context) -> (String, String, String) {
+        let data1 = "data1value".to_string();
+        let data2 = "data2value".to_string();
+        let data3 = "data3value".to_string();
+        (data1, data2, data3)
+    }
+}
+
+node! {
+    pub fn node2(_ctx: &mut Context, data1: String, data3: String) {
+        println!("node2 -> {}, {}", data1, data3);
+    }
+}

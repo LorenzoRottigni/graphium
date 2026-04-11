@@ -2,7 +2,8 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
     parse::{Parse, ParseStream},
-    parse_macro_input, Expr, Ident, ItemFn, Path, Result, Token,
+    parse_macro_input, punctuated::Punctuated, Expr, FnArg, Ident, ItemFn, Pat, Path, Result,
+    ReturnType, Token, Type,
 };
 
 // ===================================================
@@ -10,9 +11,23 @@ use syn::{
 // ===================================================
 #[proc_macro]
 pub fn node(input: TokenStream) -> TokenStream {
-    let func = parse_macro_input!(input as ItemFn);
+    let mut func = parse_macro_input!(input as ItemFn);
 
     let fn_name = &func.sig.ident;
+
+    let mut output_names: Vec<Ident> = vec![];
+    let mut retained_attrs = vec![];
+    for attr in func.attrs.iter() {
+        if attr.path().is_ident("outputs") {
+            let parsed: Punctuated<Ident, Token![,]> =
+                attr.parse_args_with(Punctuated::parse_terminated)
+                    .expect("invalid #[outputs(...)] syntax");
+            output_names.extend(parsed.into_iter());
+        } else {
+            retained_attrs.push(attr.clone());
+        }
+    }
+    func.attrs = retained_attrs;
 
     // Convert to PascalCase
     let struct_name = format_ident!(
@@ -36,26 +51,164 @@ pub fn node(input: TokenStream) -> TokenStream {
             if let syn::Type::Reference(r) = &*pat.ty {
                 &r.elem
             } else {
-                panic!("expected &mut Context");
+                panic!("expected &mut Context as first arg");
             }
         }
         _ => panic!("expected function with ctx argument"),
     };
+
+    let mut fn_inputs: Vec<(Ident, Type)> = vec![];
+    for (idx, arg) in func.sig.inputs.iter().enumerate() {
+        let FnArg::Typed(pat) = arg else {
+            panic!("unexpected receiver in node fn");
+        };
+        if idx == 0 {
+            continue;
+        }
+        let Pat::Ident(pat_ident) = &*pat.pat else {
+            panic!("expected ident pattern for node arg");
+        };
+        fn_inputs.push((pat_ident.ident.clone(), (*pat.ty).clone()));
+    }
+
+    let return_ty: Option<Type> = match &func.sig.output {
+        ReturnType::Type(_, ty) => Some((**ty).clone()),
+        ReturnType::Default => None,
+    };
+
+    if !output_names.is_empty() {
+        match &return_ty {
+            Some(Type::Tuple(tuple)) => {
+                if output_names.len() != tuple.elems.len() {
+                    panic!("outputs count must match tuple length");
+                }
+            }
+            Some(_) => {
+                if output_names.len() != 1 {
+                    panic!("outputs must contain exactly one name for single return type");
+                }
+            }
+            None => {
+                panic!("outputs provided but function returns nothing");
+            }
+        }
+    }
+
+    if let Some(ret_ty) = &return_ty {
+        match ret_ty {
+            Type::Reference(_) => panic!("node return type must be owned (no references)"),
+            Type::Tuple(tuple) => {
+                for elem in tuple.elems.iter() {
+                    if matches!(elem, Type::Reference(_)) {
+                        panic!("node tuple return types must be owned (no references)");
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let store_outputs = if let Some(Type::Tuple(tuple)) = &return_ty {
+        let outs = tuple.elems.iter().enumerate().map(|(i, elem)| {
+            let idx = syn::Index::from(i);
+            if output_names.is_empty() {
+                quote! { store.insert::<#elem>(__out.#idx); }
+            } else {
+                let name = output_names[i].to_string();
+                quote! {
+                    store.insert_named::<#elem>(#name, __out.#idx);
+                }
+            }
+        });
+        quote! { #( #outs )* }
+    } else if let Some(ret_ty) = &return_ty {
+        if output_names.is_empty() {
+            quote! { store.insert::<#ret_ty>(__out); }
+        } else {
+            let name = output_names[0].to_string();
+            quote! {
+                store.insert_named::<#ret_ty>(#name, __out);
+            }
+        }
+    } else {
+        quote! {}
+    };
+
+    let get_arg_exprs = fn_inputs.iter().map(|(ident, ty)| {
+        let (store_ty, is_ref, is_ref_mut) = match ty {
+            Type::Reference(r) => {
+                let inner = &r.elem;
+                (quote! { #inner }, true, r.mutability.is_some())
+            }
+            _ => (quote! { #ty }, false, false),
+        };
+
+        let name = ident.to_string();
+        if is_ref_mut {
+            quote! {
+                let #ident = store
+                    .get_named_mut::<#store_ty>(#name)
+                    .or_else(|| store.get_mut::<#store_ty>())
+                    .unwrap_or_else(|| panic!(concat!("missing dependency for ", stringify!(#ident))));
+            }
+        } else if is_ref {
+            quote! {
+                let #ident = store
+                    .get_named::<#store_ty>(#name)
+                    .or_else(|| store.get::<#store_ty>())
+                    .unwrap_or_else(|| panic!(concat!("missing dependency for ", stringify!(#ident))));
+            }
+        } else {
+            quote! {
+                let #ident = store
+                    .take_named::<#store_ty>(#name)
+                    .or_else(|| store.take::<#store_ty>())
+                    .unwrap_or_else(|| panic!(concat!("missing dependency for ", stringify!(#ident))));
+            }
+        }
+    });
+
+    let call_args = func.sig.inputs.iter().enumerate().map(|(idx, arg)| {
+        let FnArg::Typed(pat) = arg else {
+            panic!("unexpected receiver in node fn");
+        };
+        if idx == 0 {
+            quote! { ctx }
+        } else {
+            let Pat::Ident(pat_ident) = &*pat.pat else {
+                panic!("expected ident pattern for node arg");
+            };
+            let ident = &pat_ident.ident;
+            quote! { #ident }
+        }
+    });
+
+    let input_idents: Vec<Ident> = fn_inputs.iter().map(|(ident, _)| ident.clone()).collect();
 
     let expanded = quote! {
         #func
 
         pub struct #struct_name;
 
+        impl #struct_name {
+            pub const INPUTS: &'static [&'static str] = &[
+                #( stringify!(#input_idents) ),*
+            ];
+            pub const OUTPUTS: &'static [&'static str] = &[
+                #( stringify!(#output_names) ),*
+            ];
+        }
 
         impl #struct_name {
             pub const NAME: &'static str = stringify!(#fn_name);
         }
 
         impl Node<#ctx_type> for #struct_name {
-            fn run(ctx: &mut #ctx_type) {
+            fn run(ctx: &mut #ctx_type, store: &mut ::graphio::Store) {
                 println!("Running node: {}", Self::NAME);
-                #fn_name(ctx);
+                #( #get_arg_exprs )*
+                let __out = #fn_name( #( #call_args ),* );
+                #store_outputs
             }
         }
     };
@@ -260,12 +413,14 @@ pub fn graph(input: TokenStream) -> TokenStream {
 
         impl #name {
             pub fn run(ctx: &mut #context) {
+                let mut store = ::graphio::Store::default();
+                let store = &mut store;
                 #body
             }
         }
 
         impl Node<#context> for #name {
-            fn run(ctx: &mut #context) {
+            fn run(ctx: &mut #context, store: &mut ::graphio::Store) {
                 #body
             }
         }
@@ -286,12 +441,18 @@ fn generate(node: &NodeExpr) -> proc_macro2::TokenStream {
                 None => false,
             };
             if is_run_path {
+                let mut type_path = path.clone();
+                type_path.segments.pop();
+                type_path.segments.pop_punct();
+                if type_path.segments.is_empty() {
+                    panic!("invalid `run` path");
+                }
                 quote! {
-                    #path(ctx);
+                    <#type_path as Node<_>>::run(ctx, store);
                 }
             } else {
                 quote! {
-                    <#path as Node<_>>::run(ctx);
+                    <#path as Node<_>>::run(ctx, store);
                 }
             }
         }

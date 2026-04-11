@@ -39,6 +39,15 @@ graph! {
     ]
 }
 
+graph! {
+    name: PropsGraph,
+    context: Context,
+    schema: [
+        crate::node::Node1Node >>
+        crate::node::Node2Node
+    ]
+}
+
 /*
 graph! {
     name: DataGraph,

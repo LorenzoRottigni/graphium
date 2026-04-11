@@ -1,10 +1,10 @@
 mod graph;
 mod node;
 
-use graph::DataGraph2;
+use graph::PropsGraph;
 use node::Context;
 
 fn main() {
     let mut ctx = Context::default();
-    DataGraph2::run(&mut ctx);
+    PropsGraph::run(&mut ctx);
 }
