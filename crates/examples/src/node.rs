@@ -1,4 +1,3 @@
-use graphio::Node;
 use graphio_macro::node;
 #[derive(Default)]
 pub struct Context {
@@ -63,7 +62,6 @@ node! {
 }
 
 node! {
-    #[artifacts(data1, data2, data3)]
     pub fn node1(_ctx: &mut Context) -> (String, String, String) {
         let data1 = "data1value".to_string();
         let data2 = "data2value".to_string();
@@ -73,14 +71,13 @@ node! {
 }
 
 node! {
-    pub fn node2(_ctx: &mut Context, data1: String, data3: String) {
-        println!("node2 -> {}, {}", data1, data3);
+    pub fn node2(_ctx: &mut Context, data1: String, data2: String) {
+        println!("node2 -> {}, {}", data1, data2);
     }
 }
 
-/*
- - node1 can produce multiple artifacts exposing them to the next node.
- - artifacts can only be owned values, so its produced from nodeB and then cloned/copied only for next nodes (one or more) that need it.
-   Mimic rust move semantics and ownership rules. (if there is only 1 next node the value is moved, otherwise is cloned/copied for each next node that needs it, using a trait Artifact we can ensure user passes values implementing clone and copy trait).
- - If borrowing is needed, this must happens through the context since the borrowed values must live somewhere and previous node isn't still alive.
- */
+node! {
+    pub fn node3(_ctx: &mut Context, data2: String, data3: String) {
+        println!("node3 -> {}, {}", data2, data3);
+    }
+}

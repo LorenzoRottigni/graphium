@@ -1,5 +1,4 @@
 use crate::node::Context;
-use graphio::Node;
 use graphio_macro::graph;
 
 enum Status {
@@ -11,31 +10,44 @@ enum Status {
 graph! {
     name: DataGraph1,
     context: Context,
-    schema: [crate::node::GetDataNode >> crate::node::ValidateDataNode >> crate::node::NormalizeDataNode >> crate::node::PrintDataNode & crate::node::SendEmailNode & crate::node::PublishEventNode >> crate::node::DisconnectFromDbNode]
+    schema: [
+        crate::node::GetDataNode() >>
+        crate::node::ValidateDataNode() >>
+        crate::node::NormalizeDataNode() >>
+        crate::node::PrintDataNode() & crate::node::SendEmailNode() & crate::node::PublishEventNode() >>
+        crate::node::DisconnectFromDbNode()
+    ]
 }
 
 graph! {
     name: DataGraph2,
     context: Context,
-    schema: [crate::node::GetDataNode >> crate::node::ValidateDataNode >> crate::node::NormalizeDataNode >> crate::node::PrintDataNode & crate::node::SendEmailNode & crate::node::PublishEventNode >> crate::node::DisconnectFromDbNode >> DataGraph1::run]
+    schema: [
+        crate::node::GetDataNode() >>
+        crate::node::ValidateDataNode() >>
+        crate::node::NormalizeDataNode() >>
+        crate::node::PrintDataNode() & crate::node::SendEmailNode() & crate::node::PublishEventNode() >>
+        crate::node::DisconnectFromDbNode() >>
+        DataGraph1::run()
+    ]
 }
 
 graph! {
     name: DataGraph,
     context: Context,
     schema: [
-        crate::node::GetDataNode >>
-        crate::node::ValidateDataNode >>
+        crate::node::GetDataNode() >>
+        crate::node::ValidateDataNode() >>
         @route {
             on: |ctx: &mut Context| Status::Invalid,
             routes: {
-                Status::Valid => crate::node::PrintDataNode & crate::node::SendEmailNode,
-                Status::Invalid => crate::node::PrintErrorNode,
-                Status::NeedsReview => crate::node::SendReviewNode,
+                Status::Valid => crate::node::PrintDataNode() & crate::node::SendEmailNode(),
+                Status::Invalid => crate::node::PrintErrorNode(),
+                Status::NeedsReview => crate::node::SendReviewNode(),
             }
         }
         >>
-        crate::node::DisconnectFromDbNode
+        crate::node::DisconnectFromDbNode()
     ]
 }
 
@@ -43,8 +55,8 @@ graph! {
     name: PropsGraph,
     context: Context,
     schema: [
-        crate::node::Node1Node >>
-        crate::node::Node2Node
+        crate::node::Node1Node() -> (data1, data2, data3) >>
+        crate::node::Node2Node(data1, data2) & crate::node::Node3Node(data2, data3)
     ]
 }
 
