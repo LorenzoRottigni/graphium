@@ -18,10 +18,10 @@ pub fn node(input: TokenStream) -> TokenStream {
     let mut output_names: Vec<Ident> = vec![];
     let mut retained_attrs = vec![];
     for attr in func.attrs.iter() {
-        if attr.path().is_ident("outputs") {
+        if attr.path().is_ident("artifacts") {
             let parsed: Punctuated<Ident, Token![,]> =
                 attr.parse_args_with(Punctuated::parse_terminated)
-                    .expect("invalid #[outputs(...)] syntax");
+                    .expect("invalid #[artifacts(...)] syntax");
             output_names.extend(parsed.into_iter());
         } else {
             retained_attrs.push(attr.clone());
@@ -80,16 +80,16 @@ pub fn node(input: TokenStream) -> TokenStream {
         match &return_ty {
             Some(Type::Tuple(tuple)) => {
                 if output_names.len() != tuple.elems.len() {
-                    panic!("outputs count must match tuple length");
+                    panic!("artifacts count must match tuple length");
                 }
             }
             Some(_) => {
                 if output_names.len() != 1 {
-                    panic!("outputs must contain exactly one name for single return type");
+                    panic!("artifacts must contain exactly one name for single return type");
                 }
             }
             None => {
-                panic!("outputs provided but function returns nothing");
+                panic!("artifacts provided but function returns nothing");
             }
         }
     }
@@ -108,7 +108,7 @@ pub fn node(input: TokenStream) -> TokenStream {
         }
     }
 
-    let store_outputs = if let Some(Type::Tuple(tuple)) = &return_ty {
+    let store_artifacts = if let Some(Type::Tuple(tuple)) = &return_ty {
         let outs = tuple.elems.iter().enumerate().map(|(i, elem)| {
             let idx = syn::Index::from(i);
             if output_names.is_empty() {
@@ -194,7 +194,7 @@ pub fn node(input: TokenStream) -> TokenStream {
             pub const INPUTS: &'static [&'static str] = &[
                 #( stringify!(#input_idents) ),*
             ];
-            pub const OUTPUTS: &'static [&'static str] = &[
+            pub const ARTIFACTS: &'static [&'static str] = &[
                 #( stringify!(#output_names) ),*
             ];
         }
@@ -208,7 +208,7 @@ pub fn node(input: TokenStream) -> TokenStream {
                 println!("Running node: {}", Self::NAME);
                 #( #get_arg_exprs )*
                 let __out = #fn_name( #( #call_args ),* );
-                #store_outputs
+                #store_artifacts
             }
         }
     };
