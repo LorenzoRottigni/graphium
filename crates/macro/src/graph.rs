@@ -15,8 +15,8 @@ use crate::shared::{
 // - fan-out clones only when multiple immediate consumers require the same artifact
 // - artifacts die once the hop finishes unless a node re-emits them
 
-/// Expands a `graph!` definition into a runnable graph type whose `run`
-/// method performs hop-by-hop artifact propagation.
+/// Expands a `graph!` definition into a graph configuration type plus a
+/// `graphio::Graph` implementation executed by the core controller.
 pub fn expand(input: TokenStream) -> TokenStream {
     let GraphInput {
         name,
@@ -41,7 +41,17 @@ pub fn expand(input: TokenStream) -> TokenStream {
         pub struct #name;
 
         impl #name {
+            /// Convenience entry point that delegates execution to the default
+            /// controller instead of embedding orchestration logic here.
             pub fn run(ctx: &mut #context) {
+                ::graphio::Controller::new().run(&Self, ctx);
+            }
+        }
+
+        impl ::graphio::Graph<#context> for #name {
+            fn execute(&self, controller: &::graphio::Controller, ctx: &mut #context) {
+                let _ = self;
+                let _ = controller;
                 #body
             }
         }
@@ -61,9 +71,9 @@ fn generate_expr(node: &NodeExpr, incoming: &Payload, counter: &mut usize) -> Ge
     }
 }
 
-/// Generates code for a single node invocation or nested `SomeGraph::run()`
-/// call, consuming artifacts from the incoming hop payload and optionally
-/// producing a new outgoing payload.
+/// Generates code for a single node invocation or nested graph execution call,
+/// consuming artifacts from the incoming hop payload and optionally producing a
+/// new outgoing payload.
 fn generate_single(call: &NodeCall, incoming: &Payload, counter: &mut usize) -> GeneratedExpr {
     let path = &call.path;
 
@@ -72,9 +82,20 @@ fn generate_single(call: &NodeCall, incoming: &Payload, counter: &mut usize) -> 
             panic!("graph `run` calls do not support explicit inputs or outputs");
         }
 
+        let graph_path = graph_type_path(path);
+
         return GeneratedExpr {
             tokens: quote! {
-                #path(ctx);
+                controller.run(&#graph_path, ctx);
+            },
+            outputs: Payload::new(),
+        };
+    }
+
+    if !call.explicit_inputs && call.inputs.is_empty() && call.outputs.is_empty() {
+        return GeneratedExpr {
+            tokens: quote! {
+                controller.run(&#path, ctx);
             },
             outputs: Payload::new(),
         };
@@ -175,6 +196,20 @@ fn generate_single(call: &NodeCall, incoming: &Payload, counter: &mut usize) -> 
             outputs,
         }
     }
+}
+
+/// Extracts the graph type path from a `SomeGraph::run` path so nested graphs
+/// can be executed through the controller.
+fn graph_type_path(path: &syn::Path) -> syn::Path {
+    let mut graph_path = path.clone();
+    graph_path.segments.pop();
+    graph_path.segments.pop_punct();
+
+    if graph_path.segments.is_empty() {
+        panic!("invalid graph run path");
+    }
+
+    graph_path
 }
 
 /// Generates code for `A >> B >> C` style execution by forwarding only the
@@ -504,6 +539,13 @@ fn analyze_single(call: &NodeCall) -> ExprShape {
             panic!("graph `run` calls do not support explicit inputs or outputs");
         }
 
+        return ExprShape {
+            entry_usage: UsageMap::new(),
+            exit_outputs: Vec::new(),
+        };
+    }
+
+    if !call.explicit_inputs && call.inputs.is_empty() && call.outputs.is_empty() {
         return ExprShape {
             entry_usage: UsageMap::new(),
             exit_outputs: Vec::new(),

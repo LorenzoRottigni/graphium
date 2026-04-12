@@ -70,7 +70,8 @@ fn parse_primary(input: ParseStream) -> Result<NodeExpr> {
 impl Parse for NodeCall {
     fn parse(input: ParseStream) -> Result<Self> {
         let path: Path = input.parse()?;
-        let inputs = if input.peek(syn::token::Paren) {
+        let explicit_inputs = input.peek(syn::token::Paren);
+        let inputs = if explicit_inputs {
             let content;
             syn::parenthesized!(content in input);
             parse_ident_list(&content)?
@@ -89,6 +90,7 @@ impl Parse for NodeCall {
 
         Ok(Self {
             path,
+            explicit_inputs,
             inputs,
             outputs,
         })

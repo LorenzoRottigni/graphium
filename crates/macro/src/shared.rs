@@ -18,6 +18,7 @@ pub struct NodeDef {
 #[derive(Clone)]
 pub struct NodeCall {
     pub path: Path,
+    pub explicit_inputs: bool,
     pub inputs: Vec<Ident>,
     pub outputs: Vec<Ident>,
 }

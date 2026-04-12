@@ -28,7 +28,7 @@ graph! {
         crate::node::NormalizeDataNode() >>
         crate::node::PrintDataNode() & crate::node::SendEmailNode() & crate::node::PublishEventNode() >>
         crate::node::DisconnectFromDbNode() >>
-        DataGraph1::run()
+        DataGraph1
     ]
 }
 
