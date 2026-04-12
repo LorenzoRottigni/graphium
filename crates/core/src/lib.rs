@@ -7,6 +7,8 @@ pub trait Artifact: Clone + 'static {}
 
 impl<T> Artifact for T where T: Clone + 'static {}
 
+/// Clones or copies an artifact when one hop needs to fan out to more than one
+/// immediate consumer.
 pub fn clone_artifact<T: Artifact>(value: &T) -> T {
     value.clone()
 }

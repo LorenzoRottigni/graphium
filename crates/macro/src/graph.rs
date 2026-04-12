@@ -15,6 +15,8 @@ use crate::shared::{
 // - fan-out clones only when multiple immediate consumers require the same artifact
 // - artifacts die once the hop finishes unless a node re-emits them
 
+/// Expands a `graph!` definition into a runnable graph type whose `run`
+/// method performs hop-by-hop artifact propagation.
 pub fn expand(input: TokenStream) -> TokenStream {
     let GraphInput {
         name,
@@ -48,6 +50,8 @@ pub fn expand(input: TokenStream) -> TokenStream {
     TokenStream::from(expanded)
 }
 
+/// Dispatches code generation to the correct handler for the current graph IR
+/// node.
 fn generate_expr(node: &NodeExpr, incoming: &Payload, counter: &mut usize) -> GeneratedExpr {
     match node {
         NodeExpr::Single(call) => generate_single(call, incoming, counter),
@@ -57,6 +61,9 @@ fn generate_expr(node: &NodeExpr, incoming: &Payload, counter: &mut usize) -> Ge
     }
 }
 
+/// Generates code for a single node invocation or nested `SomeGraph::run()`
+/// call, consuming artifacts from the incoming hop payload and optionally
+/// producing a new outgoing payload.
 fn generate_single(call: &NodeCall, incoming: &Payload, counter: &mut usize) -> GeneratedExpr {
     let path = &call.path;
 
@@ -170,6 +177,8 @@ fn generate_single(call: &NodeCall, incoming: &Payload, counter: &mut usize) -> 
     }
 }
 
+/// Generates code for `A >> B >> C` style execution by forwarding only the
+/// artifacts required by the immediate next step at each hop boundary.
 fn generate_sequence(nodes: &[NodeExpr], incoming: &Payload, counter: &mut usize) -> GeneratedExpr {
     let mut iter = nodes.iter();
     let first = iter
@@ -215,6 +224,8 @@ fn generate_sequence(nodes: &[NodeExpr], incoming: &Payload, counter: &mut usize
     current
 }
 
+/// Generates code for a fan-out step where multiple sibling branches consume
+/// the same incoming hop payload.
 fn generate_parallel(nodes: &[NodeExpr], incoming: &Payload, counter: &mut usize) -> GeneratedExpr {
     let shapes: Vec<ExprShape> = nodes.iter().map(analyze_expr).collect();
     let mut remaining = UsageMap::new();
@@ -299,6 +310,8 @@ fn generate_parallel(nodes: &[NodeExpr], incoming: &Payload, counter: &mut usize
     }
 }
 
+/// Generates code for an exclusive route branch, moving the incoming hop
+/// payload into the selected branch only.
 fn generate_route(route: &RouteExpr, incoming: &Payload, counter: &mut usize) -> GeneratedExpr {
     let branch_shapes: Vec<ExprShape> = route
         .routes
@@ -367,6 +380,8 @@ fn generate_route(route: &RouteExpr, incoming: &Payload, counter: &mut usize) ->
     }
 }
 
+/// Rebinds outputs created inside a nested scope into fresh outer locals so the
+/// parent expression can keep propagating the hop payload.
 fn capture_outputs(
     inner_tokens: proc_macro2::TokenStream,
     inner_outputs: Payload,
@@ -424,6 +439,8 @@ fn capture_outputs(
     }
 }
 
+/// Computes the entry requirements and possible exit artifacts of a graph
+/// expression without generating executable code.
 fn analyze_expr(node: &NodeExpr) -> ExprShape {
     match node {
         NodeExpr::Single(call) => analyze_single(call),
@@ -479,6 +496,8 @@ fn analyze_expr(node: &NodeExpr) -> ExprShape {
     }
 }
 
+/// Computes the shape of a single node call: which artifacts must already be
+/// available and which artifact names can leave the node.
 fn analyze_single(call: &NodeCall) -> ExprShape {
     if is_graph_run_path(&call.path) {
         if !call.inputs.is_empty() || !call.outputs.is_empty() {
@@ -502,10 +521,14 @@ fn analyze_single(call: &NodeCall) -> ExprShape {
     }
 }
 
+/// Returns the ordered list of artifact names required at the entry of a graph
+/// subexpression.
 fn required_artifacts(shape: &ExprShape) -> Vec<String> {
     shape.entry_usage.keys().cloned().collect()
 }
 
+/// Collects and validates the outgoing artifact names of a parallel step,
+/// rejecting duplicates because sibling outputs would collide.
 fn collect_parallel_outputs(shapes: &[ExprShape]) -> Vec<String> {
     let mut seen = BTreeSet::new();
     let mut outputs = Vec::new();
@@ -522,6 +545,8 @@ fn collect_parallel_outputs(shapes: &[ExprShape]) -> Vec<String> {
     outputs
 }
 
+/// Collects the union of artifact names that may leave a route expression
+/// across its possible branches.
 fn collect_route_outputs(shapes: &[ExprShape]) -> Vec<String> {
     let mut seen = BTreeSet::new();
     let mut outputs = Vec::new();

@@ -9,6 +9,7 @@ use crate::shared::{NodeDef, pascal_case};
 // exposing a uniform `__graphio_run` entry point. Artifact propagation is
 // handled entirely by `graph!`.
 
+/// Parses a user node function and emits its generated node wrapper type.
 pub fn expand(input: TokenStream) -> TokenStream {
     let func = parse_macro_input!(input as ItemFn);
     let node_def = parse_node_def(&func);
@@ -48,6 +49,8 @@ pub fn expand(input: TokenStream) -> TokenStream {
     TokenStream::from(expanded)
 }
 
+/// Extracts the compile-time metadata the graph macro needs from a node
+/// function signature.
 fn parse_node_def(func: &ItemFn) -> NodeDef {
     let fn_name = func.sig.ident.clone();
     let struct_name = format_ident!("{}Node", pascal_case(&fn_name));
@@ -106,6 +109,8 @@ fn parse_node_def(func: &ItemFn) -> NodeDef {
     }
 }
 
+/// Rejects borrowed return types so artifacts always remain owned while the
+/// graph is propagating them between nodes.
 fn validate_return_type(return_ty: &Option<Type>) {
     match return_ty {
         Some(Type::Reference(_)) => panic!("node return type must be owned (no references)"),

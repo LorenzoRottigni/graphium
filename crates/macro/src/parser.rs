@@ -15,6 +15,8 @@ impl Parse for NodeExpr {
     }
 }
 
+/// Parses the highest-precedence sequence level of the graph DSL, splitting on
+/// `>>` and preserving left-to-right execution order.
 fn parse_sequence(input: ParseStream) -> Result<NodeExpr> {
     let mut nodes = vec![parse_parallel(input)?];
 
@@ -30,6 +32,7 @@ fn parse_sequence(input: ParseStream) -> Result<NodeExpr> {
     }
 }
 
+/// Parses a parallel group, splitting sibling nodes on `&`.
 fn parse_parallel(input: ParseStream) -> Result<NodeExpr> {
     let mut nodes = vec![parse_primary(input)?];
 
@@ -45,6 +48,8 @@ fn parse_parallel(input: ParseStream) -> Result<NodeExpr> {
     }
 }
 
+/// Parses a single graph atom: either a node call or a `@route { ... }`
+/// expression.
 fn parse_primary(input: ParseStream) -> Result<NodeExpr> {
     if input.peek(Token![@]) {
         input.parse::<Token![@]>()?;
@@ -90,6 +95,8 @@ impl Parse for NodeCall {
     }
 }
 
+/// Parses a comma-separated list of artifact names used for node inputs or
+/// outputs in the graph DSL.
 fn parse_ident_list(input: ParseStream) -> Result<Vec<Ident>> {
     let mut idents = Vec::new();
 
@@ -145,6 +152,8 @@ impl Parse for RouteExpr {
 }
 
 impl Parse for GraphInput {
+    /// Parses the outer `graph!` object, including graph name, context type,
+    /// and the bracketed graph schema.
     fn parse(input: ParseStream) -> Result<Self> {
         let _: Ident = input.parse()?;
         input.parse::<Token![:]>()?;
