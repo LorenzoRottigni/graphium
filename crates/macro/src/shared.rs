@@ -1,0 +1,101 @@
+use quote::format_ident;
+use std::collections::BTreeMap;
+use syn::{Expr, Ident, Path, Type};
+
+// Core syntax/data structures shared by parsing and code generation.
+// These are the macro's internal IR: first we parse the DSL into these types,
+// then the graph code generator walks them to emit Rust code.
+
+#[derive(Clone)]
+pub struct NodeDef {
+    pub fn_name: Ident,
+    pub struct_name: Ident,
+    pub ctx_type: Type,
+    pub inputs: Vec<(Ident, Type)>,
+    pub return_ty: Option<Type>,
+}
+
+#[derive(Clone)]
+pub struct NodeCall {
+    pub path: Path,
+    pub inputs: Vec<Ident>,
+    pub outputs: Vec<Ident>,
+}
+
+#[derive(Clone)]
+pub enum NodeExpr {
+    Single(NodeCall),
+    Sequence(Vec<NodeExpr>),
+    Parallel(Vec<NodeExpr>),
+    Route(RouteExpr),
+}
+
+#[derive(Clone)]
+pub struct RouteExpr {
+    pub on: Expr,
+    pub routes: Vec<(Expr, NodeExpr)>,
+}
+
+pub struct GraphInput {
+    pub name: Ident,
+    pub context: Path,
+    pub nodes: NodeExpr,
+}
+
+// `UsageMap` is compile-time bookkeeping only.
+// For each artifact name, it stores how many consumers still need it inside
+// the hop currently being generated.
+pub type UsageMap = BTreeMap<String, usize>;
+
+// A hop payload is the short-lived set of artifact variables that move from one
+// `>>` boundary to the next. The values are generated local variable names.
+pub type Payload = BTreeMap<String, Ident>;
+
+// `ExprShape` is a lightweight summary of a subgraph.
+// It tells the parent expression:
+// - which artifacts must be present at entry
+// - which artifact names can come out at exit
+#[derive(Clone)]
+pub struct ExprShape {
+    pub entry_usage: UsageMap,
+    pub exit_outputs: Vec<String>,
+}
+
+// Result of generating one graph expression.
+// `tokens` is the emitted Rust code, `outputs` is the payload owned by the
+// expression when that code finishes running.
+pub struct GeneratedExpr {
+    pub tokens: proc_macro2::TokenStream,
+    pub outputs: Payload,
+}
+
+pub fn pascal_case(ident: &Ident) -> String {
+    ident
+        .to_string()
+        .split('_')
+        .map(|segment| {
+            let mut chars = segment.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<String>()
+}
+
+// Macro-generated locals need stable, collision-free names.
+// We thread a counter through codegen and attach both a purpose prefix and the
+// artifact name to keep debug output somewhat readable.
+pub fn fresh_ident(counter: &mut usize, prefix: &str, name: &str) -> Ident {
+    let ident = format_ident!("__graphio_{}_{}_{}", prefix, *counter, name);
+    *counter += 1;
+    ident
+}
+
+// `FooGraph::run()` is treated specially inside the DSL: it executes another
+// graph directly instead of behaving like a node call with hop-managed artifacts.
+pub fn is_graph_run_path(path: &Path) -> bool {
+    path.segments
+        .last()
+        .is_some_and(|segment| segment.ident == "run")
+}
