@@ -24,8 +24,9 @@ pub fn expand(input: TokenStream) -> TokenStream {
         nodes,
     } = parse_macro_input!(input as GraphInput);
 
+    //
     let mut counter = 0usize;
-    let generated = generate_expr(&nodes, &Payload::new(), &mut counter);
+    let generated = get_node_expr(&nodes, &Payload::new(), &mut counter);
     let body = if generated.outputs.is_empty() {
         generated.tokens
     } else {
@@ -62,27 +63,33 @@ pub fn expand(input: TokenStream) -> TokenStream {
 
 /// Dispatches code generation to the correct handler for the current graph IR
 /// node.
-fn generate_expr(node: &NodeExpr, incoming: &Payload, counter: &mut usize) -> GeneratedExpr {
+/// This function is called recursively to generate code for nested graphs and subexpressions.
+fn get_node_expr(node: &NodeExpr, incoming: &Payload, counter: &mut usize) -> GeneratedExpr {
     match node {
-        NodeExpr::Single(call) => generate_single(call, incoming, counter),
-        NodeExpr::Sequence(nodes) => generate_sequence(nodes, incoming, counter),
-        NodeExpr::Parallel(nodes) => generate_parallel(nodes, incoming, counter),
-        NodeExpr::Route(route) => generate_route(route, incoming, counter),
+        // the graph has a single node, so we can skip the sequence logic and generate it directly in the root scope.
+        NodeExpr::Single(call) => get_single_node_expr(call, incoming, counter),
+        // the graph has at least 2 nodes all connected by `>>`
+        NodeExpr::Sequence(nodes) => get_sequence_nodes_expr(nodes, incoming, counter),
+        // the graph has at least 2 nodes all connected by `|` (parallel fan-out)
+        NodeExpr::Parallel(nodes) => get_parallel_nodes_expr(nodes, incoming, counter),
+        // the graph has an exclusive route with multiple branches
+        NodeExpr::Route(route) => get_route_node_expr(route, incoming, counter),
     }
 }
 
 /// Generates code for a single node invocation or nested graph execution call,
 /// consuming artifacts from the incoming hop payload and optionally producing a
 /// new outgoing payload.
-fn generate_single(call: &NodeCall, incoming: &Payload, counter: &mut usize) -> GeneratedExpr {
-    let path = &call.path;
+fn get_single_node_expr(call: &NodeCall, incoming: &Payload, counter: &mut usize) -> GeneratedExpr {
+    let node_path = &call.path;
 
-    if is_graph_run_path(path) {
+    // Node with a nested graph
+    if is_graph_run_path(node_path) {
         if !call.inputs.is_empty() || !call.outputs.is_empty() {
             panic!("graph `run` calls do not support explicit inputs or outputs");
         }
 
-        let graph_path = graph_type_path(path);
+        let graph_path = graph_type_path(node_path);
 
         return GeneratedExpr {
             tokens: quote! {
@@ -92,10 +99,11 @@ fn generate_single(call: &NodeCall, incoming: &Payload, counter: &mut usize) -> 
         };
     }
 
+    // Node with no inputs and no outputs
     if !call.explicit_inputs && call.inputs.is_empty() && call.outputs.is_empty() {
         return GeneratedExpr {
             tokens: quote! {
-                controller.run(&#path, ctx);
+                controller.run(&#node_path, ctx);
             },
             outputs: Payload::new(),
         };
@@ -106,10 +114,14 @@ fn generate_single(call: &NodeCall, incoming: &Payload, counter: &mut usize) -> 
     // ones clone from the same incoming payload.
     let mut remaining = UsageMap::new();
     for input in &call.inputs {
+        // for each input, increment the usage count for that input name so we know how many times it will be consumed in this node.
         *remaining.entry(input.to_string()).or_insert(0) += 1;
     }
 
+    // list of local variable names we generate for the node inputs, which will be used in the generated code to refer to the incoming artifacts.
     let mut arg_vars = Vec::with_capacity(call.inputs.len());
+    // arg_vars and input_bindings correspond to each other by index: for each input, is generates a
+    // local variable name for it and a code snippet that initializes that variable by taking or cloning from the incoming payload.
     let mut input_bindings = Vec::with_capacity(call.inputs.len());
 
     for input in &call.inputs {
@@ -142,11 +154,12 @@ fn generate_single(call: &NodeCall, incoming: &Payload, counter: &mut usize) -> 
         arg_vars.push(arg_ident);
     }
 
+    // Node with input and no inputs
     if call.outputs.is_empty() {
         return GeneratedExpr {
             tokens: quote! {
                 #( #input_bindings )*
-                #path::__graphio_run(ctx, #( #arg_vars ),*);
+                #node_path::__graphio_run(ctx, #( #arg_vars ),*);
             },
             outputs: Payload::new(),
         };
@@ -156,6 +169,7 @@ fn generate_single(call: &NodeCall, incoming: &Payload, counter: &mut usize) -> 
     // We hold each produced artifact in an `Option<T>` so later code can decide
     // whether to move it (`take`) or clone from it.
     let mut outputs = Payload::new();
+    // node with a single output
     if call.outputs.len() == 1 {
         let artifact_name = call.outputs[0].to_string();
         let output_var = fresh_ident(counter, "hop", &artifact_name);
@@ -164,10 +178,11 @@ fn generate_single(call: &NodeCall, incoming: &Payload, counter: &mut usize) -> 
         GeneratedExpr {
             tokens: quote! {
                 #( #input_bindings )*
-                let mut #output_var = ::std::option::Option::Some(#path::__graphio_run(ctx, #( #arg_vars ),*));
+                let mut #output_var = ::std::option::Option::Some(#node_path::__graphio_run(ctx, #( #arg_vars ),*));
             },
             outputs,
         }
+    // node with multiple outputs
     } else {
         let tuple_vars: Vec<syn::Ident> = call
             .outputs
@@ -190,7 +205,7 @@ fn generate_single(call: &NodeCall, incoming: &Payload, counter: &mut usize) -> 
         GeneratedExpr {
             tokens: quote! {
                 #( #input_bindings )*
-                let ( #( #tuple_vars ),* ) = #path::__graphio_run(ctx, #( #arg_vars ),*);
+                let ( #( #tuple_vars ),* ) = #node_path::__graphio_run(ctx, #( #arg_vars ),*);
                 #( #output_stores )*
             },
             outputs,
@@ -212,37 +227,149 @@ fn graph_type_path(path: &syn::Path) -> syn::Path {
     graph_path
 }
 
+/// Builds a fresh hop payload by moving the requested artifacts out of the
+/// current expression outputs.
+fn prepare_move_payload(
+    source_outputs: &Payload,
+    artifacts: &[String],
+    prefix: &str,
+    counter: &mut usize,
+) -> (Payload, Vec<proc_macro2::TokenStream>) {
+    let mut payload = Payload::new();
+    let mut bindings = Vec::with_capacity(artifacts.len());
+
+    for artifact in artifacts {
+        let source = source_outputs
+            .get(artifact)
+            .unwrap_or_else(|| panic!("missing artifact `{artifact}` for next hop"));
+        let payload_var = fresh_ident(counter, prefix, artifact);
+        payload.insert(artifact.clone(), payload_var.clone());
+        bindings.push(quote! {
+            let mut #payload_var = #source.take();
+        });
+    }
+
+    (payload, bindings)
+}
+
+/// Builds one child payload for a parallel fan-out branch.
+///
+/// Shared artifacts are cloned for early consumers and moved for the last one.
+fn prepare_parallel_payload(
+    incoming: &Payload,
+    shape: &ExprShape,
+    remaining: &mut UsageMap,
+    counter: &mut usize,
+) -> (Payload, Vec<proc_macro2::TokenStream>) {
+    let mut payload = Payload::new();
+    let mut bindings = Vec::new();
+
+    for artifact in required_artifacts(shape) {
+        let source = incoming
+            .get(&artifact)
+            .unwrap_or_else(|| panic!("missing artifact `{artifact}` for parallel step"));
+        let remaining_children = remaining
+            .get_mut(&artifact)
+            .unwrap_or_else(|| panic!("missing usage count for `{artifact}`"));
+        let payload_var = fresh_ident(counter, "parallel_in", &artifact);
+        payload.insert(artifact.clone(), payload_var.clone());
+
+        if *remaining_children == 1 {
+            bindings.push(quote! {
+                let mut #payload_var = #source.take();
+            });
+        } else {
+            bindings.push(quote! {
+                let mut #payload_var = ::std::option::Option::Some(::graphio::clone_artifact(
+                    #source
+                        .as_ref()
+                        .unwrap_or_else(|| panic!(concat!("missing artifact `", #artifact, "`")))
+                ));
+            });
+        }
+
+        *remaining_children -= 1;
+    }
+
+    (payload, bindings)
+}
+
+/// Declares outer slots for the outputs of a composite expression.
+fn prepare_output_slots(
+    artifacts: &[String],
+    prefix: &str,
+    counter: &mut usize,
+) -> (Payload, Vec<proc_macro2::TokenStream>) {
+    let mut outputs = Payload::new();
+    let mut declarations = Vec::with_capacity(artifacts.len());
+
+    for artifact in artifacts {
+        let output_var = fresh_ident(counter, prefix, artifact);
+        outputs.insert(artifact.clone(), output_var.clone());
+        declarations.push(quote! {
+            let mut #output_var = ::std::option::Option::None;
+        });
+    }
+
+    (outputs, declarations)
+}
+
+/// Emits assignments that copy a child expression's output locals into the
+/// outer slots owned by the parent composite expression.
+fn assign_outputs_to_slots(
+    inner_outputs: &Payload,
+    outer_outputs: &Payload,
+) -> Vec<proc_macro2::TokenStream> {
+    inner_outputs
+        .iter()
+        .map(|(artifact, inner)| {
+            let outer = outer_outputs
+                .get(artifact)
+                .unwrap_or_else(|| panic!("missing output slot for `{artifact}`"));
+            quote! {
+                #outer = #inner;
+            }
+        })
+        .collect()
+}
+
+/// Counts how many sibling branches require each artifact at the entry of a
+/// parallel expression.
+fn collect_parallel_entry_usage(shapes: &[ExprShape]) -> UsageMap {
+    let mut remaining = UsageMap::new();
+
+    for shape in shapes {
+        for artifact in required_artifacts(shape) {
+            *remaining.entry(artifact).or_insert(0) += 1;
+        }
+    }
+
+    remaining
+}
+
 /// Generates code for `A >> B >> C` style execution by forwarding only the
 /// artifacts required by the immediate next step at each hop boundary.
-fn generate_sequence(nodes: &[NodeExpr], incoming: &Payload, counter: &mut usize) -> GeneratedExpr {
+fn get_sequence_nodes_expr(
+    nodes: &[NodeExpr],
+    incoming: &Payload,
+    counter: &mut usize,
+) -> GeneratedExpr {
     let mut iter = nodes.iter();
     let first = iter
         .next()
         .expect("sequence must contain at least one node");
-    let mut current = generate_expr(first, incoming, counter);
+    let mut current = get_node_expr(first, incoming, counter);
 
     for next in iter {
         let shape = analyze_expr(next);
         let required = required_artifacts(&shape);
-        let mut next_payload = Payload::new();
-        let mut transfer_tokens = Vec::with_capacity(required.len());
-
         // A sequence boundary is the core one-hop rule:
         // take only the artifacts the next step needs, build a fresh payload for
         // that step, and let everything else drop here.
-        for artifact in required {
-            let source = current
-                .outputs
-                .get(&artifact)
-                .unwrap_or_else(|| panic!("missing artifact `{artifact}` for next hop"));
-            let payload_var = fresh_ident(counter, "payload", &artifact);
-            next_payload.insert(artifact.clone(), payload_var.clone());
-            transfer_tokens.push(quote! {
-                let mut #payload_var = #source.take();
-            });
-        }
+        let (next_payload, transfer_tokens) =
+            prepare_move_payload(&current.outputs, &required, "payload", counter);
 
-        let next_generated = generate_expr(next, &next_payload, counter);
+        let next_generated = get_node_expr(next, &next_payload, counter);
         let current_tokens = current.tokens;
         let next_tokens = next_generated.tokens;
         current = capture_outputs(
@@ -261,71 +388,29 @@ fn generate_sequence(nodes: &[NodeExpr], incoming: &Payload, counter: &mut usize
 
 /// Generates code for a fan-out step where multiple sibling branches consume
 /// the same incoming hop payload.
-fn generate_parallel(nodes: &[NodeExpr], incoming: &Payload, counter: &mut usize) -> GeneratedExpr {
+fn get_parallel_nodes_expr(
+    nodes: &[NodeExpr],
+    incoming: &Payload,
+    counter: &mut usize,
+) -> GeneratedExpr {
     let shapes: Vec<ExprShape> = nodes.iter().map(analyze_expr).collect();
-    let mut remaining = UsageMap::new();
-    for shape in &shapes {
-        for artifact in required_artifacts(shape) {
-            *remaining.entry(artifact).or_insert(0) += 1;
-        }
-    }
+    let mut remaining = collect_parallel_entry_usage(&shapes);
 
     let exit_outputs = collect_parallel_outputs(&shapes);
-    let mut outputs = Payload::new();
-    let mut output_decl_tokens = Vec::new();
-    for artifact in &exit_outputs {
-        let output_var = fresh_ident(counter, "parallel_out", artifact);
-        outputs.insert(artifact.clone(), output_var.clone());
-        output_decl_tokens.push(quote! {
-            let mut #output_var = ::std::option::Option::None;
-        });
-    }
+    let (outputs, output_decl_tokens) =
+        prepare_output_slots(&exit_outputs, "parallel_out", counter);
 
     let mut blocks = Vec::new();
     for (node, shape) in nodes.iter().zip(shapes.iter()) {
-        let mut child_payload = Payload::new();
-        let mut child_bindings = Vec::new();
-
         // A parallel hop distributes the same incoming payload to multiple
         // sibling steps. Early consumers clone if another sibling still needs
         // the artifact; the last sibling moves it.
-        for artifact in required_artifacts(shape) {
-            let source = incoming
-                .get(&artifact)
-                .unwrap_or_else(|| panic!("missing artifact `{artifact}` for parallel step"));
-            let remaining_children = remaining
-                .get_mut(&artifact)
-                .unwrap_or_else(|| panic!("missing usage count for `{artifact}`"));
-            let payload_var = fresh_ident(counter, "parallel_in", &artifact);
-            child_payload.insert(artifact.clone(), payload_var.clone());
+        let (child_payload, child_bindings) =
+            prepare_parallel_payload(incoming, shape, &mut remaining, counter);
 
-            if *remaining_children == 1 {
-                child_bindings.push(quote! {
-                    let mut #payload_var = #source.take();
-                });
-            } else {
-                child_bindings.push(quote! {
-                    let mut #payload_var = ::std::option::Option::Some(::graphio::clone_artifact(
-                        #source
-                            .as_ref()
-                            .unwrap_or_else(|| panic!(concat!("missing artifact `", #artifact, "`")))
-                    ));
-                });
-            }
-
-            *remaining_children -= 1;
-        }
-
-        let generated = generate_expr(node, &child_payload, counter);
+        let generated = get_node_expr(node, &child_payload, counter);
         let generated_tokens = generated.tokens;
-        let output_assigns = generated.outputs.iter().map(|(artifact, inner)| {
-            let outer = outputs
-                .get(artifact)
-                .unwrap_or_else(|| panic!("missing parallel output slot for `{artifact}`"));
-            quote! {
-                #outer = #inner;
-            }
-        });
+        let output_assigns = assign_outputs_to_slots(&generated.outputs, &outputs);
 
         blocks.push(quote! {
             {
@@ -347,7 +432,11 @@ fn generate_parallel(nodes: &[NodeExpr], incoming: &Payload, counter: &mut usize
 
 /// Generates code for an exclusive route branch, moving the incoming hop
 /// payload into the selected branch only.
-fn generate_route(route: &RouteExpr, incoming: &Payload, counter: &mut usize) -> GeneratedExpr {
+fn get_route_node_expr(
+    route: &RouteExpr,
+    incoming: &Payload,
+    counter: &mut usize,
+) -> GeneratedExpr {
     let branch_shapes: Vec<ExprShape> = route
         .routes
         .iter()
@@ -355,45 +444,20 @@ fn generate_route(route: &RouteExpr, incoming: &Payload, counter: &mut usize) ->
         .collect();
     let exit_outputs = collect_route_outputs(&branch_shapes);
 
-    let mut outputs = Payload::new();
-    let mut output_decl_tokens = Vec::new();
-    for artifact in &exit_outputs {
-        let output_var = fresh_ident(counter, "route_out", artifact);
-        outputs.insert(artifact.clone(), output_var.clone());
-        output_decl_tokens.push(quote! {
-            let mut #output_var = ::std::option::Option::None;
-        });
-    }
+    let (outputs, output_decl_tokens) = prepare_output_slots(&exit_outputs, "route_out", counter);
 
     let on_expr = &route.on;
     let mut arms = Vec::new();
     for ((key, node), shape) in route.routes.iter().zip(branch_shapes.iter()) {
-        let mut branch_payload = Payload::new();
-        let mut branch_bindings = Vec::new();
-
         // Route branches are exclusive: only one branch runs, so inputs are
         // moved straight into that branch payload.
-        for artifact in required_artifacts(shape) {
-            let source = incoming
-                .get(&artifact)
-                .unwrap_or_else(|| panic!("missing artifact `{artifact}` for route branch"));
-            let payload_var = fresh_ident(counter, "route_in", &artifact);
-            branch_payload.insert(artifact, payload_var.clone());
-            branch_bindings.push(quote! {
-                let mut #payload_var = #source.take();
-            });
-        }
+        let artifacts = required_artifacts(shape);
+        let (branch_payload, branch_bindings) =
+            prepare_move_payload(incoming, &artifacts, "route_in", counter);
 
-        let generated = generate_expr(node, &branch_payload, counter);
+        let generated = get_node_expr(node, &branch_payload, counter);
         let generated_tokens = generated.tokens;
-        let output_assigns = generated.outputs.iter().map(|(artifact, inner)| {
-            let outer = outputs
-                .get(artifact)
-                .unwrap_or_else(|| panic!("missing route output slot for `{artifact}`"));
-            quote! {
-                #outer = #inner;
-            }
-        });
+        let output_assigns = assign_outputs_to_slots(&generated.outputs, &outputs);
 
         arms.push(quote! {
             #key => {
@@ -494,16 +558,9 @@ fn analyze_expr(node: &NodeExpr) -> ExprShape {
         }
         NodeExpr::Parallel(nodes) => {
             let shapes: Vec<ExprShape> = nodes.iter().map(analyze_expr).collect();
-            let mut entry_usage = UsageMap::new();
-
-            for shape in &shapes {
-                for artifact in required_artifacts(shape) {
-                    *entry_usage.entry(artifact).or_insert(0) += 1;
-                }
-            }
 
             ExprShape {
-                entry_usage,
+                entry_usage: collect_parallel_entry_usage(&shapes),
                 exit_outputs: collect_parallel_outputs(&shapes),
             }
         }
