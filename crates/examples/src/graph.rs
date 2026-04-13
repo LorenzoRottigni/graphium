@@ -60,6 +60,28 @@ graph! {
     ]
 }
 
+graph! {
+    name: DataGraphWithProps,
+    context: Context,
+    inputs: (data2: String, data3: String),
+    outputs: (data4: String),
+    schema: [
+        crate::node::Node3Node(data2, data3) >>
+        crate::node::Node1Node() -> (data4, _unused_data2, _unused_data3)
+    ]
+}
+
+graph! {
+    name: PropsNestedGraph,
+    context: Context,
+    schema: [
+        crate::node::Node1Node() -> (data1, data2, data3) >>
+        crate::node::Node2Node(data1, data2) &
+        DataGraphWithProps(data2, data3) -> (data4) >>
+        crate::node::Node2Node(data4, data4)
+    ]
+}
+
 /*
 graph! {
     name: DataGraph,

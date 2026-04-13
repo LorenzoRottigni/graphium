@@ -40,6 +40,8 @@ pub struct RouteExpr {
 pub struct GraphInput {
     pub name: Ident,
     pub context: Path,
+    pub inputs: Vec<(Ident, Type)>,
+    pub outputs: Vec<(Ident, Type)>,
     pub nodes: NodeExpr,
 }
 

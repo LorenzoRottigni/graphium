@@ -21,21 +21,88 @@ pub fn expand(input: TokenStream) -> TokenStream {
     let GraphInput {
         name,
         context,
+        inputs: graph_inputs,
+        outputs: graph_outputs,
         nodes,
     } = parse_macro_input!(input as GraphInput);
 
-    //
     let mut counter = 0usize;
-    let generated = get_node_expr(&nodes, &Payload::new(), &mut counter);
-    let body = if generated.outputs.is_empty() {
-        generated.tokens
+    let mut root_incoming = Payload::new();
+    let mut run_params = Vec::with_capacity(graph_inputs.len());
+    let mut root_input_bindings = Vec::with_capacity(graph_inputs.len());
+
+    for (artifact, ty) in &graph_inputs {
+        let param_ident = fresh_ident(&mut counter, "graph_in", &artifact.to_string());
+        let payload_ident = fresh_ident(&mut counter, "root_in", &artifact.to_string());
+        root_incoming.insert(artifact.to_string(), payload_ident.clone());
+        run_params.push(quote! {
+            #param_ident: #ty
+        });
+        root_input_bindings.push(quote! {
+            let mut #payload_ident = ::std::option::Option::Some(#param_ident);
+        });
+    }
+
+    let generated = get_node_expr(&nodes, &root_incoming, &mut counter);
+    let run_return_sig = if graph_outputs.is_empty() {
+        quote! {}
+    } else if graph_outputs.len() == 1 {
+        let (_, ty) = &graph_outputs[0];
+        quote! { -> #ty }
     } else {
+        let tys = graph_outputs.iter().map(|(_, ty)| ty);
+        quote! { -> ( #( #tys ),* ) }
+    };
+
+    let run_body = if graph_outputs.is_empty() {
         let generated_tokens = generated.tokens;
-        // The root graph cannot expose artifacts to its caller, so any final
-        // payload should die at the end of `run`.
         quote! {{
+            #( #root_input_bindings )*
             #generated_tokens
         }}
+    } else {
+        let generated_tokens = generated.tokens;
+        let output_values: Vec<proc_macro2::TokenStream> = graph_outputs
+            .iter()
+            .map(|(artifact, _)| {
+                let artifact_name = artifact.to_string();
+                let output_var = generated.outputs.get(&artifact_name).unwrap_or_else(|| {
+                    panic!("graph output `{artifact_name}` is not produced by the schema")
+                });
+                quote! {
+                    #output_var
+                        .take()
+                        .unwrap_or_else(|| panic!(concat!("missing graph output `", #artifact_name, "`")))
+                }
+            })
+            .collect();
+        let return_expr = if output_values.len() == 1 {
+            quote! { #(#output_values)* }
+        } else {
+            quote! { ( #( #output_values ),* ) }
+        };
+
+        quote! {{
+            #( #root_input_bindings )*
+            #generated_tokens
+            #return_expr
+        }}
+    };
+
+    let execute_body = if graph_inputs.is_empty() && graph_outputs.is_empty() {
+        quote! {
+            Self::__graphio_run(ctx);
+        }
+    } else {
+        quote! {
+            panic!(concat!(
+                "graph `",
+                stringify!(#name),
+                "` has explicit inputs/outputs; call it as a nested step: `",
+                stringify!(#name),
+                "(...) -> (...)`"
+            ));
+        }
     };
 
     let expanded = quote! {
@@ -47,13 +114,20 @@ pub fn expand(input: TokenStream) -> TokenStream {
             pub fn run(ctx: &mut #context) {
                 ::graphio::Controller::new().run(&Self, ctx);
             }
+
+            pub fn __graphio_run(
+                ctx: &mut #context,
+                #( #run_params ),*
+            ) #run_return_sig {
+                #run_body
+            }
         }
 
         impl ::graphio::Graph<#context> for #name {
             fn execute(&self, controller: &::graphio::Controller, ctx: &mut #context) {
                 let _ = self;
                 let _ = controller;
-                #body
+                #execute_body
             }
         }
     };
@@ -83,28 +157,18 @@ fn get_node_expr(node: &NodeExpr, incoming: &Payload, counter: &mut usize) -> Ge
 fn get_single_node_expr(call: &NodeCall, incoming: &Payload, counter: &mut usize) -> GeneratedExpr {
     let node_path = &call.path;
 
-    // Node with a nested graph
-    if is_graph_run_path(node_path) {
-        if !call.inputs.is_empty() || !call.outputs.is_empty() {
-            panic!("graph `run` calls do not support explicit inputs or outputs");
-        }
-
-        let graph_path = graph_type_path(node_path);
-
-        return GeneratedExpr {
-            tokens: quote! {
-                controller.run(&#graph_path, ctx);
-            },
-            outputs: Payload::new(),
-        };
-    }
+    let nested_graph_path = is_graph_run_path(node_path).then(|| graph_type_path(node_path));
 
     // Node with no inputs and no outputs
     if !call.explicit_inputs && call.inputs.is_empty() && call.outputs.is_empty() {
+        let run_tokens = if let Some(graph_path) = &nested_graph_path {
+            quote! { #graph_path::__graphio_run(ctx); }
+        } else {
+            quote! { #node_path::__graphio_run(ctx); }
+        };
+
         return GeneratedExpr {
-            tokens: quote! {
-                controller.run(&#node_path, ctx);
-            },
+            tokens: run_tokens,
             outputs: Payload::new(),
         };
     }
@@ -156,10 +220,16 @@ fn get_single_node_expr(call: &NodeCall, incoming: &Payload, counter: &mut usize
 
     // Node with input and no inputs
     if call.outputs.is_empty() {
+        let run_call = if let Some(graph_path) = &nested_graph_path {
+            quote! { #graph_path::__graphio_run(ctx, #( #arg_vars ),*); }
+        } else {
+            quote! { #node_path::__graphio_run(ctx, #( #arg_vars ),*); }
+        };
+
         return GeneratedExpr {
             tokens: quote! {
                 #( #input_bindings )*
-                #node_path::__graphio_run(ctx, #( #arg_vars ),*);
+                #run_call
             },
             outputs: Payload::new(),
         };
@@ -174,11 +244,16 @@ fn get_single_node_expr(call: &NodeCall, incoming: &Payload, counter: &mut usize
         let artifact_name = call.outputs[0].to_string();
         let output_var = fresh_ident(counter, "hop", &artifact_name);
         outputs.insert(artifact_name, output_var.clone());
+        let run_call = if let Some(graph_path) = &nested_graph_path {
+            quote! { #graph_path::__graphio_run(ctx, #( #arg_vars ),*) }
+        } else {
+            quote! { #node_path::__graphio_run(ctx, #( #arg_vars ),*) }
+        };
 
         GeneratedExpr {
             tokens: quote! {
                 #( #input_bindings )*
-                let mut #output_var = ::std::option::Option::Some(#node_path::__graphio_run(ctx, #( #arg_vars ),*));
+                let mut #output_var = ::std::option::Option::Some(#run_call);
             },
             outputs,
         }
@@ -201,11 +276,16 @@ fn get_single_node_expr(call: &NodeCall, incoming: &Payload, counter: &mut usize
                         let mut #output_var = ::std::option::Option::Some(#tuple_var);
                     }
                 });
+        let run_call = if let Some(graph_path) = &nested_graph_path {
+            quote! { #graph_path::__graphio_run(ctx, #( #arg_vars ),*) }
+        } else {
+            quote! { #node_path::__graphio_run(ctx, #( #arg_vars ),*) }
+        };
 
         GeneratedExpr {
             tokens: quote! {
                 #( #input_bindings )*
-                let ( #( #tuple_vars ),* ) = #node_path::__graphio_run(ctx, #( #arg_vars ),*);
+                let ( #( #tuple_vars ),* ) = #run_call;
                 #( #output_stores )*
             },
             outputs,
@@ -591,17 +671,6 @@ fn analyze_expr(node: &NodeExpr) -> ExprShape {
 /// Computes the shape of a single node call: which artifacts must already be
 /// available and which artifact names can leave the node.
 fn analyze_single(call: &NodeCall) -> ExprShape {
-    if is_graph_run_path(&call.path) {
-        if !call.inputs.is_empty() || !call.outputs.is_empty() {
-            panic!("graph `run` calls do not support explicit inputs or outputs");
-        }
-
-        return ExprShape {
-            entry_usage: UsageMap::new(),
-            exit_outputs: Vec::new(),
-        };
-    }
-
     if !call.explicit_inputs && call.inputs.is_empty() && call.outputs.is_empty() {
         return ExprShape {
             entry_usage: UsageMap::new(),

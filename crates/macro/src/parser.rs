@@ -1,5 +1,5 @@
 use syn::{
-    Expr, Ident, Path, Result, Token,
+    Expr, Ident, Path, Result, Token, Type,
     parse::{Parse, ParseStream},
 };
 
@@ -114,6 +114,25 @@ fn parse_ident_list(input: ParseStream) -> Result<Vec<Ident>> {
     Ok(idents)
 }
 
+/// Parses a comma-separated list like `(artifact: Type, other: Type)`.
+fn parse_typed_ident_list(input: ParseStream) -> Result<Vec<(Ident, Type)>> {
+    let mut items = Vec::new();
+
+    while !input.is_empty() {
+        let ident: Ident = input.parse()?;
+        input.parse::<Token![:]>()?;
+        let ty: Type = input.parse()?;
+        items.push((ident, ty));
+        if input.peek(Token![,]) {
+            input.parse::<Token![,]>()?;
+        } else {
+            break;
+        }
+    }
+
+    Ok(items)
+}
+
 impl Parse for RouteExpr {
     fn parse(input: ParseStream) -> Result<Self> {
         let mut on: Option<Expr> = None;
@@ -157,27 +176,54 @@ impl Parse for GraphInput {
     /// Parses the outer `graph!` object, including graph name, context type,
     /// and the bracketed graph schema.
     fn parse(input: ParseStream) -> Result<Self> {
-        let _: Ident = input.parse()?;
-        input.parse::<Token![:]>()?;
-        let name: Ident = input.parse()?;
-        input.parse::<Token![,]>()?;
+        let mut name: Option<Ident> = None;
+        let mut context: Option<Path> = None;
+        let mut graph_inputs: Vec<(Ident, Type)> = Vec::new();
+        let mut graph_outputs: Vec<(Ident, Type)> = Vec::new();
+        let mut nodes: Option<NodeExpr> = None;
 
-        let _: Ident = input.parse()?;
-        input.parse::<Token![:]>()?;
-        let context: Path = input.parse()?;
-        input.parse::<Token![,]>()?;
+        while !input.is_empty() {
+            let key: Ident = input.parse()?;
+            input.parse::<Token![:]>()?;
 
-        let _: Ident = input.parse()?;
-        input.parse::<Token![:]>()?;
+            match key.to_string().as_str() {
+                "name" => {
+                    name = Some(input.parse()?);
+                }
+                "context" => {
+                    context = Some(input.parse()?);
+                }
+                "inputs" => {
+                    let content;
+                    syn::parenthesized!(content in input);
+                    graph_inputs = parse_typed_ident_list(&content)?;
+                }
+                "outputs" => {
+                    let content;
+                    syn::parenthesized!(content in input);
+                    graph_outputs = parse_typed_ident_list(&content)?;
+                }
+                "schema" => {
+                    let content;
+                    syn::bracketed!(content in input);
+                    nodes = Some(content.parse()?);
+                }
+                _ => {
+                    return Err(input.error(
+                        "expected one of: `name`, `context`, `inputs`, `outputs`, `schema`",
+                    ));
+                }
+            }
 
-        let content;
-        syn::bracketed!(content in input);
-        let nodes: NodeExpr = content.parse()?;
+            input.parse::<Token![,]>().ok();
+        }
 
         Ok(GraphInput {
-            name,
-            context,
-            nodes,
+            name: name.ok_or_else(|| input.error("missing `name`"))?,
+            context: context.ok_or_else(|| input.error("missing `context`"))?,
+            inputs: graph_inputs,
+            outputs: graph_outputs,
+            nodes: nodes.ok_or_else(|| input.error("missing `schema`"))?,
         })
     }
 }
