@@ -15,8 +15,8 @@ impl<T> Artifact for T where T: Clone + 'static {}
 ///
 /// The graph object describes and executes the plan.
 pub trait Graph<Ctx> {
-    /// Executes the graph with mutable context.
-    fn execute(&self, ctx: &mut Ctx);
+    /// Runs the graph with mutable context.
+    fn run(ctx: &mut Ctx);
 }
 
 /// Runtime description of a node in a stateful graph definition.

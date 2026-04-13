@@ -16,7 +16,7 @@ use crate::shared::{
 // - artifacts die once the hop finishes unless a node re-emits them
 
 /// Expands a `graph!` definition into a graph configuration type plus a
-/// `graphio::Graph` implementation.
+/// `graphio::Graph::run` implementation.
 pub fn expand(input: TokenStream) -> TokenStream {
     let GraphInput {
         name,
@@ -26,11 +26,16 @@ pub fn expand(input: TokenStream) -> TokenStream {
         nodes,
     } = parse_macro_input!(input as GraphInput);
 
+    // for unique local variable names for hop payloads and node outputs.
     let mut counter = 0usize;
+    // initial payload available at the root of the graph, which contains the graph inputs.
     let mut root_incoming = Payload::new();
+    // array of tokens that declare the `run` entrypoint parameters for the graph inputs.
     let mut run_params = Vec::with_capacity(graph_inputs.len());
+    // array of tokens that bind the `run` entrypoint parameters into the initial root payload.
     let mut root_input_bindings = Vec::with_capacity(graph_inputs.len());
 
+    // for each graph input, bind the `run` entrypoint parameter into the initial root payload and prepare a slot for it in the incoming payload of the first node(s).
     for (artifact, ty) in &graph_inputs {
         let param_ident = fresh_ident(&mut counter, "graph_in", &artifact.to_string());
         let payload_ident = fresh_ident(&mut counter, "root_in", &artifact.to_string());
@@ -43,17 +48,24 @@ pub fn expand(input: TokenStream) -> TokenStream {
         });
     }
 
+    // recursively generate the graph body, which produces the root outgoing payload containing the graph outputs.
     let generated = get_node_expr(&nodes, &root_incoming, &mut counter);
+
+    // AST Graph::run() return type signature
     let run_return_sig = if graph_outputs.is_empty() {
+        // no outputs => `()`
         quote! {}
     } else if graph_outputs.len() == 1 {
+        // 1 output => <output>
         let (_, ty) = &graph_outputs[0];
         quote! { -> #ty }
     } else {
+        // N outputs => `(A,B,C)`
         let tys = graph_outputs.iter().map(|(_, ty)| ty);
         quote! { -> ( #( #tys ),* ) }
     };
 
+    // AST Graph::run() body
     let run_body = if graph_outputs.is_empty() {
         let generated_tokens = generated.tokens;
         quote! {{
@@ -89,7 +101,8 @@ pub fn expand(input: TokenStream) -> TokenStream {
         }}
     };
 
-    let execute_body = if graph_inputs.is_empty() && graph_outputs.is_empty() {
+    // AST Graph::run() trait body
+    let trait_run_body = if graph_inputs.is_empty() && graph_outputs.is_empty() {
         quote! {
             Self::__graphio_run(ctx);
         }
@@ -105,13 +118,14 @@ pub fn expand(input: TokenStream) -> TokenStream {
         }
     };
 
+    // AST expanded graph!
     let expanded = quote! {
         pub struct #name;
 
         impl #name {
             /// Convenience entry point that executes the graph directly.
             pub fn run(ctx: &mut #context) {
-                <Self as ::graphio::Graph<#context>>::execute(&Self, ctx);
+                <Self as ::graphio::Graph<#context>>::run(ctx);
             }
 
             pub fn __graphio_run(
@@ -123,9 +137,8 @@ pub fn expand(input: TokenStream) -> TokenStream {
         }
 
         impl ::graphio::Graph<#context> for #name {
-            fn execute(&self, ctx: &mut #context) {
-                let _ = self;
-                #execute_body
+            fn run(ctx: &mut #context) {
+                #trait_run_body
             }
         }
     };
