@@ -10,22 +10,22 @@ enum Status {
 graph! {
     #[metadata(context = Context)]
     DataGraph1 {
-        crate::node::GetDataNode() >>
-        crate::node::ValidateDataNode() >>
-        crate::node::NormalizeDataNode() >>
-        crate::node::PrintDataNode() & crate::node::SendEmailNode() & crate::node::PublishEventNode() >>
-        crate::node::DisconnectFromDbNode()
+        crate::node::GetData() >>
+        crate::node::ValidateData() >>
+        crate::node::NormalizeData() >>
+        crate::node::PrintData() & crate::node::SendEmail() & crate::node::PublishEvent() >>
+        crate::node::DisconnectFromDb()
     }
 }
 
 graph! {
     #[metadata(context = Context)]
     DataGraph2 {
-        crate::node::GetDataNode() >>
-        crate::node::ValidateDataNode() >>
-        crate::node::NormalizeDataNode() >>
-        crate::node::PrintDataNode() & crate::node::SendEmailNode() & crate::node::PublishEventNode() >>
-        crate::node::DisconnectFromDbNode() >>
+        crate::node::GetData() >>
+        crate::node::ValidateData() >>
+        crate::node::NormalizeData() >>
+        crate::node::PrintData() & crate::node::SendEmail() & crate::node::PublishEvent() >>
+        crate::node::DisconnectFromDb() >>
         DataGraph1
     }
 }
@@ -33,26 +33,26 @@ graph! {
 graph! {
     #[metadata(context = Context)]
     DataGraph {
-        crate::node::GetDataNode() >>
-        crate::node::ValidateDataNode() >>
+        crate::node::GetData() >>
+        crate::node::ValidateData() >>
         @route {
             on: |ctx: &mut Context| Status::Invalid,
             routes: {
-                Status::Valid => crate::node::PrintDataNode() & crate::node::SendEmailNode(),
-                Status::Invalid => crate::node::PrintErrorNode(),
-                Status::NeedsReview => crate::node::SendReviewNode(),
+                Status::Valid => crate::node::PrintData() & crate::node::SendEmail(),
+                Status::Invalid => crate::node::PrintError(),
+                Status::NeedsReview => crate::node::SendReview(),
             }
         }
         >>
-        crate::node::DisconnectFromDbNode()
+        crate::node::DisconnectFromDb()
     }
 }
 
 graph! {
     #[metadata(context = Context)]
     PropsGraph {
-        crate::node::Node1Node() -> (data1, data2, data3) >>
-        crate::node::Node2Node(data1, data2) & crate::node::Node3Node(data2, data3)
+        crate::node::Node1() -> (data1, data2, data3) >>
+        crate::node::Node2(data1, data2) & crate::node::Node3(data2, data3)
     }
 }
 
@@ -63,18 +63,18 @@ graph! {
         outputs = (data4: String),
     )]
     DataGraphWithProps {
-        crate::node::Node3Node(data2, data3) >>
-        crate::node::Node1Node() -> (data4, _unused_data2, _unused_data3)
+        crate::node::Node3(data2, data3) >>
+        crate::node::Node1() -> (data4, _unused_data2, _unused_data3)
     }
 }
 
 graph! {
     #[metadata(context = Context)]
     PropsNestedGraph {
-        crate::node::Node1Node() -> (data1, data2, data3) >>
-        crate::node::Node2Node(data1, data2) &
+        crate::node::Node1() -> (data1, data2, data3) >>
+        crate::node::Node2(data1, data2) &
         DataGraphWithProps(data2, data3) -> (data4) >>
-        crate::node::Node2Node(data4, data4)
+        crate::node::Node2(data4, data4)
     }
 }
 

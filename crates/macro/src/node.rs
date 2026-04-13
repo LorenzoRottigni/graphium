@@ -53,7 +53,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
 /// function signature.
 fn parse_node_def(func: &ItemFn) -> NodeDef {
     let fn_name = func.sig.ident.clone();
-    let struct_name = format_ident!("{}Node", pascal_case(&fn_name));
+    let struct_name = format_ident!("{}", pascal_case(&fn_name));
 
     let Some(FnArg::Typed(ctx_arg)) = func.sig.inputs.first() else {
         panic!("expected function with `&mut Context` as its first argument");
