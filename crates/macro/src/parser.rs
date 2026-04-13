@@ -176,54 +176,140 @@ impl Parse for GraphInput {
     /// Parses the outer `graph!` object, including graph name, context type,
     /// and the bracketed graph schema.
     fn parse(input: ParseStream) -> Result<Self> {
-        let mut name: Option<Ident> = None;
-        let mut context: Option<Path> = None;
-        let mut graph_inputs: Vec<(Ident, Type)> = Vec::new();
-        let mut graph_outputs: Vec<(Ident, Type)> = Vec::new();
-        let mut nodes: Option<NodeExpr> = None;
-
-        while !input.is_empty() {
-            let key: Ident = input.parse()?;
-            input.parse::<Token![:]>()?;
-
-            match key.to_string().as_str() {
-                "name" => {
-                    name = Some(input.parse()?);
-                }
-                "context" => {
-                    context = Some(input.parse()?);
-                }
-                "inputs" => {
-                    let content;
-                    syn::parenthesized!(content in input);
-                    graph_inputs = parse_typed_ident_list(&content)?;
-                }
-                "outputs" => {
-                    let content;
-                    syn::parenthesized!(content in input);
-                    graph_outputs = parse_typed_ident_list(&content)?;
-                }
-                "schema" => {
-                    let content;
-                    syn::bracketed!(content in input);
-                    nodes = Some(content.parse()?);
-                }
-                _ => {
-                    return Err(input.error(
-                        "expected one of: `name`, `context`, `inputs`, `outputs`, `schema`",
-                    ));
-                }
-            }
-
-            input.parse::<Token![,]>().ok();
+        if input.peek(Token![#]) {
+            return parse_graph_input_with_metadata(input);
         }
 
-        Ok(GraphInput {
-            name: name.ok_or_else(|| input.error("missing `name`"))?,
-            context: context.ok_or_else(|| input.error("missing `context`"))?,
-            inputs: graph_inputs,
-            outputs: graph_outputs,
-            nodes: nodes.ok_or_else(|| input.error("missing `schema`"))?,
-        })
+        parse_graph_input_legacy(input)
     }
+}
+
+/// Parses the original key/value graph syntax:
+/// `name: ..., context: ..., inputs: (...), outputs: (...), schema: [ ... ]`.
+fn parse_graph_input_legacy(input: ParseStream) -> Result<GraphInput> {
+    let mut name: Option<Ident> = None;
+    let mut context: Option<Path> = None;
+    let mut graph_inputs: Vec<(Ident, Type)> = Vec::new();
+    let mut graph_outputs: Vec<(Ident, Type)> = Vec::new();
+    let mut nodes: Option<NodeExpr> = None;
+
+    while !input.is_empty() {
+        let key: Ident = input.parse()?;
+        input.parse::<Token![:]>()?;
+
+        match key.to_string().as_str() {
+            "name" => {
+                name = Some(input.parse()?);
+            }
+            "context" => {
+                context = Some(input.parse()?);
+            }
+            "inputs" => {
+                let content;
+                syn::parenthesized!(content in input);
+                graph_inputs = parse_typed_ident_list(&content)?;
+            }
+            "outputs" => {
+                let content;
+                syn::parenthesized!(content in input);
+                graph_outputs = parse_typed_ident_list(&content)?;
+            }
+            "schema" => {
+                let content;
+                syn::bracketed!(content in input);
+                nodes = Some(content.parse()?);
+            }
+            _ => {
+                return Err(input.error(
+                    "expected one of: `name`, `context`, `inputs`, `outputs`, `schema`",
+                ));
+            }
+        }
+
+        input.parse::<Token![,]>().ok();
+    }
+
+    Ok(GraphInput {
+        name: name.ok_or_else(|| input.error("missing `name`"))?,
+        context: context.ok_or_else(|| input.error("missing `context`"))?,
+        inputs: graph_inputs,
+        outputs: graph_outputs,
+        nodes: nodes.ok_or_else(|| input.error("missing `schema`"))?,
+    })
+}
+
+/// Parses the ergonomic metadata style:
+/// `#[metadata(context = Ctx, inputs = (...), outputs = (...))] MyGraph { ... }`
+fn parse_graph_input_with_metadata(input: ParseStream) -> Result<GraphInput> {
+    let mut context: Option<Path> = None;
+    let mut graph_inputs: Vec<(Ident, Type)> = Vec::new();
+    let mut graph_outputs: Vec<(Ident, Type)> = Vec::new();
+
+    input.parse::<Token![#]>()?;
+    let bracket_content;
+    syn::bracketed!(bracket_content in input);
+
+    let attr_name: Ident = bracket_content.parse()?;
+    if attr_name != "metadata" && attr_name != "metadata" {
+        return Err(bracket_content.error("expected `metadata` or `metadata`"));
+    }
+
+    let metadata_content;
+    syn::parenthesized!(metadata_content in bracket_content);
+    while !metadata_content.is_empty() {
+        let key: Ident = metadata_content.parse()?;
+        metadata_content.parse::<Token![=]>()?;
+
+        match key.to_string().as_str() {
+            "context" => {
+                context = Some(metadata_content.parse()?);
+            }
+            "inputs" => {
+                let typed;
+                syn::parenthesized!(typed in metadata_content);
+                graph_inputs = parse_typed_ident_list(&typed)?;
+            }
+            "outputs" => {
+                let typed;
+                syn::parenthesized!(typed in metadata_content);
+                graph_outputs = parse_typed_ident_list(&typed)?;
+            }
+            _ => {
+                return Err(metadata_content.error(
+                    "expected one of: `context`, `inputs`, `outputs`",
+                ));
+            }
+        }
+
+        if metadata_content.peek(Token![,]) {
+            metadata_content.parse::<Token![,]>()?;
+        } else {
+            break;
+        }
+    }
+
+    if !bracket_content.is_empty() {
+        return Err(bracket_content.error("unexpected tokens in attribute payload"));
+    }
+
+    let name: Ident = input.parse()?;
+    let body;
+    syn::braced!(body in input);
+    let nodes: NodeExpr = body.parse()?;
+    if !body.is_empty() {
+        return Err(body.error("unexpected tokens after graph schema"));
+    }
+
+    input.parse::<Token![,]>().ok();
+    if !input.is_empty() {
+        return Err(input.error("unexpected tokens after graph definition"));
+    }
+
+    Ok(GraphInput {
+        name,
+        context: context.ok_or_else(|| input.error("missing `context`"))?,
+        inputs: graph_inputs,
+        outputs: graph_outputs,
+        nodes,
+    })
 }

@@ -8,34 +8,31 @@ enum Status {
 }
 
 graph! {
-    name: DataGraph1,
-    context: Context,
-    schema: [
+    #[metadata(context = Context)]
+    DataGraph1 {
         crate::node::GetDataNode() >>
         crate::node::ValidateDataNode() >>
         crate::node::NormalizeDataNode() >>
         crate::node::PrintDataNode() & crate::node::SendEmailNode() & crate::node::PublishEventNode() >>
         crate::node::DisconnectFromDbNode()
-    ]
+    }
 }
 
 graph! {
-    name: DataGraph2,
-    context: Context,
-    schema: [
+    #[metadata(context = Context)]
+    DataGraph2 {
         crate::node::GetDataNode() >>
         crate::node::ValidateDataNode() >>
         crate::node::NormalizeDataNode() >>
         crate::node::PrintDataNode() & crate::node::SendEmailNode() & crate::node::PublishEventNode() >>
         crate::node::DisconnectFromDbNode() >>
         DataGraph1
-    ]
+    }
 }
 
 graph! {
-    name: DataGraph,
-    context: Context,
-    schema: [
+    #[metadata(context = Context)]
+    DataGraph {
         crate::node::GetDataNode() >>
         crate::node::ValidateDataNode() >>
         @route {
@@ -48,38 +45,37 @@ graph! {
         }
         >>
         crate::node::DisconnectFromDbNode()
-    ]
+    }
 }
 
 graph! {
-    name: PropsGraph,
-    context: Context,
-    schema: [
+    #[metadata(context = Context)]
+    PropsGraph {
         crate::node::Node1Node() -> (data1, data2, data3) >>
         crate::node::Node2Node(data1, data2) & crate::node::Node3Node(data2, data3)
-    ]
+    }
 }
 
 graph! {
-    name: DataGraphWithProps,
-    context: Context,
-    inputs: (data2: String, data3: String),
-    outputs: (data4: String),
-    schema: [
+    #[metadata(
+        context = Context,
+        inputs = (data2: String, data3: String),
+        outputs = (data4: String),
+    )]
+    DataGraphWithProps {
         crate::node::Node3Node(data2, data3) >>
         crate::node::Node1Node() -> (data4, _unused_data2, _unused_data3)
-    ]
+    }
 }
 
 graph! {
-    name: PropsNestedGraph,
-    context: Context,
-    schema: [
+    #[metadata(context = Context)]
+    PropsNestedGraph {
         crate::node::Node1Node() -> (data1, data2, data3) >>
         crate::node::Node2Node(data1, data2) &
         DataGraphWithProps(data2, data3) -> (data4) >>
         crate::node::Node2Node(data4, data4)
-    ]
+    }
 }
 
 /*
