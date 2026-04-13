@@ -1,6 +1,7 @@
 use proc_macro::TokenStream;
 
 mod graph;
+mod graph_runtime;
 mod node;
 mod parser;
 mod shared;
@@ -23,5 +24,5 @@ pub fn graph(input: TokenStream) -> TokenStream {
 /// factory with node/edge metadata plus executable behavior.
 #[proc_macro]
 pub fn graph_runtime(input: TokenStream) -> TokenStream {
-    graph::expand_runtime(input)
+    graph_runtime::expand(input)
 }
