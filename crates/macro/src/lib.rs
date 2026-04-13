@@ -21,7 +21,7 @@ pub fn graph(input: TokenStream) -> TokenStream {
 }
 
 /// Expands a `graph_runtime! { ... }` definition into a runtime graph value
-/// factory with node/edge metadata plus executable behavior.
+/// factory with node/edge metadata for external execution.
 #[proc_macro]
 pub fn graph_runtime(input: TokenStream) -> TokenStream {
     graph_runtime::expand(input)

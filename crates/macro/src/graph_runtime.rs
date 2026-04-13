@@ -2,105 +2,21 @@ use proc_macro::TokenStream;
 use quote::{ToTokens, format_ident, quote};
 use syn::parse_macro_input;
 
-use crate::{
-    graph::get_node_expr,
-    shared::{GraphInput, NodeCall, NodeExpr, Payload, fresh_ident},
-};
+use crate::shared::{GraphInput, NodeCall, NodeExpr};
 
 /// Expands a `graph_runtime!` definition into a runtime graph value factory
-/// plus static metadata (nodes/edges) and executable behavior.
+/// plus static metadata (nodes/edges).
 pub fn expand(input: TokenStream) -> TokenStream {
     let GraphInput {
         name,
         context,
-        inputs: graph_inputs,
-        outputs: graph_outputs,
+        inputs: _graph_inputs,
+        outputs: _graph_outputs,
         nodes,
     } = parse_macro_input!(input as GraphInput);
 
-    let mut counter = 0usize;
-    let mut root_incoming = Payload::new();
-    let mut run_params = Vec::with_capacity(graph_inputs.len());
-    let mut root_input_bindings = Vec::with_capacity(graph_inputs.len());
-
-    for (artifact, ty) in &graph_inputs {
-        let param_ident = fresh_ident(&mut counter, "graph_in", &artifact.to_string());
-        let payload_ident = fresh_ident(&mut counter, "root_in", &artifact.to_string());
-        root_incoming.insert(artifact.to_string(), payload_ident.clone());
-        run_params.push(quote! {
-            #param_ident: #ty
-        });
-        root_input_bindings.push(quote! {
-            let mut #payload_ident = ::std::option::Option::Some(#param_ident);
-        });
-    }
-
-    let generated = get_node_expr(&nodes, &root_incoming, &mut counter);
-    let run_return_sig = if graph_outputs.is_empty() {
-        quote! {}
-    } else if graph_outputs.len() == 1 {
-        let (_, ty) = &graph_outputs[0];
-        quote! { -> #ty }
-    } else {
-        let tys = graph_outputs.iter().map(|(_, ty)| ty);
-        quote! { -> ( #( #tys ),* ) }
-    };
-
-    let run_body = if graph_outputs.is_empty() {
-        let generated_tokens = generated.tokens;
-        quote! {{
-            #( #root_input_bindings )*
-            #generated_tokens
-        }}
-    } else {
-        let generated_tokens = generated.tokens;
-        let output_values: Vec<proc_macro2::TokenStream> = graph_outputs
-            .iter()
-            .map(|(artifact, _)| {
-                let artifact_name = artifact.to_string();
-                let output_var = generated.outputs.get(&artifact_name).unwrap_or_else(|| {
-                    panic!("graph output `{artifact_name}` is not produced by the schema")
-                });
-                quote! {
-                    #output_var
-                        .take()
-                        .unwrap_or_else(|| panic!(concat!("missing graph output `", #artifact_name, "`")))
-                }
-            })
-            .collect();
-        let return_expr = if output_values.len() == 1 {
-            quote! { #(#output_values)* }
-        } else {
-            quote! { ( #( #output_values ),* ) }
-        };
-
-        quote! {{
-            #( #root_input_bindings )*
-            #generated_tokens
-            #return_expr
-        }}
-    };
-
-    let run_fn_ident = format_ident!("__graphio_runtime_run_{}", name);
-    let execute_fn_ident = format_ident!("__graphio_runtime_execute_{}", name);
     let nodes_static_ident = format_ident!("__graphio_runtime_nodes_{}", name);
     let edges_static_ident = format_ident!("__graphio_runtime_edges_{}", name);
-
-    let execute_body = if graph_inputs.is_empty() && graph_outputs.is_empty() {
-        quote! {
-            #run_fn_ident(ctx);
-        }
-    } else {
-        quote! {
-            panic!(concat!(
-                "graph `",
-                stringify!(#name),
-                "` has explicit inputs/outputs; call it as a nested step: `",
-                stringify!(#name),
-                "(...) -> (...)`"
-            ));
-        }
-    };
 
     let runtime_def = build_runtime_definition(&nodes);
     let node_literals = runtime_def.nodes.iter().map(|node| {
@@ -129,25 +45,11 @@ pub fn expand(input: TokenStream) -> TokenStream {
         ];
 
         #[allow(non_snake_case)]
-        fn #execute_fn_ident(ctx: &mut #context) {
-            #execute_body
-        }
-
-        #[allow(non_snake_case)]
-        fn #run_fn_ident(
-            ctx: &mut #context,
-            #( #run_params ),*
-        ) #run_return_sig {
-            #run_body
-        }
-
-        #[allow(non_snake_case)]
         pub fn #name() -> ::graphio::RuntimeGraph<#context> {
             ::graphio::RuntimeGraph::new(
                 stringify!(#name),
                 #nodes_static_ident,
                 #edges_static_ident,
-                #execute_fn_ident,
             )
         }
     };

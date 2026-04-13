@@ -35,14 +35,13 @@ pub struct RuntimeGraphState {
     pub runs: usize,
 }
 
-/// Stateful graph definition that an external runtime can inspect
-/// and execute.
+/// Stateful graph definition that an external runtime can inspect and drive.
 pub struct RuntimeGraph<Ctx> {
     pub name: &'static str,
     pub nodes: &'static [RuntimeNode],
     pub edges: &'static [RuntimeEdge],
     pub state: RuntimeGraphState,
-    executor: fn(&mut Ctx),
+    _ctx: ::core::marker::PhantomData<Ctx>,
 }
 
 impl<Ctx> RuntimeGraph<Ctx> {
@@ -51,31 +50,14 @@ impl<Ctx> RuntimeGraph<Ctx> {
         name: &'static str,
         nodes: &'static [RuntimeNode],
         edges: &'static [RuntimeEdge],
-        executor: fn(&mut Ctx),
     ) -> Self {
         Self {
             name,
             nodes,
             edges,
             state: RuntimeGraphState { runs: 0 },
-            executor,
+            _ctx: ::core::marker::PhantomData,
         }
-    }
-
-    /// Executes this runtime graph.
-    pub fn execute(&self, ctx: &mut Ctx) {
-        (self.executor)(ctx);
-    }
-
-    /// Executes this runtime graph and updates mutable runtime state.
-    pub fn run(&mut self, ctx: &mut Ctx) {
-        self.state.runs += 1;
-        self.execute(ctx);
-    }
-
-    /// Returns how many times this runtime graph instance was run.
-    pub fn runs(&self) -> usize {
-        self.state.runs
     }
 }
 
