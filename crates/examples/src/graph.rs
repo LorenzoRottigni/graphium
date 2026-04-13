@@ -1,5 +1,5 @@
 use crate::node::Context;
-use graphio_macro::graph;
+use graphio_macro::{graph, graph_runtime};
 
 enum Status {
     Valid,
@@ -14,6 +14,16 @@ graph! {
         crate::node::ValidateData() >>
         crate::node::NormalizeData() >>
         crate::node::PrintData() & crate::node::SendEmail() & crate::node::PublishEvent() >>
+        crate::node::DisconnectFromDb()
+    }
+}
+
+graph_runtime! {
+    #[metadata(context = Context)]
+    RuntimeDataGraph {
+        crate::node::GetData() >>
+        crate::node::ValidateData() >>
+        crate::node::NormalizeData() >>
         crate::node::DisconnectFromDb()
     }
 }

@@ -18,3 +18,10 @@ pub fn node(input: TokenStream) -> TokenStream {
 pub fn graph(input: TokenStream) -> TokenStream {
     graph::expand(input)
 }
+
+/// Expands a `graph_runtime! { ... }` definition into a runtime graph value
+/// factory with node/edge metadata plus executable behavior.
+#[proc_macro]
+pub fn graph_runtime(input: TokenStream) -> TokenStream {
+    graph::expand_runtime(input)
+}

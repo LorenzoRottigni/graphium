@@ -9,33 +9,73 @@ impl<T> Artifact for T where T: Clone + 'static {}
 
 /// Trait implemented by macro-generated graph configuration types.
 ///
-/// The graph object describes the execution plan while the controller owns the
-/// runtime policy that drives that plan.
+/// The graph object describes and executes the plan.
 pub trait Graph<Ctx> {
-    /// Executes the graph with the provided controller and mutable context.
-    fn execute(&self, controller: &Controller, ctx: &mut Ctx);
+    /// Executes the graph with mutable context.
+    fn execute(&self, ctx: &mut Ctx);
 }
 
-/// Runtime entry point responsible for driving graph execution.
-///
-/// Today the controller mainly delegates into macro-generated code, but moving
-/// execution through this type gives the crate a natural home for future
-/// concerns such as tracing, metrics, cancellation, retries, or loop guards.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct Controller;
+/// Runtime description of a node in a stateful graph definition.
+#[derive(Debug, Clone, Copy)]
+pub struct RuntimeNode {
+    pub id: usize,
+    pub name: &'static str,
+}
 
-impl Controller {
-    /// Creates a new controller with default runtime behavior.
-    pub const fn new() -> Self {
-        Self
+/// Runtime description of a directed edge between two runtime node IDs.
+#[derive(Debug, Clone, Copy)]
+pub struct RuntimeEdge {
+    pub from: usize,
+    pub to: usize,
+}
+
+/// Mutable runtime state tracked for a runtime graph instance.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct RuntimeGraphState {
+    pub runs: usize,
+}
+
+/// Stateful graph definition that an external runtime can inspect
+/// and execute.
+pub struct RuntimeGraph<Ctx> {
+    pub name: &'static str,
+    pub nodes: &'static [RuntimeNode],
+    pub edges: &'static [RuntimeEdge],
+    pub state: RuntimeGraphState,
+    executor: fn(&mut Ctx),
+}
+
+impl<Ctx> RuntimeGraph<Ctx> {
+    /// Creates a new runtime graph definition.
+    pub const fn new(
+        name: &'static str,
+        nodes: &'static [RuntimeNode],
+        edges: &'static [RuntimeEdge],
+        executor: fn(&mut Ctx),
+    ) -> Self {
+        Self {
+            name,
+            nodes,
+            edges,
+            state: RuntimeGraphState { runs: 0 },
+            executor,
+        }
     }
 
-    /// Runs a configured graph with this controller.
-    pub fn run<G, Ctx>(&self, graph: &G, ctx: &mut Ctx)
-    where
-        G: Graph<Ctx>,
-    {
-        graph.execute(self, ctx);
+    /// Executes this runtime graph.
+    pub fn execute(&self, ctx: &mut Ctx) {
+        (self.executor)(ctx);
+    }
+
+    /// Executes this runtime graph and updates mutable runtime state.
+    pub fn run(&mut self, ctx: &mut Ctx) {
+        self.state.runs += 1;
+        self.execute(ctx);
+    }
+
+    /// Returns how many times this runtime graph instance was run.
+    pub fn runs(&self) -> usize {
+        self.state.runs
     }
 }
 
