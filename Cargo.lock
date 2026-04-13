@@ -18,6 +18,7 @@ dependencies = [
 name = "graphio-macro"
 version = "0.1.0"
 dependencies = [
+ "graphio",
  "proc-macro2",
  "quote",
  "syn",
