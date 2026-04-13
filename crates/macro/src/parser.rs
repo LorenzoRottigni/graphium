@@ -220,9 +220,8 @@ fn parse_graph_input_legacy(input: ParseStream) -> Result<GraphInput> {
                 nodes = Some(content.parse()?);
             }
             _ => {
-                return Err(input.error(
-                    "expected one of: `name`, `context`, `inputs`, `outputs`, `schema`",
-                ));
+                return Err(input
+                    .error("expected one of: `name`, `context`, `inputs`, `outputs`, `schema`"));
             }
         }
 
@@ -275,9 +274,9 @@ fn parse_graph_input_with_metadata(input: ParseStream) -> Result<GraphInput> {
                 graph_outputs = parse_typed_ident_list(&typed)?;
             }
             _ => {
-                return Err(metadata_content.error(
-                    "expected one of: `context`, `inputs`, `outputs`",
-                ));
+                return Err(
+                    metadata_content.error("expected one of: `context`, `inputs`, `outputs`")
+                );
             }
         }
 
