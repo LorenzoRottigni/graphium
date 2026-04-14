@@ -4,7 +4,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use syn::parse_macro_input;
 
 use crate::shared::{
-    ExprShape, GeneratedExpr, GraphInput, NodeCall, NodeExpr, Payload, RouteExpr, UsageMap,
+    ExprShape, GeneratedExpr, GraphInput, LoopExpr, NodeCall, NodeExpr, Payload, RouteExpr,
+    UsageMap, WhileExpr,
     fresh_ident, is_graph_run_path,
 };
 
@@ -72,7 +73,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
     }
 
     // recursively generate the graph body, which produces the root outgoing payload containing the graph outputs.
-    let generated = get_node_expr(&nodes, &root_incoming, &mut counter);
+    let generated = get_node_expr(&nodes, &root_incoming, &mut counter, false);
 
     // AST Graph::run() return type signature
     let run_return_sig = if graph_outputs.is_empty() {
@@ -179,16 +180,28 @@ pub(crate) fn get_node_expr(
     node: &NodeExpr,
     incoming: &Payload,
     counter: &mut usize,
+    in_loop: bool,
 ) -> GeneratedExpr {
     match node {
         // the graph has a single node, so we can skip the sequence logic and generate it directly in the root scope.
         NodeExpr::Single(call) => get_single_node_expr(call, incoming, counter),
         // the graph has at least 2 nodes all connected by `>>`
-        NodeExpr::Sequence(nodes) => get_sequence_nodes_expr(nodes, incoming, counter),
+        NodeExpr::Sequence(nodes) => get_sequence_nodes_expr(nodes, incoming, counter, in_loop),
         // the graph has at least 2 nodes all connected by `|` (parallel fan-out)
-        NodeExpr::Parallel(nodes) => get_parallel_nodes_expr(nodes, incoming, counter),
+        NodeExpr::Parallel(nodes) => get_parallel_nodes_expr(nodes, incoming, counter, in_loop),
         // the graph has an exclusive route with multiple branches
-        NodeExpr::Route(route) => get_route_node_expr(route, incoming, counter),
+        NodeExpr::Route(route) => get_route_node_expr(route, incoming, counter, in_loop),
+        NodeExpr::While(while_expr) => get_while_node_expr(while_expr, incoming, counter),
+        NodeExpr::Loop(loop_expr) => get_loop_node_expr(loop_expr, incoming, counter),
+        NodeExpr::Break => {
+            if !in_loop {
+                panic!("`@break` can only be used inside `@loop` or `@while`");
+            }
+            GeneratedExpr {
+                tokens: quote! { break; },
+                outputs: Payload::new(),
+            }
+        }
     }
 }
 
@@ -611,12 +624,13 @@ fn get_sequence_nodes_expr(
     nodes: &[NodeExpr],
     incoming: &Payload,
     counter: &mut usize,
+    in_loop: bool,
 ) -> GeneratedExpr {
     let mut iter = nodes.iter();
     let first = iter
         .next()
         .expect("sequence must contain at least one node");
-    let mut current = get_node_expr(first, incoming, counter);
+    let mut current = get_node_expr(first, incoming, counter, in_loop);
 
     for next in iter {
         let shape = analyze_expr(next);
@@ -630,7 +644,7 @@ fn get_sequence_nodes_expr(
             next_payload.insert_borrowed(artifact);
         }
 
-        let next_generated = get_node_expr(next, &next_payload, counter);
+        let next_generated = get_node_expr(next, &next_payload, counter, in_loop);
         let current_tokens = current.tokens;
         let next_tokens = next_generated.tokens;
         current = capture_outputs(
@@ -653,6 +667,7 @@ fn get_parallel_nodes_expr(
     nodes: &[NodeExpr],
     incoming: &Payload,
     counter: &mut usize,
+    in_loop: bool,
 ) -> GeneratedExpr {
     let shapes: Vec<ExprShape> = nodes.iter().map(analyze_expr).collect();
     let mut remaining = collect_parallel_entry_usage(&shapes);
@@ -671,7 +686,7 @@ fn get_parallel_nodes_expr(
         let (child_payload, child_bindings) =
             prepare_parallel_payload(incoming, shape, &mut remaining, counter);
 
-        let generated = get_node_expr(node, &child_payload, counter);
+        let generated = get_node_expr(node, &child_payload, counter, in_loop);
         let generated_tokens = generated.tokens;
         let output_assigns = assign_outputs_to_slots(&generated.outputs, &outputs);
 
@@ -699,6 +714,7 @@ fn get_route_node_expr(
     route: &RouteExpr,
     incoming: &Payload,
     counter: &mut usize,
+    in_loop: bool,
 ) -> GeneratedExpr {
     let branch_shapes: Vec<ExprShape> = route
         .routes
@@ -746,7 +762,7 @@ fn get_route_node_expr(
             branch_payload.insert_borrowed(artifact);
         }
 
-        let generated = get_node_expr(node, &branch_payload, counter);
+        let generated = get_node_expr(node, &branch_payload, counter, in_loop);
         let generated_tokens = generated.tokens;
         let output_assigns = assign_outputs_to_slots(&generated.outputs, &outputs);
 
@@ -775,6 +791,153 @@ fn get_route_node_expr(
             };
             match #selector_key_ident {
                 #( #arms, )*
+            }
+        },
+        outputs,
+    }
+}
+
+fn get_while_node_expr(
+    while_expr: &WhileExpr,
+    incoming: &Payload,
+    counter: &mut usize,
+) -> GeneratedExpr {
+    let body_shape = analyze_expr(&while_expr.body);
+    if !while_expr.outputs.is_empty() {
+        validate_loop_outputs(&while_expr.outputs, &while_expr.output_borrows, &body_shape);
+    }
+    let (exit_outputs, exit_borrowed) =
+        loop_exit_outputs(&while_expr.outputs, &while_expr.output_borrows, &body_shape);
+    let (mut outputs, output_decl_tokens) =
+        prepare_output_slots(&exit_outputs, "while_out", counter);
+    outputs.borrowed = exit_borrowed;
+
+    let cond_params = selector_params_for_on_expr(&while_expr.condition);
+    let cond_bindings = build_condition_bindings(&cond_params, incoming, counter);
+    let cond_bindings_tokens = &cond_bindings.bindings;
+    let cond_call =
+        build_condition_call(&while_expr.condition, &cond_bindings.args, cond_bindings.is_empty);
+
+    let required_owned = required_artifacts(&body_shape);
+    let required_borrowed = required_borrowed(&body_shape);
+
+    let mut loop_payload_inits = Vec::new();
+    let mut loop_payload = Payload::new();
+    loop_payload.borrowed = incoming.borrowed.clone();
+
+    for artifact in &required_owned {
+        let source = incoming
+            .get_owned(artifact)
+            .unwrap_or_else(|| panic!("missing artifact `{artifact}` for @while body"));
+        let stored = fresh_ident(counter, "while_seed", artifact);
+        loop_payload_inits.push(quote! {
+            let #stored = #source
+                .as_ref()
+                .unwrap_or_else(|| panic!(concat!("missing artifact `", #artifact, "`")));
+        });
+        loop_payload.insert_owned(artifact.clone(), stored.clone());
+    }
+
+    let mut iter_payload_bindings = Vec::new();
+    let mut iter_payload = Payload::new();
+    for artifact in &required_owned {
+        let stored = loop_payload
+            .get_owned(artifact)
+            .unwrap_or_else(|| panic!("missing artifact `{artifact}` for @while body"));
+        let iter_var = fresh_ident(counter, "while_in", artifact);
+        iter_payload_bindings.push(quote! {
+            let mut #iter_var = ::std::option::Option::Some(::graphio::clone_artifact(#stored));
+        });
+        iter_payload.insert_owned(artifact.clone(), iter_var.clone());
+    }
+    for artifact in &required_borrowed {
+        iter_payload.insert_borrowed(artifact.clone());
+    }
+
+    let body_generated = get_node_expr(&while_expr.body, &iter_payload, counter, true);
+    let body_tokens = body_generated.tokens;
+    let output_assigns = assign_outputs_to_slots(&body_generated.outputs, &outputs);
+
+    GeneratedExpr {
+        tokens: quote! {
+            #( #output_decl_tokens )*
+            #( #loop_payload_inits )*
+            while {
+                #( #cond_bindings_tokens )*
+                #cond_call
+            } {
+                #( #iter_payload_bindings )*
+                #body_tokens
+                #( #output_assigns )*
+            }
+        },
+        outputs,
+    }
+}
+
+fn get_loop_node_expr(
+    loop_expr: &LoopExpr,
+    incoming: &Payload,
+    counter: &mut usize,
+) -> GeneratedExpr {
+    let body_shape = analyze_expr(&loop_expr.body);
+    if !loop_expr.outputs.is_empty() {
+        validate_loop_outputs(&loop_expr.outputs, &loop_expr.output_borrows, &body_shape);
+    }
+    let (exit_outputs, exit_borrowed) =
+        loop_exit_outputs(&loop_expr.outputs, &loop_expr.output_borrows, &body_shape);
+    let (mut outputs, output_decl_tokens) =
+        prepare_output_slots(&exit_outputs, "loop_out", counter);
+    outputs.borrowed = exit_borrowed;
+
+    let required_owned = required_artifacts(&body_shape);
+    let required_borrowed = required_borrowed(&body_shape);
+
+    let mut loop_payload_inits = Vec::new();
+    let mut loop_payload = Payload::new();
+    loop_payload.borrowed = incoming.borrowed.clone();
+
+    for artifact in &required_owned {
+        let source = incoming
+            .get_owned(artifact)
+            .unwrap_or_else(|| panic!("missing artifact `{artifact}` for @loop body"));
+        let stored = fresh_ident(counter, "loop_seed", artifact);
+        loop_payload_inits.push(quote! {
+            let #stored = #source
+                .as_ref()
+                .unwrap_or_else(|| panic!(concat!("missing artifact `", #artifact, "`")));
+        });
+        loop_payload.insert_owned(artifact.clone(), stored.clone());
+    }
+
+    let mut iter_payload_bindings = Vec::new();
+    let mut iter_payload = Payload::new();
+    for artifact in &required_owned {
+        let stored = loop_payload
+            .get_owned(artifact)
+            .unwrap_or_else(|| panic!("missing artifact `{artifact}` for @loop body"));
+        let iter_var = fresh_ident(counter, "loop_in", artifact);
+        iter_payload_bindings.push(quote! {
+            let mut #iter_var = ::std::option::Option::Some(::graphio::clone_artifact(#stored));
+        });
+        iter_payload.insert_owned(artifact.clone(), iter_var.clone());
+    }
+    for artifact in &required_borrowed {
+        iter_payload.insert_borrowed(artifact.clone());
+    }
+
+    let body_generated = get_node_expr(&loop_expr.body, &iter_payload, counter, true);
+    let body_tokens = body_generated.tokens;
+    let output_assigns = assign_outputs_to_slots(&body_generated.outputs, &outputs);
+
+    GeneratedExpr {
+        tokens: quote! {
+            #( #output_decl_tokens )*
+            #( #loop_payload_inits )*
+            loop {
+                #( #iter_payload_bindings )*
+                #body_tokens
+                #( #output_assigns )*
             }
         },
         outputs,
@@ -913,6 +1076,48 @@ fn analyze_expr(node: &NodeExpr) -> ExprShape {
                 exit_borrowed,
             }
         }
+        NodeExpr::While(while_expr) => {
+            let body_shape = analyze_expr(&while_expr.body);
+            let mut entry_usage = body_shape.entry_usage.clone();
+            let mut entry_borrowed = body_shape.entry_borrowed.clone();
+            let selector_params = selector_params_for_on_expr(&while_expr.condition);
+            for param in selector_params {
+                if let SelectorParam::Artifact { ident, borrowed } = param {
+                    if borrowed {
+                        entry_borrowed.insert(ident.to_string());
+                    } else {
+                        entry_usage.entry(ident.to_string()).or_insert(1);
+                    }
+                }
+            }
+
+            let (exit_outputs, exit_borrowed) =
+                loop_exit_outputs(&while_expr.outputs, &while_expr.output_borrows, &body_shape);
+
+            ExprShape {
+                entry_usage,
+                entry_borrowed,
+                exit_outputs,
+                exit_borrowed,
+            }
+        }
+        NodeExpr::Loop(loop_expr) => {
+            let body_shape = analyze_expr(&loop_expr.body);
+            let (exit_outputs, exit_borrowed) =
+                loop_exit_outputs(&loop_expr.outputs, &loop_expr.output_borrows, &body_shape);
+            ExprShape {
+                entry_usage: body_shape.entry_usage,
+                entry_borrowed: body_shape.entry_borrowed,
+                exit_outputs,
+                exit_borrowed,
+            }
+        }
+        NodeExpr::Break => ExprShape {
+            entry_usage: UsageMap::new(),
+            entry_borrowed: BTreeSet::new(),
+            exit_outputs: Vec::new(),
+            exit_borrowed: BTreeSet::new(),
+        },
     }
 }
 
@@ -1051,6 +1256,164 @@ fn collect_route_borrowed(shapes: &[ExprShape]) -> BTreeSet<String> {
     borrowed
 }
 
+struct ConditionBindings {
+    bindings: Vec<proc_macro2::TokenStream>,
+    args: Vec<proc_macro2::TokenStream>,
+    is_empty: bool,
+}
+
+fn build_condition_bindings(
+    params: &[SelectorParam],
+    incoming: &Payload,
+    counter: &mut usize,
+) -> ConditionBindings {
+    let mut bindings = Vec::new();
+    let mut args = Vec::new();
+    let mut has_borrowed = false;
+    let mut wants_mut_ctx = false;
+
+    for param in params {
+        match param {
+            SelectorParam::Ctx { mutable } => {
+                if *mutable {
+                    wants_mut_ctx = true;
+                    args.push(quote! { ctx });
+                } else {
+                    args.push(quote! { &*ctx });
+                }
+            }
+            SelectorParam::Artifact { ident, borrowed } => {
+                let artifact_name = ident.to_string();
+                if *borrowed {
+                    has_borrowed = true;
+                    if incoming.has_borrowed(&artifact_name) {
+                        args.push(quote! { &ctx.#ident });
+                    } else {
+                        let source = incoming
+                            .get_owned(&artifact_name)
+                            .unwrap_or_else(|| panic!("missing artifact `{artifact_name}` for @while condition"));
+                        let arg_ident = fresh_ident(counter, "cond_borrow", &artifact_name);
+                        bindings.push(quote! {
+                            let #arg_ident = #source
+                                .as_ref()
+                                .unwrap_or_else(|| panic!(concat!("missing artifact `", #artifact_name, "`")));
+                        });
+                        args.push(quote! { #arg_ident });
+                    }
+                } else {
+                    let source = incoming
+                        .get_owned(&artifact_name)
+                        .unwrap_or_else(|| panic!("missing artifact `{artifact_name}` for @while condition"));
+                    let arg_ident = fresh_ident(counter, "cond_arg", &artifact_name);
+                    bindings.push(quote! {
+                        let #arg_ident = ::graphio::clone_artifact(
+                            #source
+                                .as_ref()
+                                .unwrap_or_else(|| panic!(concat!("missing artifact `", #artifact_name, "`")))
+                        );
+                    });
+                    args.push(quote! { #arg_ident });
+                }
+            }
+        }
+    }
+
+    if has_borrowed && wants_mut_ctx {
+        panic!("@while condition cannot take `&mut ctx` and borrowed artifacts at the same time");
+    }
+
+    ConditionBindings {
+        bindings,
+        args,
+        is_empty: params.is_empty(),
+    }
+}
+
+fn build_condition_call(
+    condition: &syn::Expr,
+    args: &[proc_macro2::TokenStream],
+    is_empty: bool,
+) -> proc_macro2::TokenStream {
+    if let syn::Expr::Closure(closure) = condition {
+        if closure.inputs.is_empty() {
+            return quote! { (#condition)() };
+        }
+        return quote! { (#condition)(#( #args ),*) };
+    }
+
+    if is_empty {
+        quote! { #condition }
+    } else {
+        if let syn::Expr::Path(path) = condition {
+            if path.qself.is_none() && path.path.segments.len() == 1 {
+                return quote! { #(#args)* };
+            }
+        }
+        quote! { (#condition)(#( #args ),*) }
+    }
+}
+
+fn loop_exit_outputs(
+    outputs: &[syn::Ident],
+    output_borrows: &[bool],
+    body_shape: &ExprShape,
+) -> (Vec<String>, BTreeSet<String>) {
+    if outputs.is_empty() {
+        return (
+            body_shape.exit_outputs.clone(),
+            body_shape.exit_borrowed.clone(),
+        );
+    }
+
+    let mut owned = Vec::new();
+    let mut borrowed = BTreeSet::new();
+    for (output, is_borrowed) in outputs.iter().zip(output_borrows.iter()) {
+        if *is_borrowed {
+            borrowed.insert(output.to_string());
+        } else {
+            owned.push(output.to_string());
+        }
+    }
+
+    (owned, borrowed)
+}
+
+fn validate_loop_outputs(
+    outputs: &[syn::Ident],
+    output_borrows: &[bool],
+    body_shape: &ExprShape,
+) {
+    let mut expected_owned = BTreeSet::new();
+    let mut expected_borrowed = BTreeSet::new();
+    for (output, is_borrowed) in outputs.iter().zip(output_borrows.iter()) {
+        if *is_borrowed {
+            expected_borrowed.insert(output.to_string());
+        } else {
+            expected_owned.insert(output.to_string());
+        }
+    }
+
+    for artifact in &body_shape.exit_outputs {
+        if !expected_owned.contains(artifact) {
+            panic!("loop body produces unexpected artifact `{artifact}`");
+        }
+    }
+    for artifact in &body_shape.exit_borrowed {
+        if !expected_borrowed.contains(artifact) {
+            panic!("loop body produces unexpected borrowed artifact `{artifact}`");
+        }
+    }
+    for artifact in &expected_owned {
+        if !body_shape.exit_outputs.contains(artifact) {
+            panic!("loop body missing required artifact `{artifact}`");
+        }
+    }
+    for artifact in &expected_borrowed {
+        if !body_shape.exit_borrowed.contains(artifact) {
+            panic!("loop body missing required borrowed artifact `{artifact}`");
+        }
+    }
+}
 fn route_exit_outputs(
     route: &RouteExpr,
     shapes: &[ExprShape],

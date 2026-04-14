@@ -501,3 +501,75 @@ fn e2e_graph_if_multiple_params() {
 
     IfMultiParamGraph::__graphio_run(&mut ctx);
 }
+
+#[test]
+// graph! macro should allow @while loops.
+fn e2e_graph_while_loop() {
+    let mut ctx = Context::default();
+
+    node! {
+        fn init_ctx(ctx: &mut Context) {
+            ctx.a_number = 0;
+        }
+    }
+
+    node! {
+        fn inc_ctx(ctx: &mut Context) {
+            ctx.a_number += 1;
+        }
+    }
+
+    graph! {
+        #[metadata(context = Context)]
+        WhileGraph {
+            InitCtx() >>
+            @while |ctx: &Context| ctx.a_number < 3 {
+                IncCtx()
+            }
+        }
+    }
+
+    WhileGraph::__graphio_run(&mut ctx);
+    assert_eq!(ctx.a_number, 3);
+}
+
+#[test]
+// graph! macro should allow @loop with @break.
+fn e2e_graph_loop_with_break() {
+    let mut ctx = Context::default();
+
+    node! {
+        fn init_ctx(ctx: &mut Context) {
+            ctx.a_number = 0;
+        }
+    }
+
+    node! {
+        fn inc_ctx(ctx: &mut Context) {
+            ctx.a_number += 1;
+        }
+    }
+
+    node! {
+        fn noop() {}
+    }
+
+    graph! {
+        #[metadata(context = Context)]
+        LoopBreakGraph {
+            InitCtx() >>
+            @loop {
+                IncCtx() >>
+                @if |ctx: &Context| ctx.a_number >= 3 {
+                    @break
+                }
+                @else {
+                    Noop()
+                }
+            }
+        }
+    }
+
+    LoopBreakGraph::__graphio_run(&mut ctx);
+    assert_eq!(ctx.a_number, 3);
+}

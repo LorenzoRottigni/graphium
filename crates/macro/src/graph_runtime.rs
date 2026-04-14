@@ -122,6 +122,9 @@ fn build_runtime_expr(
         NodeExpr::Sequence(nodes) => build_sequence(nodes, context, codegen),
         NodeExpr::Parallel(nodes) => build_parallel(nodes, context, codegen),
         NodeExpr::Route(route) => build_route(route, context, codegen),
+        NodeExpr::While(_) | NodeExpr::Loop(_) | NodeExpr::Break => {
+            panic!("@while/@loop/@break are not supported in graph_runtime");
+        }
     }
 }
 

@@ -39,6 +39,9 @@ pub enum NodeExpr {
     Sequence(Vec<NodeExpr>),
     Parallel(Vec<NodeExpr>),
     Route(RouteExpr),
+    While(WhileExpr),
+    Loop(LoopExpr),
+    Break,
 }
 
 #[derive(Clone)]
@@ -48,6 +51,21 @@ pub struct RouteExpr {
     pub outputs: Vec<Ident>,
     pub output_borrows: Vec<bool>,
     pub is_if_chain: bool,
+}
+
+#[derive(Clone)]
+pub struct WhileExpr {
+    pub condition: Expr,
+    pub body: Box<NodeExpr>,
+    pub outputs: Vec<Ident>,
+    pub output_borrows: Vec<bool>,
+}
+
+#[derive(Clone)]
+pub struct LoopExpr {
+    pub body: Box<NodeExpr>,
+    pub outputs: Vec<Ident>,
+    pub output_borrows: Vec<bool>,
 }
 
 pub struct GraphInput {

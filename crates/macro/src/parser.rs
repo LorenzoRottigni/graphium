@@ -5,7 +5,7 @@ use syn::{
 use syn::parse::discouraged::Speculative;
 use proc_macro2::TokenTree;
 
-use crate::shared::{GraphInput, NodeCall, NodeExpr, RouteExpr};
+use crate::shared::{GraphInput, LoopExpr, NodeCall, NodeExpr, RouteExpr, WhileExpr};
 
 // Parsing module for the graph DSL.
 // It turns the macro input tokens into a small IR (`NodeExpr`) that later
@@ -82,7 +82,54 @@ fn parse_primary(input: ParseStream) -> Result<NodeExpr> {
             return Ok(NodeExpr::Route(parse_if_chain(input)?));
         }
 
-        return Err(input.error("expected `match` or `if` after `@`"));
+        if input.peek(Token![while]) {
+            input.parse::<Token![while]>()?;
+            let condition: Expr = parse_match_on_expr(input)?;
+            let (outputs, output_borrows) = if input.peek(Token![->]) {
+                input.parse::<Token![->]>()?;
+                let out;
+                syn::parenthesized!(out in input);
+                parse_ident_list(&out)?
+            } else {
+                (Vec::new(), Vec::new())
+            };
+            let content;
+            syn::braced!(content in input);
+            let body: NodeExpr = content.parse()?;
+            return Ok(NodeExpr::While(WhileExpr {
+                condition,
+                body: Box::new(body),
+                outputs,
+                output_borrows,
+            }));
+        }
+
+        if input.peek(Token![loop]) {
+            input.parse::<Token![loop]>()?;
+            let (outputs, output_borrows) = if input.peek(Token![->]) {
+                input.parse::<Token![->]>()?;
+                let out;
+                syn::parenthesized!(out in input);
+                parse_ident_list(&out)?
+            } else {
+                (Vec::new(), Vec::new())
+            };
+            let content;
+            syn::braced!(content in input);
+            let body: NodeExpr = content.parse()?;
+            return Ok(NodeExpr::Loop(LoopExpr {
+                body: Box::new(body),
+                outputs,
+                output_borrows,
+            }));
+        }
+
+        if input.peek(Token![break]) {
+            input.parse::<Token![break]>()?;
+            return Ok(NodeExpr::Break);
+        }
+
+        return Err(input.error("expected `match`, `if`, `while`, `loop`, or `break` after `@`"));
     }
 
     Ok(NodeExpr::Single(input.parse()?))
