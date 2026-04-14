@@ -173,3 +173,57 @@ fn e2e_graph_branching_move() {
 
     ConditionalGraph::__graphio_run(&mut ctx);
 }
+
+#[test]
+// graph! macro should allow nested @if branching.
+fn e2e_graph_nested_branching() {
+    let mut ctx = Context::default();
+
+    node! {
+        fn get_operation_status() -> Status {
+            Status::Success
+        }
+    }
+
+    node! {
+        fn on_success(status: Status) {
+            assert_eq!(status, Status::Success)
+        }
+    }
+
+    node! {
+        fn on_fail() {
+            panic!("Graph branching failed")
+        }
+    }
+
+    node! {
+        fn on_retry() {
+            panic!("Graph branching failed")
+        }
+    }
+
+    graph! {
+        #[metadata(context = Context)]
+        NestedConditionalGraph {
+            GetOperationStatus() -> (status) >>
+            @if {
+                on: |status: Status| status,
+                routes: {
+                    Status::Success => @if {
+                        on: |ctx: &Context| ctx.status,
+                        routes: {
+                            Status::Success => OnSuccess(status),
+                            Status::Fail => OnFail(),
+                            Status::Retry => OnRetry(),
+                        }
+                    },
+                    Status::Fail => OnFail(),
+                    Status::Retry => OnRetry(),
+                }
+            }
+        }
+    }
+
+    NestedConditionalGraph::__graphio_run(&mut ctx);
+}
