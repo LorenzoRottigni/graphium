@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use syn::parse_macro_input;
 
 use crate::shared::{
@@ -39,7 +39,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
     for (artifact, ty) in &graph_inputs {
         let param_ident = fresh_ident(&mut counter, "graph_in", &artifact.to_string());
         let payload_ident = fresh_ident(&mut counter, "root_in", &artifact.to_string());
-        root_incoming.insert(artifact.to_string(), payload_ident.clone());
+        root_incoming.insert_owned(artifact.to_string(), payload_ident.clone());
         run_params.push(quote! {
             #param_ident: #ty
         });
@@ -78,7 +78,10 @@ pub fn expand(input: TokenStream) -> TokenStream {
             .iter()
             .map(|(artifact, _)| {
                 let artifact_name = artifact.to_string();
-                let output_var = generated.outputs.get(&artifact_name).unwrap_or_else(|| {
+                let output_var = generated
+                    .outputs
+                    .get_owned(&artifact_name)
+                    .unwrap_or_else(|| {
                     panic!("graph output `{artifact_name}` is not produced by the schema")
                 });
                 quote! {
@@ -169,10 +172,19 @@ pub(crate) fn get_node_expr(
 /// Generates code for a single node invocation or nested graph execution call,
 /// consuming artifacts from the incoming hop payload and optionally producing a
 /// new outgoing payload.
-fn get_single_node_expr(call: &NodeCall, incoming: &Payload, counter: &mut usize) -> GeneratedExpr {
+fn get_single_node_expr(
+    call: &NodeCall,
+    incoming: &Payload,
+    counter: &mut usize,
+) -> GeneratedExpr {
     let node_path = &call.path;
 
     let nested_graph_path = is_graph_run_path(node_path).then(|| graph_type_path(node_path));
+    let has_borrowed_inputs = call.input_borrows.iter().any(|is_borrowed| *is_borrowed);
+
+    if nested_graph_path.is_some() && has_borrowed_inputs {
+        panic!("borrowed artifacts are not supported when calling nested graphs");
+    }
 
     // Node with no inputs and no outputs
     if !call.explicit_inputs && call.inputs.is_empty() && call.outputs.is_empty() {
@@ -192,8 +204,11 @@ fn get_single_node_expr(call: &NodeCall, incoming: &Payload, counter: &mut usize
     // once. We count those local reads so the last one can move and earlier
     // ones clone from the same incoming payload.
     let mut remaining = UsageMap::new();
-    for input in &call.inputs {
-        // for each input, increment the usage count for that input name so we know how many times it will be consumed in this node.
+    for (input, is_borrowed) in call.inputs.iter().zip(call.input_borrows.iter()) {
+        if *is_borrowed {
+            continue;
+        }
+        // for each owned input, increment the usage count for that input name so we know how many times it will be consumed in this node.
         *remaining.entry(input.to_string()).or_insert(0) += 1;
     }
 
@@ -203,15 +218,48 @@ fn get_single_node_expr(call: &NodeCall, incoming: &Payload, counter: &mut usize
     // local variable name for it and a code snippet that initializes that variable by taking or cloning from the incoming payload.
     let mut input_bindings = Vec::with_capacity(call.inputs.len());
 
-    for input in &call.inputs {
+    let mut input_by_name: BTreeMap<String, (syn::Ident, bool)> = BTreeMap::new();
+    let mut ctx_clone_bindings = Vec::new();
+    let mut ctx_store_bindings = Vec::new();
+    let mut ctx_cloned = BTreeSet::new();
+
+    let borrowed_outputs: Vec<syn::Ident> = call
+        .outputs
+        .iter()
+        .zip(call.output_borrows.iter())
+        .filter_map(|(output, is_borrowed)| {
+            if *is_borrowed {
+                Some(output.clone())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    for (input, is_borrowed) in call.inputs.iter().zip(call.input_borrows.iter()) {
         let artifact_name = input.to_string();
+        let arg_ident = fresh_ident(counter, "arg", &artifact_name);
+
+        if *is_borrowed {
+            if !incoming.has_borrowed(&artifact_name) {
+                panic!("missing borrowed artifact `{artifact_name}` for node call");
+            }
+            input_bindings.push(quote! {
+                let #arg_ident = &ctx.#input;
+            });
+            input_by_name
+                .entry(artifact_name.clone())
+                .or_insert((arg_ident.clone(), true));
+            arg_vars.push(arg_ident);
+            continue;
+        }
+
         let source = incoming
-            .get(&artifact_name)
+            .get_owned(&artifact_name)
             .unwrap_or_else(|| panic!("missing artifact `{artifact_name}` for node call"));
         let remaining_uses = remaining
             .get_mut(&artifact_name)
             .unwrap_or_else(|| panic!("missing usage count for `{artifact_name}`"));
-        let arg_ident = fresh_ident(counter, "arg", &artifact_name);
 
         if *remaining_uses == 1 {
             input_bindings.push(quote! {
@@ -230,21 +278,54 @@ fn get_single_node_expr(call: &NodeCall, incoming: &Payload, counter: &mut usize
         }
 
         *remaining_uses -= 1;
+        input_by_name
+            .entry(artifact_name.clone())
+            .or_insert((arg_ident.clone(), false));
         arg_vars.push(arg_ident);
+    }
+
+    // Prepare clones for borrowed outputs sourced from inputs.
+    if !borrowed_outputs.is_empty() {
+        for output in &borrowed_outputs {
+            let output_name = output.to_string();
+            if let Some((arg_ident, input_is_borrowed)) = input_by_name.get(&output_name) {
+                if ctx_cloned.insert(output_name.clone()) {
+                    let clone_ident = fresh_ident(counter, "ctx_clone", &output_name);
+                    let clone_expr = if *input_is_borrowed {
+                        quote! { ::graphio::clone_artifact(#arg_ident) }
+                    } else {
+                        quote! { ::graphio::clone_artifact(&#arg_ident) }
+                    };
+                    ctx_clone_bindings.push(quote! {
+                        let #clone_ident = #clone_expr;
+                    });
+                    ctx_store_bindings.push(quote! {
+                        ctx.#output = #clone_ident;
+                    });
+                }
+            }
+        }
     }
 
     // Node with input and no inputs
     if call.outputs.is_empty() {
-        let run_call = if let Some(graph_path) = &nested_graph_path {
-            quote! { #graph_path::__graphio_run(ctx, #( #arg_vars ),*); }
+        let ctx_arg = if has_borrowed_inputs {
+            quote! { &*ctx }
         } else {
-            quote! { #node_path::__graphio_run(ctx, #( #arg_vars ),*); }
+            quote! { ctx }
+        };
+        let run_call = if let Some(graph_path) = &nested_graph_path {
+            quote! { #graph_path::__graphio_run(#ctx_arg, #( #arg_vars ),*); }
+        } else {
+            quote! { #node_path::__graphio_run(#ctx_arg, #( #arg_vars ),*); }
         };
 
         return GeneratedExpr {
             tokens: quote! {
                 #( #input_bindings )*
+                #( #ctx_clone_bindings )*
                 #run_call
+                #( #ctx_store_bindings )*
             },
             outputs: Payload::new(),
         };
@@ -254,54 +335,106 @@ fn get_single_node_expr(call: &NodeCall, incoming: &Payload, counter: &mut usize
     // We hold each produced artifact in an `Option<T>` so later code can decide
     // whether to move it (`take`) or clone from it.
     let mut outputs = Payload::new();
+    let ctx_arg = if has_borrowed_inputs {
+        quote! { &*ctx }
+    } else {
+        quote! { ctx }
+    };
+    let run_call = if let Some(graph_path) = &nested_graph_path {
+        quote! { #graph_path::__graphio_run(#ctx_arg, #( #arg_vars ),*) }
+    } else {
+        quote! { #node_path::__graphio_run(#ctx_arg, #( #arg_vars ),*) }
+    };
+
+    let mut borrowed_from_return = Vec::new();
+    for (output, is_borrowed) in call.outputs.iter().zip(call.output_borrows.iter()) {
+        if *is_borrowed && !input_by_name.contains_key(&output.to_string()) {
+            borrowed_from_return.push(output.to_string());
+        }
+    }
+
     // node with a single output
     if call.outputs.len() == 1 {
         let artifact_name = call.outputs[0].to_string();
+        let is_borrowed = call.output_borrows[0];
+
+        if is_borrowed {
+            outputs.insert_borrowed(artifact_name.clone());
+            let return_var = fresh_ident(counter, "ret", &artifact_name);
+            let return_binding = if borrowed_from_return.contains(&artifact_name) {
+                quote! { let #return_var = #run_call; }
+            } else {
+                quote! { #run_call; }
+            };
+            let store_binding = if borrowed_from_return.contains(&artifact_name) {
+                let output_ident = &call.outputs[0];
+                quote! { ctx.#output_ident = #return_var; }
+            } else {
+                quote! {}
+            };
+
+            return GeneratedExpr {
+                tokens: quote! {
+                    #( #input_bindings )*
+                    #( #ctx_clone_bindings )*
+                    #return_binding
+                    #( #ctx_store_bindings )*
+                    #store_binding
+                },
+                outputs,
+            };
+        }
+
         let output_var = fresh_ident(counter, "hop", &artifact_name);
-        outputs.insert(artifact_name, output_var.clone());
-        let run_call = if let Some(graph_path) = &nested_graph_path {
-            quote! { #graph_path::__graphio_run(ctx, #( #arg_vars ),*) }
-        } else {
-            quote! { #node_path::__graphio_run(ctx, #( #arg_vars ),*) }
-        };
+        outputs.insert_owned(artifact_name, output_var.clone());
 
         GeneratedExpr {
             tokens: quote! {
                 #( #input_bindings )*
+                #( #ctx_clone_bindings )*
                 let mut #output_var = ::std::option::Option::Some(#run_call);
+                #( #ctx_store_bindings )*
             },
             outputs,
         }
-    // node with multiple outputs
     } else {
         let tuple_vars: Vec<syn::Ident> = call
             .outputs
             .iter()
             .map(|output| fresh_ident(counter, "ret", &output.to_string()))
             .collect();
-        let output_stores =
-            call.outputs
-                .iter()
-                .zip(tuple_vars.iter())
-                .map(|(output, tuple_var)| {
-                    let artifact_name = output.to_string();
-                    let output_var = fresh_ident(counter, "hop", &artifact_name);
-                    outputs.insert(artifact_name, output_var.clone());
-                    quote! {
-                        let mut #output_var = ::std::option::Option::Some(#tuple_var);
-                    }
+
+        let mut output_stores = Vec::new();
+        let mut borrowed_store = Vec::new();
+        for ((output, is_borrowed), tuple_var) in call
+            .outputs
+            .iter()
+            .zip(call.output_borrows.iter())
+            .zip(tuple_vars.iter())
+        {
+            let artifact_name = output.to_string();
+            if *is_borrowed {
+                outputs.insert_borrowed(artifact_name.clone());
+                borrowed_store.push(quote! {
+                    ctx.#output = #tuple_var;
                 });
-        let run_call = if let Some(graph_path) = &nested_graph_path {
-            quote! { #graph_path::__graphio_run(ctx, #( #arg_vars ),*) }
-        } else {
-            quote! { #node_path::__graphio_run(ctx, #( #arg_vars ),*) }
-        };
+            } else {
+                let output_var = fresh_ident(counter, "hop", &artifact_name);
+                outputs.insert_owned(artifact_name, output_var.clone());
+                output_stores.push(quote! {
+                    let mut #output_var = ::std::option::Option::Some(#tuple_var);
+                });
+            }
+        }
 
         GeneratedExpr {
             tokens: quote! {
                 #( #input_bindings )*
+                #( #ctx_clone_bindings )*
                 let ( #( #tuple_vars ),* ) = #run_call;
                 #( #output_stores )*
+                #( #ctx_store_bindings )*
+                #( #borrowed_store )*
             },
             outputs,
         }
@@ -322,6 +455,7 @@ fn graph_type_path(path: &syn::Path) -> syn::Path {
     graph_path
 }
 
+
 /// Builds a fresh hop payload by moving the requested artifacts out of the
 /// current expression outputs.
 fn prepare_move_payload(
@@ -331,14 +465,15 @@ fn prepare_move_payload(
     counter: &mut usize,
 ) -> (Payload, Vec<proc_macro2::TokenStream>) {
     let mut payload = Payload::new();
+    payload.borrowed = source_outputs.borrowed.clone();
     let mut bindings = Vec::with_capacity(artifacts.len());
 
     for artifact in artifacts {
         let source = source_outputs
-            .get(artifact)
+            .get_owned(artifact)
             .unwrap_or_else(|| panic!("missing artifact `{artifact}` for next hop"));
         let payload_var = fresh_ident(counter, prefix, artifact);
-        payload.insert(artifact.clone(), payload_var.clone());
+        payload.insert_owned(artifact.clone(), payload_var.clone());
         bindings.push(quote! {
             let mut #payload_var = #source.take();
         });
@@ -361,13 +496,13 @@ fn prepare_parallel_payload(
 
     for artifact in required_artifacts(shape) {
         let source = incoming
-            .get(&artifact)
+            .get_owned(&artifact)
             .unwrap_or_else(|| panic!("missing artifact `{artifact}` for parallel step"));
         let remaining_children = remaining
             .get_mut(&artifact)
             .unwrap_or_else(|| panic!("missing usage count for `{artifact}`"));
         let payload_var = fresh_ident(counter, "parallel_in", &artifact);
-        payload.insert(artifact.clone(), payload_var.clone());
+        payload.insert_owned(artifact.clone(), payload_var.clone());
 
         if *remaining_children == 1 {
             bindings.push(quote! {
@@ -386,6 +521,10 @@ fn prepare_parallel_payload(
         *remaining_children -= 1;
     }
 
+    for artifact in required_borrowed(shape) {
+        payload.insert_borrowed(artifact);
+    }
+
     (payload, bindings)
 }
 
@@ -400,7 +539,7 @@ fn prepare_output_slots(
 
     for artifact in artifacts {
         let output_var = fresh_ident(counter, prefix, artifact);
-        outputs.insert(artifact.clone(), output_var.clone());
+        outputs.insert_owned(artifact.clone(), output_var.clone());
         declarations.push(quote! {
             let mut #output_var = ::std::option::Option::None;
         });
@@ -416,10 +555,11 @@ fn assign_outputs_to_slots(
     outer_outputs: &Payload,
 ) -> Vec<proc_macro2::TokenStream> {
     inner_outputs
+        .owned
         .iter()
         .map(|(artifact, inner)| {
             let outer = outer_outputs
-                .get(artifact)
+                .get_owned(artifact)
                 .unwrap_or_else(|| panic!("missing output slot for `{artifact}`"));
             quote! {
                 #outer = #inner;
@@ -461,8 +601,11 @@ fn get_sequence_nodes_expr(
         // A sequence boundary is the core one-hop rule:
         // take only the artifacts the next step needs, build a fresh payload for
         // that step, and let everything else drop here.
-        let (next_payload, transfer_tokens) =
+        let (mut next_payload, transfer_tokens) =
             prepare_move_payload(&current.outputs, &required, "payload", counter);
+        for artifact in required_borrowed(&shape) {
+            next_payload.insert_borrowed(artifact);
+        }
 
         let next_generated = get_node_expr(next, &next_payload, counter);
         let current_tokens = current.tokens;
@@ -492,8 +635,10 @@ fn get_parallel_nodes_expr(
     let mut remaining = collect_parallel_entry_usage(&shapes);
 
     let exit_outputs = collect_parallel_outputs(&shapes);
-    let (outputs, output_decl_tokens) =
+    let exit_borrowed = collect_parallel_borrowed(&shapes);
+    let (mut outputs, output_decl_tokens) =
         prepare_output_slots(&exit_outputs, "parallel_out", counter);
+    outputs.borrowed = exit_borrowed;
 
     let mut blocks = Vec::new();
     for (node, shape) in nodes.iter().zip(shapes.iter()) {
@@ -538,8 +683,10 @@ fn get_route_node_expr(
         .map(|(_, node)| analyze_expr(node))
         .collect();
     let exit_outputs = collect_route_outputs(&branch_shapes);
+    let exit_borrowed = collect_route_borrowed(&branch_shapes);
 
-    let (outputs, output_decl_tokens) = prepare_output_slots(&exit_outputs, "route_out", counter);
+    let (mut outputs, output_decl_tokens) = prepare_output_slots(&exit_outputs, "route_out", counter);
+    outputs.borrowed = exit_borrowed;
 
     let on_expr = &route.on;
     let mut arms = Vec::new();
@@ -547,8 +694,11 @@ fn get_route_node_expr(
         // Route branches are exclusive: only one branch runs, so inputs are
         // moved straight into that branch payload.
         let artifacts = required_artifacts(shape);
-        let (branch_payload, branch_bindings) =
+        let (mut branch_payload, branch_bindings) =
             prepare_move_payload(incoming, &artifacts, "route_in", counter);
+        for artifact in required_borrowed(shape) {
+            branch_payload.insert_borrowed(artifact);
+        }
 
         let generated = get_node_expr(node, &branch_payload, counter);
         let generated_tokens = generated.tokens;
@@ -595,6 +745,7 @@ fn capture_outputs(
     // continue propagating the new hop.
     let mut outer_outputs = Payload::new();
     let declaration_pairs: Vec<(String, syn::Ident)> = inner_outputs
+        .owned
         .keys()
         .map(|artifact| {
             let outer_var = fresh_ident(counter, "captured", artifact);
@@ -603,7 +754,7 @@ fn capture_outputs(
         .collect();
 
     for (artifact, outer_var) in &declaration_pairs {
-        outer_outputs.insert(artifact.clone(), outer_var.clone());
+        outer_outputs.insert_owned(artifact.clone(), outer_var.clone());
     }
 
     let declarations = declaration_pairs.iter().map(|(_, outer_var)| {
@@ -612,9 +763,11 @@ fn capture_outputs(
         }
     });
 
-    let assignments = inner_outputs.iter().map(|(artifact, inner)| {
+    outer_outputs.borrowed = inner_outputs.borrowed.clone();
+
+    let assignments = inner_outputs.owned.iter().map(|(artifact, inner)| {
         let outer = outer_outputs
-            .get(artifact)
+            .get_owned(artifact)
             .unwrap_or_else(|| panic!("missing captured output slot for `{artifact}`"));
         quote! {
             #outer = #inner;
@@ -648,7 +801,9 @@ fn analyze_expr(node: &NodeExpr) -> ExprShape {
 
             ExprShape {
                 entry_usage: analyze_expr(first).entry_usage,
+                entry_borrowed: analyze_expr(first).entry_borrowed,
                 exit_outputs: analyze_expr(last).exit_outputs,
+                exit_borrowed: analyze_expr(last).exit_borrowed,
             }
         }
         NodeExpr::Parallel(nodes) => {
@@ -656,7 +811,9 @@ fn analyze_expr(node: &NodeExpr) -> ExprShape {
 
             ExprShape {
                 entry_usage: collect_parallel_entry_usage(&shapes),
+                entry_borrowed: collect_parallel_entry_borrowed(&shapes),
                 exit_outputs: collect_parallel_outputs(&shapes),
+                exit_borrowed: collect_parallel_borrowed(&shapes),
             }
         }
         NodeExpr::Route(route) => {
@@ -666,6 +823,7 @@ fn analyze_expr(node: &NodeExpr) -> ExprShape {
                 .map(|(_, node)| analyze_expr(node))
                 .collect();
             let mut entry_usage = UsageMap::new();
+            let mut entry_borrowed = BTreeSet::new();
 
             // A route only executes one branch, so from the caller's point of
             // view an artifact is required at most once at route entry.
@@ -673,11 +831,16 @@ fn analyze_expr(node: &NodeExpr) -> ExprShape {
                 for artifact in required_artifacts(shape) {
                     entry_usage.entry(artifact).or_insert(1);
                 }
+                for artifact in required_borrowed(shape) {
+                    entry_borrowed.insert(artifact);
+                }
             }
 
             ExprShape {
                 entry_usage,
+                entry_borrowed,
                 exit_outputs: collect_route_outputs(&shapes),
+                exit_borrowed: collect_route_borrowed(&shapes),
             }
         }
     }
@@ -689,18 +852,49 @@ fn analyze_single(call: &NodeCall) -> ExprShape {
     if !call.explicit_inputs && call.inputs.is_empty() && call.outputs.is_empty() {
         return ExprShape {
             entry_usage: UsageMap::new(),
+            entry_borrowed: BTreeSet::new(),
             exit_outputs: Vec::new(),
+            exit_borrowed: BTreeSet::new(),
         };
     }
 
     let mut entry_usage = UsageMap::new();
-    for input in &call.inputs {
-        *entry_usage.entry(input.to_string()).or_insert(0) += 1;
+    let mut entry_borrowed = BTreeSet::new();
+    for (input, is_borrowed) in call.inputs.iter().zip(call.input_borrows.iter()) {
+        if *is_borrowed {
+            entry_borrowed.insert(input.to_string());
+        } else {
+            *entry_usage.entry(input.to_string()).or_insert(0) += 1;
+        }
     }
 
     ExprShape {
         entry_usage,
-        exit_outputs: call.outputs.iter().map(ToString::to_string).collect(),
+        entry_borrowed,
+        exit_outputs: call
+            .outputs
+            .iter()
+            .zip(call.output_borrows.iter())
+            .filter_map(|(output, is_borrowed)| {
+                if *is_borrowed {
+                    None
+                } else {
+                    Some(output.to_string())
+                }
+            })
+            .collect(),
+        exit_borrowed: call
+            .outputs
+            .iter()
+            .zip(call.output_borrows.iter())
+            .filter_map(|(output, is_borrowed)| {
+                if *is_borrowed {
+                    Some(output.to_string())
+                } else {
+                    None
+                }
+            })
+            .collect(),
     }
 }
 
@@ -708,6 +902,10 @@ fn analyze_single(call: &NodeCall) -> ExprShape {
 /// subexpression.
 fn required_artifacts(shape: &ExprShape) -> Vec<String> {
     shape.entry_usage.keys().cloned().collect()
+}
+
+fn required_borrowed(shape: &ExprShape) -> Vec<String> {
+    shape.entry_borrowed.iter().cloned().collect()
 }
 
 /// Collects and validates the outgoing artifact names of a parallel step,
@@ -722,6 +920,11 @@ fn collect_parallel_outputs(shapes: &[ExprShape]) -> Vec<String> {
                 panic!("parallel step produces duplicate artifact `{artifact}`");
             }
             outputs.push(artifact.clone());
+        }
+        for artifact in &shape.exit_borrowed {
+            if !seen.insert(artifact.clone()) {
+                panic!("parallel step produces duplicate artifact `{artifact}`");
+            }
         }
     }
 
@@ -740,7 +943,40 @@ fn collect_route_outputs(shapes: &[ExprShape]) -> Vec<String> {
                 outputs.push(artifact.clone());
             }
         }
+        for artifact in &shape.exit_borrowed {
+            seen.insert(artifact.clone());
+        }
     }
 
     outputs
+}
+
+fn collect_parallel_entry_borrowed(shapes: &[ExprShape]) -> BTreeSet<String> {
+    let mut borrowed = BTreeSet::new();
+    for shape in shapes {
+        for artifact in required_borrowed(shape) {
+            borrowed.insert(artifact);
+        }
+    }
+    borrowed
+}
+
+fn collect_parallel_borrowed(shapes: &[ExprShape]) -> BTreeSet<String> {
+    let mut borrowed = BTreeSet::new();
+    for shape in shapes {
+        for artifact in &shape.exit_borrowed {
+            borrowed.insert(artifact.clone());
+        }
+    }
+    borrowed
+}
+
+fn collect_route_borrowed(shapes: &[ExprShape]) -> BTreeSet<String> {
+    let mut borrowed = BTreeSet::new();
+    for shape in shapes {
+        for artifact in &shape.exit_borrowed {
+            borrowed.insert(artifact.clone());
+        }
+    }
+    borrowed
 }

@@ -1,5 +1,5 @@
 use quote::format_ident;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use syn::{Expr, Ident, Path, Type};
 
 // Core syntax/data structures shared by parsing and code generation.
@@ -11,6 +11,7 @@ pub struct NodeDef {
     pub fn_name: Ident,
     pub struct_name: Ident,
     pub ctx_type: Type,
+    pub ctx_mut: bool,
     pub inputs: Vec<(Ident, Type)>,
     pub return_ty: Option<Type>,
 }
@@ -20,7 +21,9 @@ pub struct NodeCall {
     pub path: Path,
     pub explicit_inputs: bool,
     pub inputs: Vec<Ident>,
+    pub input_borrows: Vec<bool>,
     pub outputs: Vec<Ident>,
+    pub output_borrows: Vec<bool>,
 }
 
 #[derive(Clone)]
@@ -52,7 +55,40 @@ pub type UsageMap = BTreeMap<String, usize>;
 
 // A hop payload is the short-lived set of artifact variables that move from one
 // `>>` boundary to the next. The values are generated local variable names.
-pub type Payload = BTreeMap<String, Ident>;
+#[derive(Clone, Default)]
+pub struct Payload {
+    pub owned: BTreeMap<String, Ident>,
+    pub borrowed: BTreeSet<String>,
+}
+
+impl Payload {
+    pub fn new() -> Self {
+        Self {
+            owned: BTreeMap::new(),
+            borrowed: BTreeSet::new(),
+        }
+    }
+
+    pub fn insert_owned(&mut self, name: String, ident: Ident) {
+        self.owned.insert(name, ident);
+    }
+
+    pub fn insert_borrowed(&mut self, name: String) {
+        self.borrowed.insert(name);
+    }
+
+    pub fn get_owned(&self, name: &str) -> Option<&Ident> {
+        self.owned.get(name)
+    }
+
+    pub fn has_borrowed(&self, name: &str) -> bool {
+        self.borrowed.contains(name)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.owned.is_empty() && self.borrowed.is_empty()
+    }
+}
 
 // `ExprShape` is a lightweight summary of a subgraph.
 // It tells the parent expression:
@@ -61,7 +97,9 @@ pub type Payload = BTreeMap<String, Ident>;
 #[derive(Clone)]
 pub struct ExprShape {
     pub entry_usage: UsageMap,
+    pub entry_borrowed: BTreeSet<String>,
     pub exit_outputs: Vec<String>,
+    pub exit_borrowed: BTreeSet<String>,
 }
 
 // Result of generating one graph expression.

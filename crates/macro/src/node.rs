@@ -17,6 +17,11 @@ pub fn expand(input: TokenStream) -> TokenStream {
     let fn_name = &node_def.fn_name;
     let struct_name = &node_def.struct_name;
     let ctx_type = &node_def.ctx_type;
+    let ctx_param = if node_def.ctx_mut {
+        quote! { &mut #ctx_type }
+    } else {
+        quote! { & #ctx_type }
+    };
     let input_idents: Vec<Ident> = node_def
         .inputs
         .iter()
@@ -37,7 +42,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
             pub const NAME: &'static str = stringify!(#fn_name);
 
             pub fn __graphio_run(
-                ctx: &mut #ctx_type,
+                ctx: #ctx_param,
                 #( #input_idents: #input_types ),*
             ) #return_sig {
                 println!("Running node: {}", Self::NAME);
@@ -60,14 +65,11 @@ fn parse_node_def(func: &ItemFn) -> NodeDef {
     };
 
     let Type::Reference(ctx_ref) = &*ctx_arg.ty else {
-        panic!("expected `&mut Context` as the first node argument");
+        panic!("expected `&Context` or `&mut Context` as the first node argument");
     };
 
-    if ctx_ref.mutability.is_none() {
-        panic!("expected the first node argument to be `&mut Context`");
-    }
-
     let ctx_type = (*ctx_ref.elem).clone();
+    let ctx_mut = ctx_ref.mutability.is_some();
 
     let mut inputs = Vec::new();
     for (index, arg) in func.sig.inputs.iter().enumerate() {
@@ -83,11 +85,13 @@ fn parse_node_def(func: &ItemFn) -> NodeDef {
             panic!("expected ident pattern for node input");
         };
 
-        if matches!(&*pat.ty, Type::Reference(_)) {
-            panic!(
-                "node input `{}` must be owned; use the context for borrowed data",
-                pat_ident.ident
-            );
+        if let Type::Reference(reference) = &*pat.ty {
+            if reference.mutability.is_some() {
+                panic!(
+                    "node input `{}` must be shared; mutable references are not supported",
+                    pat_ident.ident
+                );
+            }
         }
 
         inputs.push((pat_ident.ident.clone(), (*pat.ty).clone()));
@@ -104,6 +108,7 @@ fn parse_node_def(func: &ItemFn) -> NodeDef {
         fn_name,
         struct_name,
         ctx_type,
+        ctx_mut,
         inputs,
         return_ty,
     }

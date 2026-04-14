@@ -71,13 +71,12 @@ node! {
 }
 
 node! {
-    pub fn store_number(ctx: &mut Context, a: u32) {
-        ctx.a = a
+    pub fn store_number(_ctx: &mut Context, _a: u32) {
     }
 }
 
 node! {
-    pub fn take_ownership(ctx: &mut Context) -> u32 {
-        ctx.a
+    pub fn take_ownership(_ctx: &Context, a: &u32) -> u32 {
+        *a
     }
 }

@@ -71,39 +71,49 @@ impl Parse for NodeCall {
     fn parse(input: ParseStream) -> Result<Self> {
         let path: Path = input.parse()?;
         let explicit_inputs = input.peek(syn::token::Paren);
-        let inputs = if explicit_inputs {
+        let (inputs, input_borrows) = if explicit_inputs {
             let content;
             syn::parenthesized!(content in input);
             parse_ident_list(&content)?
         } else {
-            Vec::new()
+            (Vec::new(), Vec::new())
         };
 
-        let outputs = if input.peek(Token![->]) {
+        let (outputs, output_borrows) = if input.peek(Token![->]) {
             input.parse::<Token![->]>()?;
             let content;
             syn::parenthesized!(content in input);
             parse_ident_list(&content)?
         } else {
-            Vec::new()
+            (Vec::new(), Vec::new())
         };
 
         Ok(Self {
             path,
             explicit_inputs,
             inputs,
+            input_borrows,
             outputs,
+            output_borrows,
         })
     }
 }
 
 /// Parses a comma-separated list of artifact names used for node inputs or
 /// outputs in the graph DSL.
-fn parse_ident_list(input: ParseStream) -> Result<Vec<Ident>> {
+fn parse_ident_list(input: ParseStream) -> Result<(Vec<Ident>, Vec<bool>)> {
     let mut idents = Vec::new();
+    let mut borrows = Vec::new();
 
     while !input.is_empty() {
+        let is_borrowed = if input.peek(Token![&]) {
+            input.parse::<Token![&]>()?;
+            true
+        } else {
+            false
+        };
         idents.push(input.parse()?);
+        borrows.push(is_borrowed);
         if input.peek(Token![,]) {
             input.parse::<Token![,]>()?;
         } else {
@@ -111,7 +121,7 @@ fn parse_ident_list(input: ParseStream) -> Result<Vec<Ident>> {
         }
     }
 
-    Ok(idents)
+    Ok((idents, borrows))
 }
 
 /// Parses a comma-separated list like `(artifact: Type, other: Type)`.

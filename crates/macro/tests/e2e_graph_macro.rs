@@ -30,8 +30,8 @@ fn e2e_graph_macro_borrowed_artifacts() {
         #[metadata(context = Context, outputs = (a_number: u32))]
         BorrowedGraph {
             data::node::GetNumber() -> (a_number) >>
-            data::node::StoreNumber(a_number) >>
-            data::node::TakeOwnership() -> (a_number) >>
+            data::node::StoreNumber(a_number) -> (&a_number) >>
+            data::node::TakeOwnership(&a_number) -> (a_number) >>
             data::node::PipeNumber(a_number) -> (a_number)
         }
     }
