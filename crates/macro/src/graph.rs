@@ -695,9 +695,25 @@ fn get_route_node_expr(
 
     let on_expr = &route.on;
     let selector_params = parse_selector_params(on_expr);
-    let selector_tokens = build_selector_bindings(&selector_params, incoming, counter);
+    let mut needed_by_branches = BTreeSet::new();
+    for shape in &branch_shapes {
+        for artifact in required_artifacts(shape) {
+            needed_by_branches.insert(artifact);
+        }
+        for artifact in required_borrowed(shape) {
+            needed_by_branches.insert(artifact);
+        }
+    }
+
+    let selector_tokens = build_selector_bindings(
+        &selector_params,
+        incoming,
+        &needed_by_branches,
+        counter,
+    );
     let selector_call = build_selector_call(on_expr, &selector_tokens.args, selector_tokens.is_empty);
     let selector_bindings = &selector_tokens.bindings;
+    let selector_key_ident = fresh_ident(counter, "selector_key", "if");
     let mut arms = Vec::new();
     for ((key, node), shape) in route.routes.iter().zip(branch_shapes.iter()) {
         // Route branches are exclusive: only one branch runs, so inputs are
@@ -725,8 +741,11 @@ fn get_route_node_expr(
     GeneratedExpr {
         tokens: quote! {
             #( #output_decl_tokens )*
-            #( #selector_bindings )*
-            match #selector_call {
+            let #selector_key_ident = {
+                #( #selector_bindings )*
+                #selector_call
+            };
+            match #selector_key_ident {
                 #( #arms, )*
             }
         },
@@ -1053,6 +1072,7 @@ fn parse_selector_params(on: &syn::Expr) -> Vec<SelectorParam> {
 fn build_selector_bindings(
     params: &[SelectorParam],
     incoming: &Payload,
+    needed_by_branches: &BTreeSet<String>,
     counter: &mut usize,
 ) -> SelectorBindings {
     let mut bindings = Vec::new();
@@ -1075,20 +1095,43 @@ fn build_selector_bindings(
             SelectorParam::Artifact { ident, borrowed } => {
                 let artifact_name = ident.to_string();
                 if *borrowed {
-                    has_borrowed = true;
-                    args.push(quote! { &ctx.#ident });
+                    if incoming.has_borrowed(&artifact_name) {
+                        has_borrowed = true;
+                        args.push(quote! { &ctx.#ident });
+                    } else {
+                        let source = incoming
+                            .get_owned(&artifact_name)
+                            .unwrap_or_else(|| panic!("missing artifact `{artifact_name}` for @if selector"));
+                        let arg_ident = fresh_ident(counter, "selector_borrow", &artifact_name);
+                        bindings.push(quote! {
+                            let #arg_ident = #source
+                                .as_ref()
+                                .unwrap_or_else(|| panic!(concat!("missing artifact `", #artifact_name, "`")));
+                        });
+                        args.push(quote! { #arg_ident });
+                    }
                 } else {
                     let source = incoming
                         .get_owned(&artifact_name)
                         .unwrap_or_else(|| panic!("missing artifact `{artifact_name}` for @if selector"));
                     let arg_ident = fresh_ident(counter, "selector_arg", &artifact_name);
-                    bindings.push(quote! {
-                        let #arg_ident = ::graphio::clone_artifact(
-                            #source
-                                .as_ref()
-                                .unwrap_or_else(|| panic!(concat!("missing artifact `", #artifact_name, "`")))
-                        );
-                    });
+                    if needed_by_branches.contains(&artifact_name) {
+                        // If already marked borrowed, clone to avoid moving shared value.
+                        bindings.push(quote! {
+                            let #arg_ident = ::graphio::clone_artifact(
+                                #source
+                                    .as_ref()
+                                    .unwrap_or_else(|| panic!(concat!("missing artifact `", #artifact_name, "`")))
+                            );
+                        });
+                    } else {
+                        // If no branch needs this artifact, allow moving it into selector.
+                        bindings.push(quote! {
+                            let #arg_ident = #source
+                                .take()
+                                .unwrap_or_else(|| panic!(concat!("missing artifact `", #artifact_name, "`")));
+                        });
+                    }
                     args.push(quote! { #arg_ident });
                 }
             }

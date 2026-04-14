@@ -1,3 +1,4 @@
+use quote::quote;
 use syn::{
     Expr, Ident, Path, Result, Token, Type,
     parse::{Parse, ParseStream},
@@ -161,7 +162,12 @@ impl Parse for RouteExpr {
                     syn::braced!(content in input);
 
                     while !content.is_empty() {
-                        let key_expr: Expr = content.parse()?;
+                        let key_expr: Expr = if content.peek(Token![else]) {
+                            content.parse::<Token![else]>()?;
+                            Expr::Verbatim(quote! { _ })
+                        } else {
+                            content.parse()?
+                        };
                         content.parse::<Token![=>]>()?;
                         let value: NodeExpr = content.parse()?;
                         routes.push((key_expr, value));
