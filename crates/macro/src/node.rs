@@ -2,7 +2,7 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{FnArg, Ident, ItemFn, Pat, ReturnType, Type, parse_macro_input};
 
-use crate::shared::{NodeDef, pascal_case};
+use crate::shared::{NodeDef, ParamKind, pascal_case};
 
 // Node expansion is intentionally simple now.
 // A node macro only validates the user function and generates a thin wrapper
@@ -16,11 +16,20 @@ pub fn expand(input: TokenStream) -> TokenStream {
 
     let fn_name = &node_def.fn_name;
     let struct_name = &node_def.struct_name;
-    let ctx_type = &node_def.ctx_type;
-    let ctx_param = if node_def.ctx_mut {
-        quote! { &mut #ctx_type }
+    let ctx_generic = if node_def.ctx_type.is_none() {
+        quote! { <Ctx> }
     } else {
-        quote! { & #ctx_type }
+        quote! {}
+    };
+    let ctx_param = match &node_def.ctx_type {
+        Some(ctx_type) => {
+            if node_def.ctx_mut {
+                quote! { &mut #ctx_type }
+            } else {
+                quote! { & #ctx_type }
+            }
+        }
+        None => quote! { &Ctx },
     };
     let input_idents: Vec<Ident> = node_def
         .inputs
@@ -32,6 +41,17 @@ pub fn expand(input: TokenStream) -> TokenStream {
         Some(ty) => quote! { -> #ty },
         None => quote! {},
     };
+    let call_args: Vec<proc_macro2::TokenStream> = node_def
+        .param_kinds
+        .iter()
+        .map(|kind| match kind {
+            ParamKind::Ctx => quote! { ctx },
+            ParamKind::Input(index) => {
+                let ident = &input_idents[*index];
+                quote! { #ident }
+            }
+        })
+        .collect();
 
     let expanded = quote! {
         #func
@@ -41,12 +61,12 @@ pub fn expand(input: TokenStream) -> TokenStream {
         impl #struct_name {
             pub const NAME: &'static str = stringify!(#fn_name);
 
-            pub fn __graphio_run(
+            pub fn __graphio_run #ctx_generic(
                 ctx: #ctx_param,
                 #( #input_idents: #input_types ),*
             ) #return_sig {
                 println!("Running node: {}", Self::NAME);
-                #fn_name(ctx, #( #input_idents ),*)
+                #fn_name(#( #call_args ),*)
             }
         }
     };
@@ -60,30 +80,35 @@ fn parse_node_def(func: &ItemFn) -> NodeDef {
     let fn_name = func.sig.ident.clone();
     let struct_name = format_ident!("{}", pascal_case(&fn_name));
 
-    let Some(FnArg::Typed(ctx_arg)) = func.sig.inputs.first() else {
-        panic!("expected function with `&mut Context` as its first argument");
-    };
-
-    let Type::Reference(ctx_ref) = &*ctx_arg.ty else {
-        panic!("expected `&Context` or `&mut Context` as the first node argument");
-    };
-
-    let ctx_type = (*ctx_ref.elem).clone();
-    let ctx_mut = ctx_ref.mutability.is_some();
-
+    let mut ctx_type: Option<Type> = None;
+    let mut ctx_mut = false;
     let mut inputs = Vec::new();
-    for (index, arg) in func.sig.inputs.iter().enumerate() {
+    let mut param_kinds = Vec::new();
+
+    for arg in func.sig.inputs.iter() {
         let FnArg::Typed(pat) = arg else {
             panic!("unexpected receiver in node function");
         };
 
-        if index == 0 {
-            continue;
-        }
-
         let Pat::Ident(pat_ident) = &*pat.pat else {
             panic!("expected ident pattern for node input");
         };
+
+        let name = pat_ident.ident.to_string();
+        if name == "ctx" || name == "_ctx" {
+            if ctx_type.is_some() {
+                panic!("node function must declare at most one context parameter");
+            }
+
+            let Type::Reference(ctx_ref) = &*pat.ty else {
+                panic!("context parameter must be `&Context` or `&mut Context`");
+            };
+
+            ctx_type = Some((*ctx_ref.elem).clone());
+            ctx_mut = ctx_ref.mutability.is_some();
+            param_kinds.push(ParamKind::Ctx);
+            continue;
+        }
 
         if let Type::Reference(reference) = &*pat.ty {
             if reference.mutability.is_some() {
@@ -94,7 +119,9 @@ fn parse_node_def(func: &ItemFn) -> NodeDef {
             }
         }
 
+        let index = inputs.len();
         inputs.push((pat_ident.ident.clone(), (*pat.ty).clone()));
+        param_kinds.push(ParamKind::Input(index));
     }
 
     let return_ty = match &func.sig.output {
@@ -110,6 +137,7 @@ fn parse_node_def(func: &ItemFn) -> NodeDef {
         ctx_type,
         ctx_mut,
         inputs,
+        param_kinds,
         return_ty,
     }
 }

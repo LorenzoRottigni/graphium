@@ -10,10 +10,17 @@ use syn::{Expr, Ident, Path, Type};
 pub struct NodeDef {
     pub fn_name: Ident,
     pub struct_name: Ident,
-    pub ctx_type: Type,
+    pub ctx_type: Option<Type>,
     pub ctx_mut: bool,
     pub inputs: Vec<(Ident, Type)>,
+    pub param_kinds: Vec<ParamKind>,
     pub return_ty: Option<Type>,
+}
+
+#[derive(Clone, Copy)]
+pub enum ParamKind {
+    Ctx,
+    Input(usize),
 }
 
 #[derive(Clone)]
