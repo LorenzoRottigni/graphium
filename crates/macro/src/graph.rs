@@ -14,6 +14,32 @@ enum SelectorParam {
     Artifact { ident: syn::Ident, borrowed: bool },
 }
 
+fn node_run_call_tokens(
+    node_path: &syn::Path,
+    nested_graph_path: Option<&syn::Path>,
+    ctx_arg: proc_macro2::TokenStream,
+    arg_vars: &[syn::Ident],
+    async_mode: bool,
+) -> proc_macro2::TokenStream {
+    let call = if let Some(graph_path) = nested_graph_path {
+        if async_mode {
+            quote! { #graph_path::__graphio_run_async(#ctx_arg, #( #arg_vars ),*) }
+        } else {
+            quote! { #graph_path::__graphio_run(#ctx_arg, #( #arg_vars ),*) }
+        }
+    } else if async_mode {
+        quote! { #node_path::__graphio_run_async(#ctx_arg, #( #arg_vars ),*) }
+    } else {
+        quote! { #node_path::__graphio_run(#ctx_arg, #( #arg_vars ),*) }
+    };
+
+    if async_mode {
+        quote! { #call.await }
+    } else {
+        call
+    }
+}
+
 fn selector_params_for_on_expr(on: &syn::Expr) -> Vec<SelectorParam> {
     if let syn::Expr::Closure(_closure) = on {
         return parse_selector_params(on);
@@ -48,6 +74,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
         inputs: graph_inputs,
         outputs: graph_outputs,
         nodes,
+        async_enabled,
     } = parse_macro_input!(input as GraphInput);
 
     // for unique local variable names for hop payloads and node outputs.
@@ -73,7 +100,12 @@ pub fn expand(input: TokenStream) -> TokenStream {
     }
 
     // recursively generate the graph body, which produces the root outgoing payload containing the graph outputs.
-    let generated = get_node_expr(&nodes, &root_incoming, &mut counter, false);
+    let generated = if async_enabled {
+        None
+    } else {
+        Some(get_node_expr(&nodes, &root_incoming, &mut counter, false, false))
+    };
+    let generated_async = get_node_expr(&nodes, &root_incoming, &mut counter, false, true);
 
     // AST Graph::run() return type signature
     let run_return_sig = if graph_outputs.is_empty() {
@@ -90,19 +122,61 @@ pub fn expand(input: TokenStream) -> TokenStream {
     };
 
     // AST Graph::run() body
-    let run_body = if graph_outputs.is_empty() {
-        let generated_tokens = generated.tokens;
+    let run_body = if async_enabled {
+        quote! {}
+    } else if graph_outputs.is_empty() {
+        let generated_tokens = generated.as_ref().expect("sync graph").tokens.clone();
         quote! {{
             #( #root_input_bindings )*
             #generated_tokens
         }}
     } else {
-        let generated_tokens = generated.tokens;
+        let generated_tokens = generated.as_ref().expect("sync graph").tokens.clone();
         let output_values: Vec<proc_macro2::TokenStream> = graph_outputs
             .iter()
             .map(|(artifact, _)| {
                 let artifact_name = artifact.to_string();
                 let output_var = generated
+                    .as_ref()
+                    .expect("sync graph")
+                    .outputs
+                    .get_owned(&artifact_name)
+                    .unwrap_or_else(|| {
+                    panic!("graph output `{artifact_name}` is not produced by the schema")
+                });
+                quote! {
+                    #output_var
+                        .take()
+                        .unwrap_or_else(|| panic!(concat!("missing graph output `", #artifact_name, "`")))
+                }
+            })
+            .collect();
+        let return_expr = if output_values.len() == 1 {
+            quote! { #(#output_values)* }
+        } else {
+            quote! { ( #( #output_values ),* ) }
+        };
+
+        quote! {{
+            #( #root_input_bindings )*
+            #generated_tokens
+            #return_expr
+        }}
+    };
+
+    let run_body_async = if graph_outputs.is_empty() {
+        let generated_tokens = generated_async.tokens.clone();
+        quote! {{
+            #( #root_input_bindings )*
+            #generated_tokens
+        }}
+    } else {
+        let generated_tokens = generated_async.tokens.clone();
+        let output_values: Vec<proc_macro2::TokenStream> = graph_outputs
+            .iter()
+            .map(|(artifact, _)| {
+                let artifact_name = artifact.to_string();
+                let output_var = generated_async
                     .outputs
                     .get_owned(&artifact_name)
                     .unwrap_or_else(|| {
@@ -145,12 +219,27 @@ pub fn expand(input: TokenStream) -> TokenStream {
         }
     };
 
-    // AST expanded graph!
-    let expanded = quote! {
-        pub struct #name;
+    let async_trait_run_body = if graph_inputs.is_empty() && graph_outputs.is_empty() {
+        quote! {
+            Self::__graphio_run_async(ctx).await;
+        }
+    } else {
+        quote! {
+            panic!(concat!(
+                "graph `",
+                stringify!(#name),
+                "` has explicit inputs/outputs; call it as a nested step: `",
+                stringify!(#name),
+                "(...) -> (...)`"
+            ));
+        }
+    };
 
-        impl #name {
-            /// Convenience entry point that executes the graph directly.
+    // AST expanded graph!
+    let sync_impl = if async_enabled {
+        quote! {}
+    } else {
+        quote! {
             pub fn run(ctx: &mut #context) {
                 <Self as ::graphio::Graph<#context>>::run(ctx);
             }
@@ -162,12 +251,39 @@ pub fn expand(input: TokenStream) -> TokenStream {
                 #run_body
             }
         }
+    };
 
-        impl ::graphio::Graph<#context> for #name {
-            fn run(ctx: &mut #context) {
-                #trait_run_body
+    let graph_impl = if async_enabled {
+        quote! {}
+    } else {
+        quote! {
+            impl ::graphio::Graph<#context> for #name {
+                fn run(ctx: &mut #context) {
+                    #trait_run_body
+                }
             }
         }
+    };
+
+    let expanded = quote! {
+        pub struct #name;
+
+        impl #name {
+            #sync_impl
+
+            /// Convenience async entry point that executes the graph directly.
+            pub async fn run_async(ctx: &mut #context) {
+                #async_trait_run_body
+            }
+
+            pub async fn __graphio_run_async(
+                ctx: &mut #context,
+                #( #run_params ),*
+            ) #run_return_sig {
+                #run_body_async
+            }
+        }
+        #graph_impl
     };
 
     TokenStream::from(expanded)
@@ -181,18 +297,25 @@ pub(crate) fn get_node_expr(
     incoming: &Payload,
     counter: &mut usize,
     in_loop: bool,
+    async_mode: bool,
 ) -> GeneratedExpr {
     match node {
         // the graph has a single node, so we can skip the sequence logic and generate it directly in the root scope.
-        NodeExpr::Single(call) => get_single_node_expr(call, incoming, counter),
+        NodeExpr::Single(call) => get_single_node_expr(call, incoming, counter, async_mode),
         // the graph has at least 2 nodes all connected by `>>`
-        NodeExpr::Sequence(nodes) => get_sequence_nodes_expr(nodes, incoming, counter, in_loop),
+        NodeExpr::Sequence(nodes) => {
+            get_sequence_nodes_expr(nodes, incoming, counter, in_loop, async_mode)
+        }
         // the graph has at least 2 nodes all connected by `|` (parallel fan-out)
-        NodeExpr::Parallel(nodes) => get_parallel_nodes_expr(nodes, incoming, counter, in_loop),
+        NodeExpr::Parallel(nodes) => {
+            get_parallel_nodes_expr(nodes, incoming, counter, in_loop, async_mode)
+        }
         // the graph has an exclusive route with multiple branches
-        NodeExpr::Route(route) => get_route_node_expr(route, incoming, counter, in_loop),
-        NodeExpr::While(while_expr) => get_while_node_expr(while_expr, incoming, counter),
-        NodeExpr::Loop(loop_expr) => get_loop_node_expr(loop_expr, incoming, counter),
+        NodeExpr::Route(route) => get_route_node_expr(route, incoming, counter, in_loop, async_mode),
+        NodeExpr::While(while_expr) => {
+            get_while_node_expr(while_expr, incoming, counter, async_mode)
+        }
+        NodeExpr::Loop(loop_expr) => get_loop_node_expr(loop_expr, incoming, counter, async_mode),
         NodeExpr::Break => {
             if !in_loop {
                 panic!("`@break` can only be used inside `@loop` or `@while`");
@@ -212,6 +335,7 @@ fn get_single_node_expr(
     call: &NodeCall,
     incoming: &Payload,
     counter: &mut usize,
+    async_mode: bool,
 ) -> GeneratedExpr {
     let node_path = &call.path;
 
@@ -224,14 +348,16 @@ fn get_single_node_expr(
 
     // Node with no inputs and no outputs
     if !call.explicit_inputs && call.inputs.is_empty() && call.outputs.is_empty() {
-        let run_tokens = if let Some(graph_path) = &nested_graph_path {
-            quote! { #graph_path::__graphio_run(ctx); }
-        } else {
-            quote! { #node_path::__graphio_run(ctx); }
-        };
+        let run_tokens = node_run_call_tokens(
+            node_path,
+            nested_graph_path.as_ref(),
+            quote! { ctx },
+            &[],
+            async_mode,
+        );
 
         return GeneratedExpr {
-            tokens: run_tokens,
+            tokens: quote! { #run_tokens; },
             outputs: Payload::new(),
         };
     }
@@ -350,17 +476,19 @@ fn get_single_node_expr(
         } else {
             quote! { ctx }
         };
-        let run_call = if let Some(graph_path) = &nested_graph_path {
-            quote! { #graph_path::__graphio_run(#ctx_arg, #( #arg_vars ),*); }
-        } else {
-            quote! { #node_path::__graphio_run(#ctx_arg, #( #arg_vars ),*); }
-        };
+        let run_call = node_run_call_tokens(
+            node_path,
+            nested_graph_path.as_ref(),
+            ctx_arg,
+            &arg_vars,
+            async_mode,
+        );
 
         return GeneratedExpr {
             tokens: quote! {
                 #( #input_bindings )*
                 #( #ctx_clone_bindings )*
-                #run_call
+                #run_call;
                 #( #ctx_store_bindings )*
             },
             outputs: Payload::new(),
@@ -376,11 +504,13 @@ fn get_single_node_expr(
     } else {
         quote! { ctx }
     };
-    let run_call = if let Some(graph_path) = &nested_graph_path {
-        quote! { #graph_path::__graphio_run(#ctx_arg, #( #arg_vars ),*) }
-    } else {
-        quote! { #node_path::__graphio_run(#ctx_arg, #( #arg_vars ),*) }
-    };
+    let run_call = node_run_call_tokens(
+        node_path,
+        nested_graph_path.as_ref(),
+        ctx_arg,
+        &arg_vars,
+        async_mode,
+    );
 
     let mut borrowed_from_return = Vec::new();
     for (output, is_borrowed) in call.outputs.iter().zip(call.output_borrows.iter()) {
@@ -625,12 +755,13 @@ fn get_sequence_nodes_expr(
     incoming: &Payload,
     counter: &mut usize,
     in_loop: bool,
+    async_mode: bool,
 ) -> GeneratedExpr {
     let mut iter = nodes.iter();
     let first = iter
         .next()
         .expect("sequence must contain at least one node");
-    let mut current = get_node_expr(first, incoming, counter, in_loop);
+    let mut current = get_node_expr(first, incoming, counter, in_loop, async_mode);
 
     for next in iter {
         let shape = analyze_expr(next);
@@ -644,7 +775,7 @@ fn get_sequence_nodes_expr(
             next_payload.insert_borrowed(artifact);
         }
 
-        let next_generated = get_node_expr(next, &next_payload, counter, in_loop);
+        let next_generated = get_node_expr(next, &next_payload, counter, in_loop, async_mode);
         let current_tokens = current.tokens;
         let next_tokens = next_generated.tokens;
         current = capture_outputs(
@@ -668,6 +799,7 @@ fn get_parallel_nodes_expr(
     incoming: &Payload,
     counter: &mut usize,
     in_loop: bool,
+    async_mode: bool,
 ) -> GeneratedExpr {
     let shapes: Vec<ExprShape> = nodes.iter().map(analyze_expr).collect();
     let mut remaining = collect_parallel_entry_usage(&shapes);
@@ -686,7 +818,7 @@ fn get_parallel_nodes_expr(
         let (child_payload, child_bindings) =
             prepare_parallel_payload(incoming, shape, &mut remaining, counter);
 
-        let generated = get_node_expr(node, &child_payload, counter, in_loop);
+        let generated = get_node_expr(node, &child_payload, counter, in_loop, async_mode);
         let generated_tokens = generated.tokens;
         let output_assigns = assign_outputs_to_slots(&generated.outputs, &outputs);
 
@@ -715,6 +847,7 @@ fn get_route_node_expr(
     incoming: &Payload,
     counter: &mut usize,
     in_loop: bool,
+    async_mode: bool,
 ) -> GeneratedExpr {
     let branch_shapes: Vec<ExprShape> = route
         .routes
@@ -762,7 +895,7 @@ fn get_route_node_expr(
             branch_payload.insert_borrowed(artifact);
         }
 
-        let generated = get_node_expr(node, &branch_payload, counter, in_loop);
+        let generated = get_node_expr(node, &branch_payload, counter, in_loop, async_mode);
         let generated_tokens = generated.tokens;
         let output_assigns = assign_outputs_to_slots(&generated.outputs, &outputs);
 
@@ -801,6 +934,7 @@ fn get_while_node_expr(
     while_expr: &WhileExpr,
     incoming: &Payload,
     counter: &mut usize,
+    async_mode: bool,
 ) -> GeneratedExpr {
     let body_shape = analyze_expr(&while_expr.body);
     if !while_expr.outputs.is_empty() {
@@ -854,7 +988,7 @@ fn get_while_node_expr(
         iter_payload.insert_borrowed(artifact.clone());
     }
 
-    let body_generated = get_node_expr(&while_expr.body, &iter_payload, counter, true);
+    let body_generated = get_node_expr(&while_expr.body, &iter_payload, counter, true, async_mode);
     let body_tokens = body_generated.tokens;
     let output_assigns = assign_outputs_to_slots(&body_generated.outputs, &outputs);
 
@@ -879,6 +1013,7 @@ fn get_loop_node_expr(
     loop_expr: &LoopExpr,
     incoming: &Payload,
     counter: &mut usize,
+    async_mode: bool,
 ) -> GeneratedExpr {
     let body_shape = analyze_expr(&loop_expr.body);
     if !loop_expr.outputs.is_empty() {
@@ -926,7 +1061,7 @@ fn get_loop_node_expr(
         iter_payload.insert_borrowed(artifact.clone());
     }
 
-    let body_generated = get_node_expr(&loop_expr.body, &iter_payload, counter, true);
+    let body_generated = get_node_expr(&loop_expr.body, &iter_payload, counter, true, async_mode);
     let body_tokens = body_generated.tokens;
     let output_assigns = assign_outputs_to_slots(&body_generated.outputs, &outputs);
 

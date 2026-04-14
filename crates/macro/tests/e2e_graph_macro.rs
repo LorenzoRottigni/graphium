@@ -1,6 +1,7 @@
 pub mod data;
 
 use data::ctx::{Context, Status};
+use futures::executor::block_on;
 use graphio_macro::{graph, node};
 
 /// graph! macro should propagate owned artifacts across nodes
@@ -572,4 +573,55 @@ fn e2e_graph_loop_with_break() {
 
     LoopBreakGraph::__graphio_run(&mut ctx);
     assert_eq!(ctx.a_number, 3);
+}
+
+#[test]
+// graph! macro should allow async graphs with sync nodes.
+fn e2e_graph_async_with_sync_nodes() {
+    let mut ctx = Context::default();
+
+    node! {
+        fn set_ctx(ctx: &mut Context) {
+            ctx.a_number = 5;
+        }
+    }
+
+    graph! {
+        #[metadata(context = Context, async = true)]
+        AsyncSyncGraph {
+            SetCtx()
+        }
+    }
+
+    block_on(AsyncSyncGraph::__graphio_run_async(&mut ctx));
+    assert_eq!(ctx.a_number, 5);
+}
+
+#[test]
+// graph! macro should allow async nodes inside async graphs.
+fn e2e_graph_async_nodes() {
+    let mut ctx = Context::default();
+
+    node! {
+        async fn get_number() -> u32 {
+            7
+        }
+    }
+
+    node! {
+        async fn add_one(value: u32) -> u32 {
+            value + 1
+        }
+    }
+
+    graph! {
+        #[metadata(context = Context, outputs = (a_number: u32), async = true)]
+        AsyncGraph {
+            GetNumber() -> (a_number) >>
+            AddOne(a_number) -> (a_number)
+        }
+    }
+
+    let value = block_on(AsyncGraph::__graphio_run_async(&mut ctx));
+    assert_eq!(value, 8);
 }

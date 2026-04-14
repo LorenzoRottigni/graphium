@@ -16,6 +16,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
 
     let fn_name = &node_def.fn_name;
     let struct_name = &node_def.struct_name;
+    let is_async = func.sig.asyncness.is_some();
     let ctx_generic = if node_def.ctx_type.is_none() {
         quote! { <Ctx> }
     } else {
@@ -53,6 +54,42 @@ pub fn expand(input: TokenStream) -> TokenStream {
         })
         .collect();
 
+    let sync_run = if is_async {
+        quote! {}
+    } else {
+        quote! {
+            pub fn __graphio_run #ctx_generic(
+                ctx: #ctx_param,
+                #( #input_idents: #input_types ),*
+            ) #return_sig {
+                println!("Running node: {}", Self::NAME);
+                #fn_name(#( #call_args ),*)
+            }
+        }
+    };
+
+    let async_run = if is_async {
+        quote! {
+            pub async fn __graphio_run_async #ctx_generic(
+                ctx: #ctx_param,
+                #( #input_idents: #input_types ),*
+            ) #return_sig {
+                println!("Running node: {}", Self::NAME);
+                #fn_name(#( #call_args ),*).await
+            }
+        }
+    } else {
+        quote! {
+            pub async fn __graphio_run_async #ctx_generic(
+                ctx: #ctx_param,
+                #( #input_idents: #input_types ),*
+            ) #return_sig {
+                println!("Running node: {}", Self::NAME);
+                #fn_name(#( #call_args ),*)
+            }
+        }
+    };
+
     let expanded = quote! {
         #func
 
@@ -61,13 +98,8 @@ pub fn expand(input: TokenStream) -> TokenStream {
         impl #struct_name {
             pub const NAME: &'static str = stringify!(#fn_name);
 
-            pub fn __graphio_run #ctx_generic(
-                ctx: #ctx_param,
-                #( #input_idents: #input_types ),*
-            ) #return_sig {
-                println!("Running node: {}", Self::NAME);
-                #fn_name(#( #call_args ),*)
-            }
+            #sync_run
+            #async_run
         }
     };
 

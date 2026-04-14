@@ -14,3 +14,4 @@ syn = { version = "2.0", features = ["full"] }
 
 [dev-dependencies]
 graphio = { version = "0.1.0", path = "../core" }
+futures = "0.3"

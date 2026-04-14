@@ -461,36 +461,48 @@ fn parse_graph_input_legacy(input: ParseStream) -> Result<GraphInput> {
     let mut graph_inputs: Vec<(Ident, Type)> = Vec::new();
     let mut graph_outputs: Vec<(Ident, Type)> = Vec::new();
     let mut nodes: Option<NodeExpr> = None;
+    let mut async_enabled = false;
 
     while !input.is_empty() {
-        let key: Ident = input.parse()?;
-        input.parse::<Token![:]>()?;
+        if input.peek(Token![async]) {
+            input.parse::<Token![async]>()?;
+            input.parse::<Token![:]>()?;
+            let lit: syn::LitBool = input.parse()?;
+            async_enabled = lit.value;
+        } else {
+            let key: Ident = input.parse()?;
+            input.parse::<Token![:]>()?;
 
-        match key.to_string().as_str() {
-            "name" => {
-                name = Some(input.parse()?);
-            }
-            "context" => {
-                context = Some(input.parse()?);
-            }
-            "inputs" => {
-                let content;
-                syn::parenthesized!(content in input);
-                graph_inputs = parse_typed_ident_list(&content)?;
-            }
-            "outputs" => {
-                let content;
-                syn::parenthesized!(content in input);
-                graph_outputs = parse_typed_ident_list(&content)?;
-            }
-            "schema" => {
-                let content;
-                syn::bracketed!(content in input);
-                nodes = Some(content.parse()?);
-            }
-            _ => {
-                return Err(input
-                    .error("expected one of: `name`, `context`, `inputs`, `outputs`, `schema`"));
+            match key.to_string().as_str() {
+                "name" => {
+                    name = Some(input.parse()?);
+                }
+                "context" => {
+                    context = Some(input.parse()?);
+                }
+                "inputs" => {
+                    let content;
+                    syn::parenthesized!(content in input);
+                    graph_inputs = parse_typed_ident_list(&content)?;
+                }
+                "outputs" => {
+                    let content;
+                    syn::parenthesized!(content in input);
+                    graph_outputs = parse_typed_ident_list(&content)?;
+                }
+                "schema" => {
+                    let content;
+                    syn::bracketed!(content in input);
+                    nodes = Some(content.parse()?);
+                }
+                "async" => {
+                    let lit: syn::LitBool = input.parse()?;
+                    async_enabled = lit.value;
+                }
+                _ => {
+                    return Err(input
+                        .error("expected one of: `name`, `context`, `inputs`, `outputs`, `schema`, `async`"));
+                }
             }
         }
 
@@ -503,6 +515,7 @@ fn parse_graph_input_legacy(input: ParseStream) -> Result<GraphInput> {
         inputs: graph_inputs,
         outputs: graph_outputs,
         nodes: nodes.ok_or_else(|| input.error("missing `schema`"))?,
+        async_enabled,
     })
 }
 
@@ -512,6 +525,7 @@ fn parse_graph_input_with_metadata(input: ParseStream) -> Result<GraphInput> {
     let mut context: Option<Path> = None;
     let mut graph_inputs: Vec<(Ident, Type)> = Vec::new();
     let mut graph_outputs: Vec<(Ident, Type)> = Vec::new();
+    let mut async_enabled = false;
 
     input.parse::<Token![#]>()?;
     let bracket_content;
@@ -525,10 +539,17 @@ fn parse_graph_input_with_metadata(input: ParseStream) -> Result<GraphInput> {
     let metadata_content;
     syn::parenthesized!(metadata_content in bracket_content);
     while !metadata_content.is_empty() {
-        let key: Ident = metadata_content.parse()?;
+        let key_string = if metadata_content.peek(Token![async]) {
+            metadata_content.parse::<Token![async]>()?;
+            "async".to_string()
+        } else {
+            let key: Ident = metadata_content.parse()?;
+            key.to_string()
+        };
+
         metadata_content.parse::<Token![=]>()?;
 
-        match key.to_string().as_str() {
+        match key_string.as_str() {
             "context" => {
                 context = Some(metadata_content.parse()?);
             }
@@ -542,9 +563,13 @@ fn parse_graph_input_with_metadata(input: ParseStream) -> Result<GraphInput> {
                 syn::parenthesized!(typed in metadata_content);
                 graph_outputs = parse_typed_ident_list(&typed)?;
             }
+            "async" => {
+                let lit: syn::LitBool = metadata_content.parse()?;
+                async_enabled = lit.value;
+            }
             _ => {
                 return Err(
-                    metadata_content.error("expected one of: `context`, `inputs`, `outputs`")
+                    metadata_content.error("expected one of: `context`, `inputs`, `outputs`, `async`")
                 );
             }
         }
@@ -579,5 +604,6 @@ fn parse_graph_input_with_metadata(input: ParseStream) -> Result<GraphInput> {
         inputs: graph_inputs,
         outputs: graph_outputs,
         nodes,
+        async_enabled,
     })
 }

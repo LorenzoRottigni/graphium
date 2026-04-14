@@ -74,6 +74,7 @@ pub struct GraphInput {
     pub inputs: Vec<(Ident, Type)>,
     pub outputs: Vec<(Ident, Type)>,
     pub nodes: NodeExpr,
+    pub async_enabled: bool,
 }
 
 // `UsageMap` is compile-time bookkeeping only.
