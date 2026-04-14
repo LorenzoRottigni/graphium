@@ -1,7 +1,7 @@
 pub mod data;
 
 use data::ctx::Context;
-use graphio_macro::graph;
+use graphio_macro::{graph, node};
 
 /// graph! macro should propagate owned artifacts across nodes
 #[test]
@@ -37,4 +37,45 @@ fn e2e_graph_macro_borrowed_artifacts() {
     }
     let num = BorrowedGraph::__graphio_run(&mut ctx);
     assert_eq!(num, 42);
+}
+
+#[test]
+// graph! macro should provide ctx mutable or immutable reference wherever is required.
+fn e2e_graph_macro_wires_nodes_ctx() {
+    let mut ctx = Context::default();
+
+    node! {
+        fn get_mutable_ctx(ctx: &mut Context) {
+            ctx.a_number = 42;
+        }
+    }
+
+    node! {
+        fn extract_from_ctx(ctx: &Context) -> u32 {
+            ctx.a_number
+        }
+    }
+
+    node! {
+        fn assert_ctx(a_number: u32, ctx: &Context) {
+            assert_eq!(a_number, ctx.a_number)
+        }
+    }
+
+    node! {
+        fn assert_ctx_2(ctx: &Context, a_number: u32) {
+            assert_eq!(a_number, ctx.a_number)
+        }
+    }
+
+    graph! {
+        #[metadata(context = Context)]
+        CtxGraph {
+            GetMutableCtx() >>
+            ExtractFromCtx() -> (a_number) >>
+            AssertCtx(a_number) & AssertCtx2(a_number)
+        }
+    }
+
+    CtxGraph::__graphio_run(&mut ctx);
 }
