@@ -81,8 +81,8 @@ fn e2e_graph_macro_wires_ctx() {
 }
 
 #[test]
-// graph! macro should allow conditional branching using @if modifier
-fn e2e_graph_conditional() {
+// graph! macro should allow conditional branching using @if modifier based on ctx.
+fn e2e_graph_branching_borrow() {
     let mut ctx = Context::default();
 
     node! {
@@ -117,6 +117,53 @@ fn e2e_graph_conditional() {
                 on: |ctx: &Context| ctx.status,
                 routes: {
                     Status::Success => OnSuccess(&status),
+                    Status::Fail => OnFail(),
+                    Status::Retry => OnRetry(),
+                }
+            }
+        }
+    }
+
+    ConditionalGraph::__graphio_run(&mut ctx);
+}
+
+#[test]
+// graph! macro should allow conditional branching using @if modifier based on ctx.
+fn e2e_graph_branching_move() {
+    let mut ctx = Context::default();
+
+    node! {
+        fn get_operation_status() -> Status {
+            Status::Success
+        }
+    }
+
+    node! {
+        fn on_success(status: Status) {
+            assert_eq!(status, Status::Success)
+        }
+    }
+
+    node! {
+        fn on_fail() {
+            panic!("Graph branching failed")
+        }
+    }
+
+    node! {
+        fn on_retry() {
+            panic!("Graph branching failed")
+        }
+    }
+
+    graph! {
+        #[metadata(context = Context)]
+        ConditionalGraph {
+            GetOperationStatus() -> (status) >>
+            @if {
+                on: |status: Status| status,
+                routes: {
+                    Status::Success => OnSuccess(status),
                     Status::Fail => OnFail(),
                     Status::Retry => OnRetry(),
                 }

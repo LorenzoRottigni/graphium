@@ -8,6 +8,11 @@ use crate::shared::{
     fresh_ident, is_graph_run_path,
 };
 
+enum SelectorParam {
+    Ctx { mutable: bool },
+    Artifact { ident: syn::Ident, borrowed: bool },
+}
+
 // Graph expansion owns the interesting part of the project.
 // It reads the parsed graph IR and emits hop-scoped Rust code:
 // - each `>>` creates a temporary payload
@@ -689,6 +694,10 @@ fn get_route_node_expr(
     outputs.borrowed = exit_borrowed;
 
     let on_expr = &route.on;
+    let selector_params = parse_selector_params(on_expr);
+    let selector_tokens = build_selector_bindings(&selector_params, incoming, counter);
+    let selector_call = build_selector_call(on_expr, &selector_tokens.args, selector_tokens.is_empty);
+    let selector_bindings = &selector_tokens.bindings;
     let mut arms = Vec::new();
     for ((key, node), shape) in route.routes.iter().zip(branch_shapes.iter()) {
         // Route branches are exclusive: only one branch runs, so inputs are
@@ -716,7 +725,8 @@ fn get_route_node_expr(
     GeneratedExpr {
         tokens: quote! {
             #( #output_decl_tokens )*
-            match (#on_expr)(ctx) {
+            #( #selector_bindings )*
+            match #selector_call {
                 #( #arms, )*
             }
         },
@@ -824,6 +834,7 @@ fn analyze_expr(node: &NodeExpr) -> ExprShape {
                 .collect();
             let mut entry_usage = UsageMap::new();
             let mut entry_borrowed = BTreeSet::new();
+            let selector_params = parse_selector_params(&route.on);
 
             // A route only executes one branch, so from the caller's point of
             // view an artifact is required at most once at route entry.
@@ -833,6 +844,16 @@ fn analyze_expr(node: &NodeExpr) -> ExprShape {
                 }
                 for artifact in required_borrowed(shape) {
                     entry_borrowed.insert(artifact);
+                }
+            }
+
+            for param in selector_params {
+                if let SelectorParam::Artifact { ident, borrowed } = param {
+                    if borrowed {
+                        entry_borrowed.insert(ident.to_string());
+                    } else {
+                        entry_usage.entry(ident.to_string()).or_insert(1);
+                    }
                 }
             }
 
@@ -979,4 +1000,127 @@ fn collect_route_borrowed(shapes: &[ExprShape]) -> BTreeSet<String> {
         }
     }
     borrowed
+}
+
+struct SelectorBindings {
+    bindings: Vec<proc_macro2::TokenStream>,
+    args: Vec<proc_macro2::TokenStream>,
+    is_empty: bool,
+}
+
+fn parse_selector_params(on: &syn::Expr) -> Vec<SelectorParam> {
+    let syn::Expr::Closure(closure) = on else {
+        return Vec::new();
+    };
+
+    let mut params = Vec::new();
+    for input in &closure.inputs {
+        match input {
+            syn::Pat::Type(pat_type) => {
+                let syn::Pat::Ident(pat_ident) = &*pat_type.pat else {
+                    panic!("selector parameters must be identifiers");
+                };
+                let name = pat_ident.ident.to_string();
+                if name == "ctx" || name == "_ctx" {
+                    let mutable = matches!(&*pat_type.ty, syn::Type::Reference(r) if r.mutability.is_some());
+                    params.push(SelectorParam::Ctx { mutable });
+                } else {
+                    let borrowed = matches!(&*pat_type.ty, syn::Type::Reference(_));
+                    params.push(SelectorParam::Artifact {
+                        ident: pat_ident.ident.clone(),
+                        borrowed,
+                    });
+                }
+            }
+            syn::Pat::Ident(pat_ident) => {
+                let name = pat_ident.ident.to_string();
+                if name == "ctx" || name == "_ctx" {
+                    params.push(SelectorParam::Ctx { mutable: false });
+                } else {
+                    params.push(SelectorParam::Artifact {
+                        ident: pat_ident.ident.clone(),
+                        borrowed: false,
+                    });
+                }
+            }
+            _ => panic!("selector parameters must be identifiers"),
+        }
+    }
+
+    params
+}
+
+fn build_selector_bindings(
+    params: &[SelectorParam],
+    incoming: &Payload,
+    counter: &mut usize,
+) -> SelectorBindings {
+    let mut bindings = Vec::new();
+    let mut args = Vec::new();
+    let mut has_borrowed = false;
+    let mut wants_mut_ctx = false;
+
+    for param in params {
+        match param {
+            SelectorParam::Ctx { mutable } => {
+                if *mutable {
+                    wants_mut_ctx = true;
+                }
+                if *mutable {
+                    args.push(quote! { ctx });
+                } else {
+                    args.push(quote! { &*ctx });
+                }
+            }
+            SelectorParam::Artifact { ident, borrowed } => {
+                let artifact_name = ident.to_string();
+                if *borrowed {
+                    has_borrowed = true;
+                    args.push(quote! { &ctx.#ident });
+                } else {
+                    let source = incoming
+                        .get_owned(&artifact_name)
+                        .unwrap_or_else(|| panic!("missing artifact `{artifact_name}` for @if selector"));
+                    let arg_ident = fresh_ident(counter, "selector_arg", &artifact_name);
+                    bindings.push(quote! {
+                        let #arg_ident = ::graphio::clone_artifact(
+                            #source
+                                .as_ref()
+                                .unwrap_or_else(|| panic!(concat!("missing artifact `", #artifact_name, "`")))
+                        );
+                    });
+                    args.push(quote! { #arg_ident });
+                }
+            }
+        }
+    }
+
+    if has_borrowed && wants_mut_ctx {
+        panic!("@if selector cannot take `&mut ctx` and borrowed artifacts at the same time");
+    }
+
+    let is_empty = params.is_empty();
+    SelectorBindings {
+        bindings,
+        args,
+        is_empty,
+    }
+}
+
+fn build_selector_call(
+    on_expr: &syn::Expr,
+    args: &[proc_macro2::TokenStream],
+    is_empty: bool,
+) -> proc_macro2::TokenStream {
+    if let syn::Expr::Closure(closure) = on_expr {
+        if closure.inputs.is_empty() {
+            return quote! { (#on_expr)() };
+        }
+    }
+
+    if is_empty {
+        quote! { (#on_expr)(ctx) }
+    } else {
+        quote! { (#on_expr)(#( #args ),*) }
+    }
 }
