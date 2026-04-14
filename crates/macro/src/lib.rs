@@ -1,7 +1,6 @@
 use proc_macro::TokenStream;
 
 mod graph;
-mod graph_runtime;
 mod node;
 mod parser;
 mod shared;
@@ -18,11 +17,4 @@ pub fn node(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn graph(input: TokenStream) -> TokenStream {
     graph::expand(input)
-}
-
-/// Expands a `graph_runtime! { ... }` definition into a runtime graph value
-/// factory with node/edge metadata for external execution.
-#[proc_macro]
-pub fn graph_runtime(input: TokenStream) -> TokenStream {
-    graph_runtime::expand(input)
 }
