@@ -758,6 +758,13 @@ fn get_route_node_expr(
             }
         });
     }
+    if route.is_if_chain {
+        arms.push(quote! {
+            _ => {
+                panic!("`@if` selector produced an invalid branch index");
+            }
+        });
+    }
 
     GeneratedExpr {
         tokens: quote! {

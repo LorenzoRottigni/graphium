@@ -260,3 +260,244 @@ fn e2e_graph_match_outputs() {
     let result = MatchOutputGraph::__graphio_run(&mut ctx);
     assert_eq!(result, 42);
 }
+
+#[test]
+// graph! macro should allow @if/@elif/@else branching with outputs.
+fn e2e_graph_if_elif_else_outputs() {
+    let mut ctx = Context::default();
+
+    node! {
+        fn get_operation_status() -> Status {
+            Status::Success
+        }
+    }
+
+    node! {
+        fn on_success() -> u32 {
+            10
+        }
+    }
+
+    node! {
+        fn on_fail() -> u32 {
+            20
+        }
+    }
+
+    node! {
+        fn on_retry() -> u32 {
+            30
+        }
+    }
+
+    graph! {
+        #[metadata(context = Context, outputs = (result: u32))]
+        IfGraph {
+            GetOperationStatus() -> (status) >>
+            @if |status: Status| status == Status::Success -> (result) {
+                OnSuccess() -> (result)
+            }
+            @elif |status: Status| status == Status::Fail {
+                OnFail() -> (result)
+            }
+            @else {
+                OnRetry() -> (result)
+            }
+        }
+    }
+
+    let result = IfGraph::__graphio_run(&mut ctx);
+    assert_eq!(result, 10);
+}
+
+#[test]
+// graph! macro should allow @if/@elif/@else branching with borrowed artifacts.
+fn e2e_graph_if_elif_else_borrow() {
+    let mut ctx = Context::default();
+
+    node! {
+        fn get_operation_status() -> Status {
+            Status::Success
+        }
+    }
+
+    node! {
+        fn on_success(status: &Status) {
+            assert_eq!(*status, Status::Success)
+        }
+    }
+
+    node! {
+        fn on_fail() {
+            panic!("Graph branching failed")
+        }
+    }
+
+    node! {
+        fn on_retry() {
+            panic!("Graph branching failed")
+        }
+    }
+
+    graph! {
+        #[metadata(context = Context)]
+        IfBorrowGraph {
+            GetOperationStatus() -> (&status) >>
+            @if |ctx: &Context| ctx.status == Status::Success {
+                OnSuccess(&status)
+            }
+            @elif |ctx: &Context| ctx.status == Status::Fail {
+                OnFail()
+            }
+            @else {
+                OnRetry()
+            }
+        }
+    }
+
+    IfBorrowGraph::__graphio_run(&mut ctx);
+}
+
+#[test]
+// graph! macro should allow @if/@elif/@else branching with moved artifacts.
+fn e2e_graph_if_elif_else_move() {
+    let mut ctx = Context::default();
+
+    node! {
+        fn get_operation_status() -> Status {
+            Status::Success
+        }
+    }
+
+    node! {
+        fn on_success(status: Status) {
+            assert_eq!(status, Status::Success)
+        }
+    }
+
+    node! {
+        fn on_fail() {
+            panic!("Graph branching failed")
+        }
+    }
+
+    node! {
+        fn on_retry() {
+            panic!("Graph branching failed")
+        }
+    }
+
+    graph! {
+        #[metadata(context = Context)]
+        IfMoveGraph {
+            GetOperationStatus() -> (status) >>
+            @if |status: Status| status == Status::Success {
+                OnSuccess(status)
+            }
+            @elif |status: Status| status == Status::Fail {
+                OnFail()
+            }
+            @else {
+                OnRetry()
+            }
+        }
+    }
+
+    IfMoveGraph::__graphio_run(&mut ctx);
+}
+
+#[test]
+// graph! macro should allow nested @if/@elif/@else branching.
+fn e2e_graph_if_elif_else_nested() {
+    let mut ctx = Context::default();
+
+    node! {
+        fn get_operation_status() -> Status {
+            Status::Success
+        }
+    }
+
+    node! {
+        fn on_success(status: Status) {
+            assert_eq!(status, Status::Success)
+        }
+    }
+
+    node! {
+        fn on_fail() {
+            panic!("Graph branching failed")
+        }
+    }
+
+    node! {
+        fn on_retry() {
+            panic!("Graph branching failed")
+        }
+    }
+
+    graph! {
+        #[metadata(context = Context)]
+        IfNestedGraph {
+            GetOperationStatus() -> (status) >>
+            @if |status: Status| status == Status::Success {
+                @if |ctx: &Context| ctx.status == Status::Success {
+                    OnSuccess(status)
+                }
+                @elif |ctx: &Context| ctx.status == Status::Fail {
+                    OnFail()
+                }
+                @else {
+                    OnRetry()
+                }
+            }
+            @elif |status: Status| status == Status::Fail {
+                OnFail()
+            }
+            @else {
+                OnRetry()
+            }
+        }
+    }
+
+    IfNestedGraph::__graphio_run(&mut ctx);
+}
+
+#[test]
+// graph! macro should allow @if with multiple selector params.
+fn e2e_graph_if_multiple_params() {
+    let mut ctx = Context::default();
+
+    node! {
+        fn get_inputs() -> (Status, u32) {
+            (Status::Success, 2)
+        }
+    }
+
+    node! {
+        fn on_success(status: Status, count: u32) {
+            assert_eq!(status, Status::Success);
+            assert_eq!(count, 2);
+        }
+    }
+
+    node! {
+        fn on_fail() {
+            panic!("Graph branching failed")
+        }
+    }
+
+    graph! {
+        #[metadata(context = Context)]
+        IfMultiParamGraph {
+            GetInputs() -> (status, count) >>
+            @if |status: Status, count: u32| status == Status::Success && count == 2 {
+                OnSuccess(status, count)
+            }
+            @else {
+                OnFail()
+            }
+        }
+    }
+
+    IfMultiParamGraph::__graphio_run(&mut ctx);
+}

@@ -50,33 +50,39 @@ fn parse_parallel(input: ParseStream) -> Result<NodeExpr> {
     }
 }
 
-/// Parses a single graph atom: either a node call or a `@match { ... }`
+/// Parses a single graph atom: either a node call, `@match`, or `@if`
 /// expression.
 fn parse_primary(input: ParseStream) -> Result<NodeExpr> {
     if input.peek(Token![@]) {
         input.parse::<Token![@]>()?;
-        if !input.peek(Token![match]) {
-            return Err(input.error("expected `match` after `@`"));
-        }
-        input.parse::<Token![match]>()?;
+        if input.peek(Token![match]) {
+            input.parse::<Token![match]>()?;
 
-        let on_expr: Expr = parse_match_on_expr(input)?;
-        let (outputs, output_borrows) = if input.peek(Token![->]) {
-            input.parse::<Token![->]>()?;
-            let out;
-            syn::parenthesized!(out in input);
-            parse_ident_list(&out)?
-        } else {
-            (Vec::new(), Vec::new())
-        };
-        let content;
-        syn::braced!(content in input);
-        return Ok(NodeExpr::Route(parse_match_routes(
-            &content,
-            on_expr,
-            outputs,
-            output_borrows,
-        )?));
+            let on_expr: Expr = parse_match_on_expr(input)?;
+            let (outputs, output_borrows) = if input.peek(Token![->]) {
+                input.parse::<Token![->]>()?;
+                let out;
+                syn::parenthesized!(out in input);
+                parse_ident_list(&out)?
+            } else {
+                (Vec::new(), Vec::new())
+            };
+            let content;
+            syn::braced!(content in input);
+            return Ok(NodeExpr::Route(parse_match_routes(
+                &content,
+                on_expr,
+                outputs,
+                output_borrows,
+            )?));
+        }
+
+        if input.peek(Token![if]) {
+            input.parse::<Token![if]>()?;
+            return Ok(NodeExpr::Route(parse_if_chain(input)?));
+        }
+
+        return Err(input.error("expected `match` or `if` after `@`"));
     }
 
     Ok(NodeExpr::Single(input.parse()?))
@@ -195,6 +201,7 @@ impl Parse for RouteExpr {
             routes,
             outputs: Vec::new(),
             output_borrows: Vec::new(),
+            is_if_chain: false,
         })
     }
 }
@@ -220,6 +227,7 @@ fn parse_match_routes(
         routes,
         outputs,
         output_borrows,
+        is_if_chain: false,
     })
 }
 
@@ -239,6 +247,151 @@ fn parse_match_on_expr(input: ParseStream) -> Result<Expr> {
     let expr: Expr = syn::parse2(tokens)?;
     input.advance_to(&fork);
     Ok(expr)
+}
+
+fn parse_if_chain(input: ParseStream) -> Result<RouteExpr> {
+    let (cond_expr, cond_is_closure, cond_params, cond_args) = parse_if_condition(input)?;
+    let (outputs, output_borrows) = if input.peek(Token![->]) {
+        input.parse::<Token![->]>()?;
+        let out;
+        syn::parenthesized!(out in input);
+        parse_ident_list(&out)?
+    } else {
+        (Vec::new(), Vec::new())
+    };
+    let content;
+    syn::braced!(content in input);
+    let then_branch: NodeExpr = content.parse()?;
+
+    let mut conditions = vec![(cond_expr, cond_is_closure)];
+    let mut branches = vec![then_branch];
+
+    while input.peek(Token![@]) {
+        let fork = input.fork();
+        fork.parse::<Token![@]>()?;
+        if fork.peek(Token![else]) {
+            input.parse::<Token![@]>()?;
+            input.parse::<Token![else]>()?;
+            let content;
+            syn::braced!(content in input);
+            let branch: NodeExpr = content.parse()?;
+            branches.push(branch);
+            break;
+        }
+
+        let ident: Ident = fork.parse()?;
+        if ident == "elif" {
+            input.parse::<Token![@]>()?;
+            input.parse::<Ident>()?;
+            let (expr, is_closure, _params, _args) = parse_if_condition(input)?;
+            let content;
+            syn::braced!(content in input);
+            let branch: NodeExpr = content.parse()?;
+            conditions.push((expr, is_closure));
+            branches.push(branch);
+            continue;
+        }
+        break;
+    }
+
+    if branches.len() != conditions.len() + 1 {
+        return Err(input.error("`@if` requires a trailing `@else` branch"));
+    }
+
+    // Build selector closure.
+    let use_closure = conditions.iter().any(|(_, is_closure)| *is_closure);
+    if use_closure && !conditions.iter().all(|(_, is_closure)| *is_closure) {
+        return Err(input.error("all `@if/@elif` conditions must be closures when one is a closure"));
+    }
+
+    let cond_calls: Vec<proc_macro2::TokenStream> = conditions
+        .iter()
+        .map(|(expr, is_closure)| {
+            if *is_closure {
+                quote::quote! { (#expr)(#( #cond_args ),*) }
+            } else {
+                quote::quote! { (#expr) }
+            }
+        })
+        .collect();
+
+    let mut selector_body = proc_macro2::TokenStream::new();
+    for (idx, call) in cond_calls.iter().enumerate() {
+        let branch_idx = idx as u32;
+        if idx == 0 {
+            selector_body.extend(quote::quote! { if #call { #branch_idx } });
+        } else {
+            selector_body.extend(quote::quote! { else if #call { #branch_idx } });
+        }
+    }
+    let else_idx = cond_calls.len() as u32;
+    selector_body.extend(quote::quote! { else { #else_idx } });
+
+    let on_expr_tokens = if use_closure {
+        quote::quote! { |#cond_params| { #selector_body } }
+    } else {
+        quote::quote! { || { #selector_body } }
+    };
+    let on_expr: Expr = syn::parse2(on_expr_tokens)?;
+
+    let routes: Vec<(Expr, NodeExpr)> = branches
+        .into_iter()
+        .enumerate()
+        .map(|(idx, branch)| {
+            let lit = syn::LitInt::new(&idx.to_string(), proc_macro2::Span::call_site());
+            let key = Expr::Lit(syn::ExprLit {
+                attrs: Vec::new(),
+                lit: syn::Lit::Int(lit),
+            });
+            (key, branch)
+        })
+        .collect();
+
+    Ok(RouteExpr {
+        on: on_expr,
+        routes,
+        outputs,
+        output_borrows,
+        is_if_chain: true,
+    })
+}
+
+fn parse_if_condition(
+    input: ParseStream,
+) -> Result<(Expr, bool, proc_macro2::TokenStream, Vec<proc_macro2::TokenStream>)> {
+    let expr: Expr = parse_match_on_expr(input)?;
+    if let Expr::Closure(closure) = &expr {
+        let mut params = proc_macro2::TokenStream::new();
+        let mut args = Vec::new();
+        for (idx, input) in closure.inputs.iter().enumerate() {
+            if idx > 0 {
+                params.extend(quote::quote! { , });
+            }
+            params.extend(quote::quote! { #input });
+            let ident = match input {
+                syn::Pat::Ident(pat_ident) => pat_ident.ident.clone(),
+                syn::Pat::Type(pat_type) => {
+                    let syn::Pat::Ident(pat_ident) = &*pat_type.pat else {
+                        return Err(syn::Error::new_spanned(
+                            pat_type,
+                            "selector parameters must be identifiers",
+                        ));
+                    };
+                    pat_ident.ident.clone()
+                }
+                _ => {
+                    return Err(syn::Error::new_spanned(
+                        input,
+                        "selector parameters must be identifiers",
+                    ))
+                }
+            };
+            args.push(quote::quote! { #ident });
+        }
+        return Ok((expr, true, params, args));
+    }
+
+    Ok((expr, false, proc_macro2::TokenStream::new(), Vec::new()))
 }
 
 impl Parse for GraphInput {

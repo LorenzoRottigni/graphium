@@ -47,6 +47,7 @@ pub struct RouteExpr {
     pub routes: Vec<(Expr, NodeExpr)>,
     pub outputs: Vec<Ident>,
     pub output_borrows: Vec<bool>,
+    pub is_if_chain: bool,
 }
 
 pub struct GraphInput {
