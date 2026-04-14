@@ -48,16 +48,15 @@ fn parse_parallel(input: ParseStream) -> Result<NodeExpr> {
     }
 }
 
-/// Parses a single graph atom: either a node call or a `@route { ... }`
+/// Parses a single graph atom: either a node call or a `@if { ... }`
 /// expression.
 fn parse_primary(input: ParseStream) -> Result<NodeExpr> {
     if input.peek(Token![@]) {
         input.parse::<Token![@]>()?;
-        let ident: Ident = input.parse()?;
-
-        if ident != "route" {
-            return Err(input.error("expected `route` after `@`"));
+        if !input.peek(Token![if]) {
+            return Err(input.error("expected `if` after `@`"));
         }
+        input.parse::<Token![if]>()?;
 
         let content;
         syn::braced!(content in input);

@@ -45,7 +45,7 @@ graph! {
     DataGraph {
         crate::node::GetData() >>
         crate::node::ValidateData() >>
-        @route {
+        @if {
             on: |ctx: &mut Context| Status::Invalid,
             routes: {
                 Status::Valid => crate::node::PrintData() & crate::node::SendEmail(),
@@ -95,7 +95,7 @@ graph! {
     schema: [
         crate::node::get_data >>
         crate::node::validate_data >>
-        @route {
+        @if {
             on: |ctx: &mut Context| Status::Invalid,
             routes: {
                 Status::Valid => crate::node::print_data & crate::node::send_email,

@@ -1,11 +1,11 @@
 pub mod data;
 
-use data::ctx::Context;
+use data::ctx::{Context, Status};
 use graphio_macro::{graph, node};
 
 /// graph! macro should propagate owned artifacts across nodes
 #[test]
-fn e2e_graph_macro_owned_artifacts() {
+fn e2e_graph_macro_moves_artifacts() {
     let mut ctx = Context::default();
 
     graph! {
@@ -23,7 +23,7 @@ fn e2e_graph_macro_owned_artifacts() {
 
 #[test]
 /// graph! macro should propagate borrowed artifacts across nodes using context
-fn e2e_graph_macro_borrowed_artifacts() {
+fn e2e_graph_macro_borrows_artifacts() {
     let mut ctx = Context::default();
 
     graph! {
@@ -41,7 +41,7 @@ fn e2e_graph_macro_borrowed_artifacts() {
 
 #[test]
 // graph! macro should provide ctx mutable or immutable reference wherever is required.
-fn e2e_graph_macro_wires_nodes_ctx() {
+fn e2e_graph_macro_wires_ctx() {
     let mut ctx = Context::default();
 
     node! {
@@ -78,4 +78,51 @@ fn e2e_graph_macro_wires_nodes_ctx() {
     }
 
     CtxGraph::__graphio_run(&mut ctx);
+}
+
+#[test]
+// graph! macro should allow conditional branching using @if modifier
+fn e2e_graph_conditional() {
+    let mut ctx = Context::default();
+
+    node! {
+        fn get_operation_status() -> Status {
+            Status::Success
+        }
+    }
+
+    node! {
+        fn on_success(status: &Status) {
+            assert_eq!(*status, Status::Success)
+        }
+    }
+
+    node! {
+        fn on_fail() {
+            panic!("Graph branching failed")
+        }
+    }
+
+    node! {
+        fn on_retry() {
+            panic!("Graph branching failed")
+        }
+    }
+
+    graph! {
+        #[metadata(context = Context)]
+        ConditionalGraph {
+            GetOperationStatus() -> (&status) >>
+            @if {
+                on: |ctx: &Context| ctx.status,
+                routes: {
+                    Status::Success => OnSuccess(&status),
+                    Status::Fail => OnFail(),
+                    Status::Retry => OnRetry(),
+                }
+            }
+        }
+    }
+
+    ConditionalGraph::__graphio_run(&mut ctx);
 }
