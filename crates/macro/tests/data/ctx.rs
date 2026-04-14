@@ -1,4 +1,4 @@
 #[derive(Default)]
 pub struct Context {
-    pub data: String,
+    pub a: u32,
 }

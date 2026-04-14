@@ -53,7 +53,7 @@ node! {
 }
 
 node! {
-    pub fn print_one(_ctx: &mut Context, a: u32) {
+    pub fn print_number(_ctx: &mut Context, a: u32) {
         println!("{}", a)
     }
 }
@@ -61,5 +61,23 @@ node! {
 node! {
     pub fn panic_with(_ctx: &mut Context, a: u32) {
         panic!("Panic with {}", a)
+    }
+}
+
+node! {
+    pub fn pipe_number(_ctx: &mut Context, a: u32) -> u32 {
+        a
+    }
+}
+
+node! {
+    pub fn store_number(ctx: &mut Context, a: u32) {
+        ctx.a = a
+    }
+}
+
+node! {
+    pub fn take_ownership(ctx: &mut Context) -> u32 {
+        ctx.a
     }
 }
