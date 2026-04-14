@@ -265,6 +265,8 @@ pub fn expand(input: TokenStream) -> TokenStream {
         }
     };
 
+    let graph_def_tokens = graph_definition_tokens(&name, &nodes);
+
     let expanded = quote! {
         pub struct #name;
 
@@ -282,8 +284,18 @@ pub fn expand(input: TokenStream) -> TokenStream {
             ) #run_return_sig {
                 #run_body_async
             }
+
+            pub fn graph_def() -> ::graphio::GraphDef {
+                #graph_def_tokens
+            }
         }
         #graph_impl
+
+        impl ::graphio::GraphDefProvider for #name {
+            fn graph_def() -> ::graphio::GraphDef {
+                Self::graph_def()
+            }
+        }
     };
 
     TokenStream::from(expanded)
@@ -1770,4 +1782,120 @@ fn build_selector_call(
     } else {
         quote! { (#on_expr)(#( #args ),*) }
     }
+}
+
+fn graph_definition_tokens(name: &syn::Ident, nodes: &NodeExpr) -> proc_macro2::TokenStream {
+    let steps = node_expr_steps_tokens(nodes);
+    quote! {
+        ::graphio::GraphDef {
+            name: stringify!(#name),
+            steps: vec![ #( #steps ),* ],
+        }
+    }
+}
+
+fn node_expr_steps_tokens(node: &NodeExpr) -> Vec<proc_macro2::TokenStream> {
+    match node {
+        NodeExpr::Single(call) => vec![node_call_step_tokens(call)],
+        NodeExpr::Sequence(nodes) => nodes
+            .iter()
+            .flat_map(|child| node_expr_steps_tokens(child))
+            .collect(),
+        NodeExpr::Parallel(nodes) => {
+            let branches: Vec<_> = nodes
+                .iter()
+                .map(|child| {
+                    let steps = node_expr_steps_tokens(child);
+                    quote! { vec![ #( #steps ),* ] }
+                })
+                .collect();
+            vec![quote! {
+                ::graphio::GraphStep::Parallel {
+                    branches: vec![ #( #branches ),* ],
+                }
+            }]
+        }
+        NodeExpr::Route(route) => {
+            let on = &route.on;
+            let cases: Vec<_> = route
+                .routes
+                .iter()
+                .map(|(key, node)| {
+                    let steps = node_expr_steps_tokens(node);
+                    quote! {
+                        ::graphio::GraphCase {
+                            label: stringify!(#key),
+                            steps: vec![ #( #steps ),* ],
+                        }
+                    }
+                })
+                .collect();
+            vec![quote! {
+                ::graphio::GraphStep::Route {
+                    on: stringify!(#on),
+                    cases: vec![ #( #cases ),* ],
+                }
+            }]
+        }
+        NodeExpr::While(while_expr) => {
+            let condition = &while_expr.condition;
+            let body_steps = node_expr_steps_tokens(&while_expr.body);
+            vec![quote! {
+                ::graphio::GraphStep::While {
+                    condition: stringify!(#condition),
+                    body: vec![ #( #body_steps ),* ],
+                }
+            }]
+        }
+        NodeExpr::Loop(loop_expr) => {
+            let body_steps = node_expr_steps_tokens(&loop_expr.body);
+            vec![quote! {
+                ::graphio::GraphStep::Loop {
+                    body: vec![ #( #body_steps ),* ],
+                }
+            }]
+        }
+        NodeExpr::Break => vec![quote! { ::graphio::GraphStep::Break }],
+    }
+}
+
+fn node_call_step_tokens(call: &NodeCall) -> proc_macro2::TokenStream {
+    let node_path = &call.path;
+    let nested_graph_path = is_graph_run_path(node_path).then(|| graph_type_path(node_path));
+    let input_tokens = artifact_list_tokens(&call.inputs, &call.input_borrows);
+    let output_tokens = artifact_list_tokens(&call.outputs, &call.output_borrows);
+    if let Some(graph_path) = nested_graph_path {
+        quote! {
+            ::graphio::GraphStep::Nested {
+                graph: Box::new(<#graph_path as ::graphio::GraphDefProvider>::graph_def()),
+                inputs: vec![ #( #input_tokens ),* ],
+                outputs: vec![ #( #output_tokens ),* ],
+            }
+        }
+    } else {
+        quote! {
+            ::graphio::GraphStep::Node {
+                name: stringify!(#node_path),
+                inputs: vec![ #( #input_tokens ),* ],
+                outputs: vec![ #( #output_tokens ),* ],
+            }
+        }
+    }
+}
+
+fn artifact_list_tokens(
+    idents: &[syn::Ident],
+    borrows: &[bool],
+) -> Vec<proc_macro2::TokenStream> {
+    idents
+        .iter()
+        .zip(borrows.iter())
+        .map(|(ident, borrowed)| {
+            if *borrowed {
+                quote! { concat!("&", stringify!(#ident)) }
+            } else {
+                quote! { stringify!(#ident) }
+            }
+        })
+        .collect()
 }

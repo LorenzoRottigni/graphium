@@ -2,6 +2,10 @@
 //
 // `graph!` emits fully inlined orchestration code.
 
+pub mod visualizer;
+
+pub use visualizer::{GraphCase, GraphDef, GraphDefProvider, GraphStep, Visualizer};
+
 pub trait Artifact: Clone + 'static {}
 
 impl<T> Artifact for T where T: Clone + 'static {}
