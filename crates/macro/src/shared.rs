@@ -45,6 +45,8 @@ pub enum NodeExpr {
 pub struct RouteExpr {
     pub on: Expr,
     pub routes: Vec<(Expr, NodeExpr)>,
+    pub outputs: Vec<Ident>,
+    pub output_borrows: Vec<bool>,
 }
 
 pub struct GraphInput {

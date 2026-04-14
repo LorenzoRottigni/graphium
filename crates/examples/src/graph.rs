@@ -45,13 +45,10 @@ graph! {
     DataGraph {
         crate::node::GetData() >>
         crate::node::ValidateData() >>
-        @if {
-            on: |ctx: &mut Context| Status::Invalid,
-            routes: {
-                Status::Valid => crate::node::PrintData() & crate::node::SendEmail(),
-                Status::Invalid => crate::node::PrintError(),
-                Status::NeedsReview => crate::node::SendReview(),
-            }
+        @match Status::Invalid {
+            Status::Valid => crate::node::PrintData() & crate::node::SendEmail(),
+            Status::Invalid => crate::node::PrintError(),
+            Status::NeedsReview => crate::node::SendReview(),
         }
         >>
         crate::node::DisconnectFromDb()
@@ -95,13 +92,10 @@ graph! {
     schema: [
         crate::node::get_data >>
         crate::node::validate_data >>
-        @if {
-            on: |ctx: &mut Context| Status::Invalid,
-            routes: {
-                Status::Valid => crate::node::print_data & crate::node::send_email,
-                Status::Invalid => crate::node::print_error,
-                Status::NeedsReview => crate::node::send_review,
-            }
+        @match Status::Invalid {
+            Status::Valid => crate::node::print_data & crate::node::send_email,
+            Status::Invalid => crate::node::print_error,
+            Status::NeedsReview => crate::node::send_review,
         }
         >>
         @loop {

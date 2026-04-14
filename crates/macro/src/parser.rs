@@ -1,8 +1,9 @@
-use quote::quote;
 use syn::{
     Expr, Ident, Path, Result, Token, Type,
     parse::{Parse, ParseStream},
 };
+use syn::parse::discouraged::Speculative;
+use proc_macro2::TokenTree;
 
 use crate::shared::{GraphInput, NodeCall, NodeExpr, RouteExpr};
 
@@ -49,19 +50,33 @@ fn parse_parallel(input: ParseStream) -> Result<NodeExpr> {
     }
 }
 
-/// Parses a single graph atom: either a node call or a `@if { ... }`
+/// Parses a single graph atom: either a node call or a `@match { ... }`
 /// expression.
 fn parse_primary(input: ParseStream) -> Result<NodeExpr> {
     if input.peek(Token![@]) {
         input.parse::<Token![@]>()?;
-        if !input.peek(Token![if]) {
-            return Err(input.error("expected `if` after `@`"));
+        if !input.peek(Token![match]) {
+            return Err(input.error("expected `match` after `@`"));
         }
-        input.parse::<Token![if]>()?;
+        input.parse::<Token![match]>()?;
 
+        let on_expr: Expr = parse_match_on_expr(input)?;
+        let (outputs, output_borrows) = if input.peek(Token![->]) {
+            input.parse::<Token![->]>()?;
+            let out;
+            syn::parenthesized!(out in input);
+            parse_ident_list(&out)?
+        } else {
+            (Vec::new(), Vec::new())
+        };
         let content;
         syn::braced!(content in input);
-        return Ok(NodeExpr::Route(content.parse()?));
+        return Ok(NodeExpr::Route(parse_match_routes(
+            &content,
+            on_expr,
+            outputs,
+            output_borrows,
+        )?));
     }
 
     Ok(NodeExpr::Single(input.parse()?))
@@ -162,12 +177,7 @@ impl Parse for RouteExpr {
                     syn::braced!(content in input);
 
                     while !content.is_empty() {
-                        let key_expr: Expr = if content.peek(Token![else]) {
-                            content.parse::<Token![else]>()?;
-                            Expr::Verbatim(quote! { _ })
-                        } else {
-                            content.parse()?
-                        };
+                        let key_expr: Expr = content.parse()?;
                         content.parse::<Token![=>]>()?;
                         let value: NodeExpr = content.parse()?;
                         routes.push((key_expr, value));
@@ -183,8 +193,52 @@ impl Parse for RouteExpr {
         Ok(RouteExpr {
             on: on.ok_or_else(|| input.error("missing `on`"))?,
             routes,
+            outputs: Vec::new(),
+            output_borrows: Vec::new(),
         })
     }
+}
+
+fn parse_match_routes(
+    content: ParseStream,
+    on: Expr,
+    outputs: Vec<Ident>,
+    output_borrows: Vec<bool>,
+) -> Result<RouteExpr> {
+    let mut routes: Vec<(Expr, NodeExpr)> = Vec::new();
+
+    while !content.is_empty() {
+        let key_expr: Expr = content.parse()?;
+        content.parse::<Token![=>]>()?;
+        let value: NodeExpr = content.parse()?;
+        routes.push((key_expr, value));
+        content.parse::<Token![,]>().ok();
+    }
+
+    Ok(RouteExpr {
+        on,
+        routes,
+        outputs,
+        output_borrows,
+    })
+}
+
+fn parse_match_on_expr(input: ParseStream) -> Result<Expr> {
+    let fork = input.fork();
+    let mut tokens = proc_macro2::TokenStream::new();
+
+    while !fork.is_empty() && !fork.peek(Token![->]) && !fork.peek(syn::token::Brace) {
+        let tt: TokenTree = fork.parse()?;
+        tokens.extend(std::iter::once(tt));
+    }
+
+    if tokens.is_empty() {
+        return Err(input.error("expected match selector expression"));
+    }
+
+    let expr: Expr = syn::parse2(tokens)?;
+    input.advance_to(&fork);
+    Ok(expr)
 }
 
 impl Parse for GraphInput {

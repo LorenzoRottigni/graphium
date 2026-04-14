@@ -13,6 +13,24 @@ enum SelectorParam {
     Artifact { ident: syn::Ident, borrowed: bool },
 }
 
+fn selector_params_for_on_expr(on: &syn::Expr) -> Vec<SelectorParam> {
+    if let syn::Expr::Closure(_closure) = on {
+        return parse_selector_params(on);
+    }
+
+    if let syn::Expr::Path(path) = on {
+        if path.qself.is_none() && path.path.segments.len() == 1 {
+            let ident = path.path.segments[0].ident.clone();
+            return vec![SelectorParam::Artifact {
+                ident,
+                borrowed: false,
+            }];
+        }
+    }
+
+    Vec::new()
+}
+
 // Graph expansion owns the interesting part of the project.
 // It reads the parsed graph IR and emits hop-scoped Rust code:
 // - each `>>` creates a temporary payload
@@ -687,14 +705,17 @@ fn get_route_node_expr(
         .iter()
         .map(|(_, node)| analyze_expr(node))
         .collect();
-    let exit_outputs = collect_route_outputs(&branch_shapes);
-    let exit_borrowed = collect_route_borrowed(&branch_shapes);
+    if !route.outputs.is_empty() {
+        validate_route_outputs(route, &branch_shapes);
+    }
+    let (exit_outputs, exit_borrowed) = route_exit_outputs(route, &branch_shapes);
 
-    let (mut outputs, output_decl_tokens) = prepare_output_slots(&exit_outputs, "route_out", counter);
+    let (mut outputs, output_decl_tokens) =
+        prepare_output_slots(&exit_outputs, "route_out", counter);
     outputs.borrowed = exit_borrowed;
 
     let on_expr = &route.on;
-    let selector_params = parse_selector_params(on_expr);
+    let selector_params = selector_params_for_on_expr(on_expr);
     let mut needed_by_branches = BTreeSet::new();
     for shape in &branch_shapes {
         for artifact in required_artifacts(shape) {
@@ -853,7 +874,7 @@ fn analyze_expr(node: &NodeExpr) -> ExprShape {
                 .collect();
             let mut entry_usage = UsageMap::new();
             let mut entry_borrowed = BTreeSet::new();
-            let selector_params = parse_selector_params(&route.on);
+            let selector_params = selector_params_for_on_expr(&route.on);
 
             // A route only executes one branch, so from the caller's point of
             // view an artifact is required at most once at route entry.
@@ -876,11 +897,13 @@ fn analyze_expr(node: &NodeExpr) -> ExprShape {
                 }
             }
 
+            let (exit_outputs, exit_borrowed) = route_exit_outputs(route, &shapes);
+
             ExprShape {
                 entry_usage,
                 entry_borrowed,
-                exit_outputs: collect_route_outputs(&shapes),
-                exit_borrowed: collect_route_borrowed(&shapes),
+                exit_outputs,
+                exit_borrowed,
             }
         }
     }
@@ -1021,6 +1044,73 @@ fn collect_route_borrowed(shapes: &[ExprShape]) -> BTreeSet<String> {
     borrowed
 }
 
+fn route_exit_outputs(
+    route: &RouteExpr,
+    shapes: &[ExprShape],
+) -> (Vec<String>, BTreeSet<String>) {
+    if route.outputs.is_empty() {
+        return (
+            collect_route_outputs(shapes),
+            collect_route_borrowed(shapes),
+        );
+    }
+
+    let mut owned = Vec::new();
+    let mut borrowed = BTreeSet::new();
+    for (output, is_borrowed) in route
+        .outputs
+        .iter()
+        .zip(route.output_borrows.iter())
+    {
+        if *is_borrowed {
+            borrowed.insert(output.to_string());
+        } else {
+            owned.push(output.to_string());
+        }
+    }
+
+    (owned, borrowed)
+}
+
+fn validate_route_outputs(route: &RouteExpr, shapes: &[ExprShape]) {
+    let mut expected_owned = BTreeSet::new();
+    let mut expected_borrowed = BTreeSet::new();
+    for (output, is_borrowed) in route
+        .outputs
+        .iter()
+        .zip(route.output_borrows.iter())
+    {
+        if *is_borrowed {
+            expected_borrowed.insert(output.to_string());
+        } else {
+            expected_owned.insert(output.to_string());
+        }
+    }
+
+    for shape in shapes {
+        for artifact in &shape.exit_outputs {
+            if !expected_owned.contains(artifact) {
+                panic!("route branch produces unexpected artifact `{artifact}`");
+            }
+        }
+        for artifact in &shape.exit_borrowed {
+            if !expected_borrowed.contains(artifact) {
+                panic!("route branch produces unexpected borrowed artifact `{artifact}`");
+            }
+        }
+        for artifact in &expected_owned {
+            if !shape.exit_outputs.contains(artifact) {
+                panic!("route branch missing required artifact `{artifact}`");
+            }
+        }
+        for artifact in &expected_borrowed {
+            if !shape.exit_borrowed.contains(artifact) {
+                panic!("route branch missing required borrowed artifact `{artifact}`");
+            }
+        }
+    }
+}
+
 struct SelectorBindings {
     bindings: Vec<proc_macro2::TokenStream>,
     args: Vec<proc_macro2::TokenStream>,
@@ -1101,7 +1191,7 @@ fn build_selector_bindings(
                     } else {
                         let source = incoming
                             .get_owned(&artifact_name)
-                            .unwrap_or_else(|| panic!("missing artifact `{artifact_name}` for @if selector"));
+                            .unwrap_or_else(|| panic!("missing artifact `{artifact_name}` for @match selector"));
                         let arg_ident = fresh_ident(counter, "selector_borrow", &artifact_name);
                         bindings.push(quote! {
                             let #arg_ident = #source
@@ -1113,7 +1203,7 @@ fn build_selector_bindings(
                 } else {
                     let source = incoming
                         .get_owned(&artifact_name)
-                        .unwrap_or_else(|| panic!("missing artifact `{artifact_name}` for @if selector"));
+                        .unwrap_or_else(|| panic!("missing artifact `{artifact_name}` for @match selector"));
                     let arg_ident = fresh_ident(counter, "selector_arg", &artifact_name);
                     if needed_by_branches.contains(&artifact_name) {
                         // If already marked borrowed, clone to avoid moving shared value.
@@ -1139,7 +1229,7 @@ fn build_selector_bindings(
     }
 
     if has_borrowed && wants_mut_ctx {
-        panic!("@if selector cannot take `&mut ctx` and borrowed artifacts at the same time");
+        panic!("@match selector cannot take `&mut ctx` and borrowed artifacts at the same time");
     }
 
     let is_empty = params.is_empty();
@@ -1159,10 +1249,19 @@ fn build_selector_call(
         if closure.inputs.is_empty() {
             return quote! { (#on_expr)() };
         }
+        return quote! { (#on_expr)(#( #args ),*) };
+    }
+
+    if !args.is_empty() {
+        if let syn::Expr::Path(path) = on_expr {
+            if path.qself.is_none() && path.path.segments.len() == 1 {
+                return quote! { #(#args)* };
+            }
+        }
     }
 
     if is_empty {
-        quote! { (#on_expr)(ctx) }
+        quote! { #on_expr }
     } else {
         quote! { (#on_expr)(#( #args ),*) }
     }

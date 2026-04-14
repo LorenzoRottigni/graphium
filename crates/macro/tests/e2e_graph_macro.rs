@@ -81,7 +81,7 @@ fn e2e_graph_macro_wires_ctx() {
 }
 
 #[test]
-// graph! macro should allow conditional branching using @if modifier based on ctx.
+// graph! macro should allow conditional branching using @match modifier based on ctx.
 fn e2e_graph_branching_borrow() {
     let mut ctx = Context::default();
 
@@ -113,13 +113,10 @@ fn e2e_graph_branching_borrow() {
         #[metadata(context = Context)]
         ConditionalGraph {
             GetOperationStatus() -> (&status) >>
-            @if {
-                on: |ctx: &Context| ctx.status,
-                routes: {
-                    Status::Success => OnSuccess(&status),
-                    Status::Fail => OnFail(),
-                    Status::Retry => OnRetry(),
-                }
+            @match ctx.status {
+                Status::Success => OnSuccess(&status),
+                Status::Fail => OnFail(),
+                Status::Retry => OnRetry(),
             }
         }
     }
@@ -128,7 +125,7 @@ fn e2e_graph_branching_borrow() {
 }
 
 #[test]
-// graph! macro should allow conditional branching using @if modifier based on ctx.
+// graph! macro should allow conditional branching using @match modifier based on ctx.
 fn e2e_graph_branching_move() {
     let mut ctx = Context::default();
 
@@ -160,13 +157,10 @@ fn e2e_graph_branching_move() {
         #[metadata(context = Context)]
         ConditionalGraph {
             GetOperationStatus() -> (status) >>
-            @if {
-                on: |status: Status| status,
-                routes: {
-                    Status::Success => OnSuccess(status),
-                    Status::Fail => OnFail(),
-                    Status::Retry => OnRetry(),
-                }
+            @match status {
+                Status::Success => OnSuccess(status),
+                Status::Fail => OnFail(),
+                Status::Retry => OnRetry(),
             }
         }
     }
@@ -175,7 +169,7 @@ fn e2e_graph_branching_move() {
 }
 
 #[test]
-// graph! macro should allow nested @if branching.
+// graph! macro should allow nested @match branching.
 fn e2e_graph_nested_branching() {
     let mut ctx = Context::default();
 
@@ -207,23 +201,62 @@ fn e2e_graph_nested_branching() {
         #[metadata(context = Context)]
         NestedConditionalGraph {
             GetOperationStatus() -> (status) >>
-            @if {
-                on: |status: Status| status,
-                routes: {
-                    Status::Success => @if {
-                        on: |ctx: &Context| ctx.status,
-                        routes: {
-                            Status::Success => OnSuccess(status),
-                            Status::Fail => OnFail(),
-                            Status::Retry => OnRetry(),
-                        }
-                    },
+            @match status {
+                Status::Success => @match ctx.status {
+                    Status::Success => OnSuccess(status),
                     Status::Fail => OnFail(),
                     Status::Retry => OnRetry(),
-                }
+                },
+                Status::Fail => OnFail(),
+                Status::Retry => OnRetry(),
             }
         }
     }
 
     NestedConditionalGraph::__graphio_run(&mut ctx);
+}
+
+#[test]
+// graph! macro should allow @match to declare explicit outputs.
+fn e2e_graph_match_outputs() {
+    let mut ctx = Context::default();
+
+    node! {
+        fn get_operation_status() -> Status {
+            Status::Success
+        }
+    }
+
+    node! {
+        fn on_success() -> u32 {
+            42
+        }
+    }
+
+    node! {
+        fn on_fail() -> u32 {
+            0
+        }
+    }
+
+    node! {
+        fn on_retry() -> u32 {
+            1
+        }
+    }
+
+    graph! {
+        #[metadata(context = Context, outputs = (match_result: u32))]
+        MatchOutputGraph {
+            GetOperationStatus() -> (status) >>
+            @match status -> (match_result) {
+                Status::Success => OnSuccess() -> (match_result),
+                Status::Fail => OnFail() -> (match_result),
+                Status::Retry => OnRetry() -> (match_result),
+            }
+        }
+    }
+
+    let result = MatchOutputGraph::__graphio_run(&mut ctx);
+    assert_eq!(result, 42);
 }
