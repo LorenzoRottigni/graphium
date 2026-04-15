@@ -1,4 +1,4 @@
-use graphium_macro::{graph, node};
+use graphium_macro::{graph, graph_test, node, node_test};
 use graphium_ui::{GraphiumUiConfig, graphs};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -242,5 +242,53 @@ pub fn config() -> GraphiumUiConfig {
             .unwrap_or_else(|_| "http://127.0.0.1:9090".to_string()),
         graphs: graphs![OwnedGraph, BorrowedGraph, ControlFlowGraph],
         ..Default::default()
+    }
+}
+
+node_test! {
+    #[test]
+    #[for_node(GetNumber)]
+    fn get_number_returns_42() {
+        let value = GetNumber::__graphium_run(&());
+        assert_eq!(value, 42);
+    }
+}
+
+node_test! {
+    #[test]
+    #[for_node(Duplicate)]
+    fn duplicate_clones_value() {
+        let (left, right) = Duplicate::__graphium_run(&(), 7);
+        assert_eq!((left, right), (7, 7));
+    }
+}
+
+graph_test! {
+    #[test]
+    #[for_graph(OwnedGraph)]
+    fn owned_graph_returns_non_zero_split() {
+        let mut ctx = Context::default();
+        let out = OwnedGraph::__graphium_run(&mut ctx);
+        assert!(out > 0);
+    }
+}
+
+graph_test! {
+    #[test]
+    #[for_graph(BorrowedGraph)]
+    fn borrowed_graph_keeps_ownership_path() {
+        let mut ctx = Context::default();
+        let out = BorrowedGraph::__graphium_run(&mut ctx);
+        assert_eq!(out, 42);
+    }
+}
+
+graph_test! {
+    #[test]
+    #[for_graph(ControlFlowGraph)]
+    fn control_flow_graph_converges_to_success_path() {
+        let mut ctx = Context::default();
+        let out = ControlFlowGraph::__graphium_run(&mut ctx);
+        assert_eq!(out, 30);
     }
 }

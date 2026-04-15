@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -85,6 +86,43 @@ pub fn graph<G: GraphDefProvider + 'static>() -> ConfiguredGraph {
     ConfiguredGraph::from_graph_def(G::graph_def())
 }
 
+#[derive(Clone)]
+struct UiTest {
+    pub id: String,
+    pub name: String,
+    pub kind: graphium::test_registry::TestKind,
+    pub target: String,
+    run: fn() -> Result<(), String>,
+}
+
+impl UiTest {
+    fn kind_label(&self) -> &'static str {
+        match self.kind {
+            graphium::test_registry::TestKind::Node => "Node",
+            graphium::test_registry::TestKind::Graph => "Graph",
+        }
+    }
+
+    fn run(&self) -> TestExecution {
+        match (self.run)() {
+            Ok(()) => TestExecution {
+                passed: true,
+                message: "ok".to_string(),
+            },
+            Err(err) => TestExecution {
+                passed: false,
+                message: err,
+            },
+        }
+    }
+}
+
+#[derive(Clone)]
+struct TestExecution {
+    passed: bool,
+    message: String,
+}
+
 #[macro_export]
 macro_rules! graphs {
     ($($graph:path),+ $(,)?) => {{
@@ -104,6 +142,8 @@ struct AppState {
     client: reqwest::Client,
     ordered: Vec<ConfiguredGraph>,
     by_id: HashMap<String, ConfiguredGraph>,
+    tests_ordered: Vec<UiTest>,
+    tests_by_id: HashMap<String, UiTest>,
 }
 
 #[derive(Debug)]
@@ -135,17 +175,46 @@ pub async fn serve(config: GraphiumUiConfig) -> Result<(), UiError> {
         .map(|g| (g.id.clone(), g))
         .collect::<HashMap<_, _>>();
 
+    let tests_ordered: Vec<UiTest> = graphium::test_registry::registered_tests()
+        .into_iter()
+        .map(|test| UiTest {
+            id: format!(
+                "{}-{}-{}",
+                match test.kind {
+                    graphium::test_registry::TestKind::Node => "node",
+                    graphium::test_registry::TestKind::Graph => "graph",
+                },
+                slugify(test.target),
+                slugify(test.name)
+            ),
+            name: test.name.to_string(),
+            kind: test.kind,
+            target: test.target.to_string(),
+            run: test.run,
+        })
+        .collect();
+
+    let tests_by_id = tests_ordered
+        .iter()
+        .cloned()
+        .map(|t| (t.id.clone(), t))
+        .collect::<HashMap<_, _>>();
+
     let state = Arc::new(AppState {
         prometheus_base_url: config.prometheus_url,
         client: reqwest::Client::new(),
         ordered: config.graphs,
         by_id,
+        tests_by_id,
+        tests_ordered,
     });
 
     let app = Router::new()
         .route("/", get(home))
         .route("/select/:id", get(select_graph))
         .route("/graph/:id", get(graph_page))
+        .route("/tests", get(tests_page))
+        .route("/tests/run/:id", get(run_test_page))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(config.bind)
@@ -189,6 +258,7 @@ async fn home(State(state): State<Arc<AppState>>) -> Html<String> {
   <main class="card">
     <h1>Graphium UI</h1>
     <p>Select a graph to inspect its structure and Prometheus metrics.</p>
+    <p><a href="/tests">Open tests tab</a></p>
     <form method="get" id="graph-picker">
       <select id="graph-id">{options}</select>
       <button type="submit">Open graph</button>
@@ -238,6 +308,29 @@ async fn graph_page(
     let fail = fmt_metric(metrics.fail);
     let p50 = fmt_metric(metrics.p50_seconds);
     let p95 = fmt_metric(metrics.p95_seconds);
+    let graph_name_key = normalize_symbol(graph.def.name);
+    let node_symbols = collect_graph_node_symbols(&graph.def);
+
+    let graph_scoped_tests: Vec<&UiTest> = state
+        .tests_ordered
+        .iter()
+        .filter(|test| {
+            matches!(test.kind, graphium::test_registry::TestKind::Graph)
+                && normalize_symbol(&test.target) == graph_name_key
+        })
+        .collect();
+
+    let node_scoped_tests: Vec<&UiTest> = state
+        .tests_ordered
+        .iter()
+        .filter(|test| {
+            matches!(test.kind, graphium::test_registry::TestKind::Node)
+                && node_symbols.contains(&normalize_symbol(&test.target))
+        })
+        .collect();
+
+    let graph_tests_widget = tests_widget_html("Graph Tests", &graph_scoped_tests);
+    let node_tests_widget = tests_widget_html("Node Tests", &node_scoped_tests);
 
     Ok(Html(format!(
         r#"<!doctype html>
@@ -258,7 +351,13 @@ async fn graph_page(
     .metric {{ border: 1px solid #ebeff5; border-radius: 12px; padding: .65rem; }}
     .metric .k {{ font-size: .8rem; opacity: .75; }}
     .metric .v {{ font-size: 1rem; font-weight: 700; margin-top: .2rem; }}
+    .tests-row {{ display:grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; }}
+    .test-item {{ border: 1px solid #ebeff5; border-radius: 10px; padding: .55rem; display:flex; align-items:center; gap:.5rem; }}
+    .test-target {{ font-size: .83rem; color:#5f7388; }}
+    .test-name {{ font-size: .9rem; font-weight: 600; flex:1; }}
+    .test-run {{ text-decoration: none; background: #0f7bff; color: white; border-radius: 8px; padding: .3rem .55rem; font-size: .84rem; }}
     @media (max-width: 960px) {{ .layout {{ grid-template-columns: 1fr; }} }}
+    @media (max-width: 960px) {{ .tests-row {{ grid-template-columns: 1fr; }} }}
   </style>
   <script type="module">
     import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
@@ -271,6 +370,7 @@ async fn graph_page(
     <form method="get" id="graph-picker">
       <select id="graph-id">{options}</select>
       <button type="submit">Switch graph</button>
+      <a href="/tests" style="margin-left:.4rem;">Tests</a>
       <a href="/" style="margin-left:.4rem;">Home</a>
     </form>
   </header>
@@ -294,6 +394,11 @@ async fn graph_page(
     </aside>
   </section>
 
+  <section class="tests-row">
+    {graph_tests_widget}
+    {node_tests_widget}
+  </section>
+
   <script>
     document.getElementById('graph-picker').addEventListener('submit', function(e) {{
       e.preventDefault();
@@ -313,6 +418,104 @@ async fn graph_page(
         fail = fail,
         p50 = p50,
         p95 = p95,
+        graph_tests_widget = graph_tests_widget,
+        node_tests_widget = node_tests_widget,
+    )))
+}
+
+async fn tests_page(State(state): State<Arc<AppState>>) -> Html<String> {
+    let mut cards = String::new();
+    if state.tests_ordered.is_empty() {
+        cards.push_str("<p>No tests configured at GraphiumUiConfig level.</p>");
+    } else {
+        for test in &state.tests_ordered {
+            let _ = writeln!(
+                cards,
+                r#"<div class="test-card">
+  <div class="kind">{}</div>
+  <div class="name">{}</div>
+  <div class="target">{}</div>
+  <a class="run" href="/tests/run/{}">Run</a>
+</div>"#,
+                test.kind_label(),
+                test.name,
+                test.target,
+                test.id
+            );
+        }
+    }
+
+    Html(format!(
+        r#"<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tests | Graphium UI</title>
+  <style>
+    body {{ font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; margin: 1.2rem; background: #f7f9fc; color: #1c2733; }}
+    .container {{ max-width: 900px; margin: 0 auto; }}
+    .actions a {{ margin-right: .8rem; }}
+    .grid {{ display: grid; grid-template-columns: 1fr; gap: .8rem; margin-top: 1rem; }}
+    .test-card {{ background: white; border-radius: 12px; padding: 1rem; border: 1px solid #e6ebf2; display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; }}
+    .kind {{ font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; color: #47617a; background: #edf4fb; padding: .25rem .5rem; border-radius: 999px; }}
+    .name {{ font-weight: 600; flex: 1; }}
+    .target {{ font-size:.86rem; color:#5f7388; flex-basis: 100%; }}
+    .run {{ text-decoration: none; background: #0f7bff; color: white; border-radius: 8px; padding: .45rem .7rem; }}
+  </style>
+</head>
+<body>
+  <main class="container">
+    <h1>Tests</h1>
+    <div class="actions">
+      <a href="/">Home</a>
+    </div>
+    <section class="grid">{cards}</section>
+  </main>
+</body>
+</html>"#
+    ))
+}
+
+async fn run_test_page(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Html<String>, AppHttpError> {
+    let test = state
+        .tests_by_id
+        .get(&id)
+        .ok_or_else(|| AppHttpError::not_found("test not configured"))?;
+    let result = test.run();
+    let badge_color = if result.passed { "#1f9d55" } else { "#d64545" };
+    let badge_label = if result.passed { "PASS" } else { "FAIL" };
+
+    Ok(Html(format!(
+        r#"<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Run Test | Graphium UI</title>
+  <style>
+    body {{ font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; margin: 1.2rem; background: #f7f9fc; color: #1c2733; }}
+    .card {{ max-width: 760px; margin: 0 auto; background: white; border-radius: 14px; border: 1px solid #e6ebf2; padding: 1rem; }}
+    .badge {{ display:inline-block; padding:.3rem .55rem; border-radius: 999px; color:white; font-size:.82rem; font-weight:700; background:{badge_color}; }}
+    pre {{ background: #f2f6fb; border-radius: 8px; padding: .8rem; overflow: auto; }}
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>{name}</h1>
+    <p><span class="badge">{badge_label}</span> <small>({kind})</small></p>
+    <h3>Output</h3>
+    <pre>{message}</pre>
+    <p><a href="/tests">Back to tests</a> · <a href="/">Home</a></p>
+  </main>
+</body>
+</html>"#,
+        name = test.name,
+        kind = test.kind_label(),
+        message = escape_label(&result.message),
     )))
 }
 
@@ -365,6 +568,36 @@ fn fmt_metric(value: Option<f64>) -> String {
         Some(v) => format!("{v:.4}"),
         None => "n/a".to_string(),
     }
+}
+
+fn tests_widget_html(title: &str, tests: &[&UiTest]) -> String {
+    let mut body = String::new();
+    if tests.is_empty() {
+        body.push_str("<p style=\"opacity:.7; margin:.2rem 0;\">No tests linked.</p>");
+    } else {
+        for test in tests {
+            let _ = writeln!(
+                body,
+                r#"<div class="test-item">
+  <span class="test-target">{}</span>
+  <span class="test-name">{}</span>
+  <a class="test-run" href="/tests/run/{}">Run</a>
+</div>"#,
+                escape_label(&test.target),
+                escape_label(&test.name),
+                test.id
+            );
+        }
+    }
+
+    format!(
+        r#"<article class="card">
+  <h3>{}</h3>
+  {}
+</article>"#,
+        escape_label(title),
+        body
+    )
 }
 
 #[derive(Debug, Deserialize)]
@@ -420,6 +653,43 @@ fn slugify(name: &str) -> String {
         }
     }
     out.trim_matches('-').to_string()
+}
+
+fn normalize_symbol(value: &str) -> String {
+    value.rsplit("::").next().unwrap_or(value).to_string()
+}
+
+fn collect_graph_node_symbols(graph: &GraphDef) -> HashSet<String> {
+    let mut symbols = HashSet::new();
+    collect_graph_node_symbols_from_steps(&graph.steps, &mut symbols);
+    symbols
+}
+
+fn collect_graph_node_symbols_from_steps(steps: &[GraphStep], out: &mut HashSet<String>) {
+    for step in steps {
+        match step {
+            GraphStep::Node { name, .. } => {
+                out.insert(normalize_symbol(name));
+            }
+            GraphStep::Nested { graph, .. } => {
+                collect_graph_node_symbols_from_steps(&graph.steps, out)
+            }
+            GraphStep::Parallel { branches } => {
+                for branch in branches {
+                    collect_graph_node_symbols_from_steps(branch, out);
+                }
+            }
+            GraphStep::Route { cases, .. } => {
+                for case in cases {
+                    collect_graph_node_symbols_from_steps(&case.steps, out);
+                }
+            }
+            GraphStep::While { body, .. } | GraphStep::Loop { body } => {
+                collect_graph_node_symbols_from_steps(body, out);
+            }
+            GraphStep::Break => {}
+        }
+    }
 }
 
 fn to_mermaid(graph: &GraphDef) -> String {

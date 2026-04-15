@@ -3,8 +3,10 @@
 // `graph!` emits fully inlined orchestration code.
 
 pub mod metrics;
+pub mod test_registry;
 pub mod visualizer;
 
+pub use inventory;
 pub use visualizer::{GraphCase, GraphDef, GraphDefProvider, GraphStep, Visualizer};
 
 pub trait Artifact: Clone + 'static {}

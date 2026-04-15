@@ -7,4 +7,5 @@ edition = "2024"
 name = "graphium"
 
 [dependencies]
+inventory = "0.3"
 prometheus = "0.13"

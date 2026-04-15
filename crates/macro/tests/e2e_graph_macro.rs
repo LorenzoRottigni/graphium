@@ -29,10 +29,21 @@ graph! {
 
 graph_test! {
     #[test]
+    #[for_graph(TestableGraph)]
     fn e2e_graph_test_supports_standard_test_items() {
         let mut ctx = Context::default();
         let out = TestableGraph::__graphium_run(&mut ctx);
         assert_eq!(out, 42);
+    }
+}
+
+graph_test! {
+    #[test]
+    #[for_graph(TestableGraph)]
+    fn e2e_graph_test_supports_standard_test_items() {
+        let mut ctx = Context::default();
+        let out = TestableGraph::__graphium_run(&mut ctx);
+        assert!(out > 0);
     }
 }
 
