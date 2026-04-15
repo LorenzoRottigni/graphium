@@ -432,52 +432,90 @@ fn to_mermaid(graph: &GraphDef) -> String {
     lines.join("\n")
 }
 
-fn append_steps(steps: &[GraphStep], parent: &str, lines: &mut Vec<String>, counter: &mut usize) {
+fn append_steps(
+    steps: &[GraphStep],
+    parent: &str,
+    lines: &mut Vec<String>,
+    counter: &mut usize,
+) -> String {
     let mut previous = parent.to_string();
 
     for step in steps {
-        let node_id = next_id(counter);
-        let label = match step {
-            GraphStep::Node { name, .. } => format!("Node: {name}"),
-            GraphStep::Nested { graph, .. } => format!("Nested: {}", graph.name),
-            GraphStep::Parallel { .. } => "Parallel (&)".to_string(),
-            GraphStep::Route { on, .. } => format!("Route: {on}"),
-            GraphStep::While { condition, .. } => format!("While: {condition}"),
-            GraphStep::Loop { .. } => "Loop".to_string(),
-            GraphStep::Break => "Break".to_string(),
-        };
+        let (head, tail) = render_step(step, lines, counter);
+        lines.push(format!("{previous} --> {head}"));
+        previous = tail;
+    }
 
-        lines.push(format!(r#"{node_id}["{}"]"#, escape_label(&label)));
-        lines.push(format!("{previous} --> {node_id}"));
+    previous
+}
 
-        match step {
-            GraphStep::Nested { graph, .. } => append_steps(&graph.steps, &node_id, lines, counter),
-            GraphStep::Parallel { branches } => {
-                for (idx, branch) in branches.iter().enumerate() {
-                    let branch_root = next_id(counter);
-                    lines.push(format!(r#"{branch_root}["Branch {}"]"#, idx + 1));
-                    lines.push(format!("{node_id} --> {branch_root}"));
-                    append_steps(branch, &branch_root, lines, counter);
-                }
-            }
-            GraphStep::Route { cases, .. } => {
-                for case in cases {
-                    let case_root = next_id(counter);
-                    lines.push(format!(
-                        r#"{case_root}["Case {}"]"#,
-                        escape_label(case.label)
-                    ));
-                    lines.push(format!("{node_id} --> {case_root}"));
-                    append_steps(&case.steps, &case_root, lines, counter);
-                }
-            }
-            GraphStep::While { body, .. } | GraphStep::Loop { body } => {
-                append_steps(body, &node_id, lines, counter)
-            }
-            GraphStep::Node { .. } | GraphStep::Break => {}
+fn render_step(step: &GraphStep, lines: &mut Vec<String>, counter: &mut usize) -> (String, String) {
+    let node_id = next_id(counter);
+    let label = match step {
+        GraphStep::Node { name, .. } => format!("Node: {name}"),
+        GraphStep::Nested { graph, .. } => format!("Nested: {}", graph.name),
+        GraphStep::Parallel { .. } => "Parallel (&)".to_string(),
+        GraphStep::Route { on, .. } => format!("Route: {on}"),
+        GraphStep::While { condition, .. } => format!("While: {condition}"),
+        GraphStep::Loop { .. } => "Loop".to_string(),
+        GraphStep::Break => "Break".to_string(),
+    };
+    lines.push(format!(r#"{node_id}["{}"]"#, escape_label(&label)));
+
+    match step {
+        GraphStep::Nested { graph, .. } => {
+            let subgraph_id = format!("sg{}", next_id(counter));
+            let nested_entry = next_id(counter);
+            let nested_exit = next_id(counter);
+            lines.push(format!(
+                r#"subgraph {subgraph_id}["Nested Graph: {}"]"#,
+                escape_label(graph.name)
+            ));
+            lines.push("direction TB".to_string());
+            lines.push(format!(
+                r#"{nested_entry}["{}"]"#,
+                escape_label(&format!("{}::entry", graph.name))
+            ));
+            let nested_tail = append_steps(&graph.steps, &nested_entry, lines, counter);
+            lines.push(format!(
+                r#"{nested_exit}["{}"]"#,
+                escape_label(&format!("{}::exit", graph.name))
+            ));
+            lines.push(format!("{nested_tail} --> {nested_exit}"));
+            lines.push("end".to_string());
+            lines.push(format!(
+                r#"style {subgraph_id} fill:#f7fbff,stroke:#3a7bd5,stroke-width:2px"#
+            ));
+            lines.push(format!("{node_id} -.-> {nested_entry}"));
+            lines.push(format!("{nested_exit} -.-> {node_id}"));
+            (node_id.clone(), node_id)
         }
-
-        previous = node_id;
+        GraphStep::Parallel { branches } => {
+            for (idx, branch) in branches.iter().enumerate() {
+                let branch_root = next_id(counter);
+                lines.push(format!(r#"{branch_root}["Branch {}"]"#, idx + 1));
+                lines.push(format!("{node_id} --> {branch_root}"));
+                append_steps(branch, &branch_root, lines, counter);
+            }
+            (node_id.clone(), node_id)
+        }
+        GraphStep::Route { cases, .. } => {
+            for case in cases {
+                let case_root = next_id(counter);
+                lines.push(format!(
+                    r#"{case_root}["Case {}"]"#,
+                    escape_label(case.label)
+                ));
+                lines.push(format!("{node_id} --> {case_root}"));
+                append_steps(&case.steps, &case_root, lines, counter);
+            }
+            (node_id.clone(), node_id)
+        }
+        GraphStep::While { body, .. } | GraphStep::Loop { body } => {
+            append_steps(body, &node_id, lines, counter);
+            (node_id.clone(), node_id)
+        }
+        GraphStep::Node { .. } | GraphStep::Break => (node_id.clone(), node_id),
     }
 }
 

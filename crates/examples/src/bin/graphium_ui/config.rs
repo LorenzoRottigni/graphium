@@ -171,13 +171,26 @@ graph! {
 }
 
 graph! {
+    #[metadata(
+        context = Context,
+        inputs = (left: u32, right: u32),
+        outputs = (left: u32, right: u32)
+    )]
+    #[metrics("performance", "count", "success_rate")]
+    DeepInnerGraph {
+        InnerGraph::run(left, right) -> (left, right) >>
+        PipeNumber(left) -> (left) & PipeNumber(right) -> (right)
+    }
+}
+
+graph! {
     #[metadata(context = Context, outputs = (a_split: u32))]
     #[metrics("performance", "errors", "count", "caller", "success_rate", "fail_rate")]
     OwnedGraph {
         GetNumber() -> (a_number) >>
         Duplicate(a_number) -> (left, right) >>
         LeftBranch(left) -> (left) & RightBranch(right) -> (right) >>
-        InnerGraph::run(left, right) -> (left, right) >>
+        DeepInnerGraph::run(left, right) -> (left, right) >>
         Combine(left, right) -> (sum) >>
         DecideStatus(sum) -> (status, sum) >>
         @if |status: Status| status == Status::Success -> (out) {
