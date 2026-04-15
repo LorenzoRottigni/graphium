@@ -1,7 +1,5 @@
 # Graphium
 
-- automated isolated unit testing on nodes
-- allow nested graphs visualization
 - allow event bus publish like:
     node! {
         #[publish = EventName]
