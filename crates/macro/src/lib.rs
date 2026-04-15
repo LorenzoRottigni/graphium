@@ -1,6 +1,7 @@
 use proc_macro::TokenStream;
 
 mod graph;
+mod graph_test;
 mod node;
 mod node_test;
 mod parser;
@@ -18,6 +19,13 @@ pub fn node(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn graph(input: TokenStream) -> TokenStream {
     graph::expand(input)
+}
+
+/// Expands grouped graph-scoped tests while preserving idiomatic Rust test
+/// definitions (`#[test]`, `#[tokio::test]`, etc.).
+#[proc_macro]
+pub fn graph_test(input: TokenStream) -> TokenStream {
+    graph_test::expand(input)
 }
 
 /// Expands grouped node-scoped tests while preserving idiomatic Rust test

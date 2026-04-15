@@ -2,7 +2,7 @@ pub mod data;
 
 use data::ctx::{Context, Status};
 use futures::executor::block_on;
-use graphium_macro::{graph, node, node_test};
+use graphium_macro::{graph, graph_test, node, node_test};
 use std::time::{Duration, Instant};
 
 node! {
@@ -15,6 +15,23 @@ node_test! {
     #[test]
     fn e2e_node_test_supports_standard_test_items() {
         let out = TestableAdd::__graphium_run(&(), 20, 22);
+        assert_eq!(out, 42);
+    }
+}
+
+graph! {
+    #[metadata(context = Context, outputs = (result: u32))]
+    TestableGraph {
+        data::node::GetNumber() -> (a_number) >>
+        data::node::PipeNumber(a_number) -> (result)
+    }
+}
+
+graph_test! {
+    #[test]
+    fn e2e_graph_test_supports_standard_test_items() {
+        let mut ctx = Context::default();
+        let out = TestableGraph::__graphium_run(&mut ctx);
         assert_eq!(out, 42);
     }
 }
