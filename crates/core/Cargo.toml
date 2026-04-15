@@ -1,9 +1,11 @@
 [package]
-name = "graphio"
+name = "graphium"
 version = "0.1.0"
 edition = "2024"
 
 [lib]
-name = "graphio"
+name = "graphium"
 
 [dependencies]
+inventory = "0.3"
+prometheus = "0.13"
