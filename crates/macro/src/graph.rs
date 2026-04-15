@@ -813,6 +813,94 @@ fn get_parallel_nodes_expr(
     in_loop: bool,
     async_mode: bool,
 ) -> GeneratedExpr {
+    if async_mode || (in_loop && nodes.iter().any(contains_break)) {
+        return get_parallel_nodes_expr_sequential(nodes, incoming, counter, in_loop, async_mode);
+    }
+
+    let shapes: Vec<ExprShape> = nodes.iter().map(analyze_expr).collect();
+    let mut remaining = collect_parallel_entry_usage(&shapes);
+
+    let exit_outputs = collect_parallel_outputs(&shapes);
+    let exit_borrowed = collect_parallel_borrowed(&shapes);
+    let (mut outputs, output_decl_tokens) =
+        prepare_output_slots(&exit_outputs, "parallel_out", counter);
+    outputs.borrowed = exit_borrowed;
+
+    let mut spawn_tokens = Vec::new();
+    let mut join_tokens = Vec::new();
+    for (index, (node, shape)) in nodes.iter().zip(shapes.iter()).enumerate() {
+        // A parallel hop distributes the same incoming payload to multiple
+        // sibling steps. Early consumers clone if another sibling still needs
+        // the artifact; the last sibling moves it.
+        let (child_payload, child_bindings) =
+            prepare_parallel_payload(incoming, shape, &mut remaining, counter);
+
+        let generated = get_node_expr(node, &child_payload, counter, in_loop, async_mode);
+        let generated_tokens = generated.tokens;
+        let handle_ident = fresh_ident(counter, "parallel_handle", &index.to_string());
+        let result_ident = fresh_ident(counter, "parallel_result", &index.to_string());
+
+        let mut branch_output_idents = Vec::new();
+        let mut output_assigns = Vec::new();
+        for artifact in generated.outputs.owned.keys() {
+            let inner = generated
+                .outputs
+                .get_owned(artifact)
+                .unwrap_or_else(|| panic!("missing parallel branch output for `{artifact}`"));
+            let outer = outputs
+                .get_owned(artifact)
+                .unwrap_or_else(|| panic!("missing parallel output slot for `{artifact}`"));
+            let idx = syn::Index::from(branch_output_idents.len());
+            output_assigns.push(quote! {
+                #outer = #result_ident.#idx;
+            });
+            branch_output_idents.push(inner.clone());
+        }
+        let branch_return = if branch_output_idents.is_empty() {
+            quote! { () }
+        } else {
+            quote! { ( #( #branch_output_idents ),*, ) }
+        };
+
+        spawn_tokens.push(quote! {
+            let #handle_ident = {
+                #( #child_bindings )*
+                let __graphium_parallel_ctx = &*ctx;
+                __graphium_scope.spawn(move || {
+                    let ctx = __graphium_parallel_ctx;
+                    #generated_tokens
+                    #branch_return
+                })
+            };
+        });
+
+        join_tokens.push(quote! {
+            let #result_ident = #handle_ident
+                .join()
+                .unwrap_or_else(|_| panic!("parallel branch panicked"));
+            #( #output_assigns )*
+        });
+    }
+
+    GeneratedExpr {
+        tokens: quote! {
+            #( #output_decl_tokens )*
+            ::std::thread::scope(|__graphium_scope| {
+                #( #spawn_tokens )*
+                #( #join_tokens )*
+            });
+        },
+        outputs,
+    }
+}
+
+fn get_parallel_nodes_expr_sequential(
+    nodes: &[NodeExpr],
+    incoming: &Payload,
+    counter: &mut usize,
+    in_loop: bool,
+    async_mode: bool,
+) -> GeneratedExpr {
     let shapes: Vec<ExprShape> = nodes.iter().map(analyze_expr).collect();
     let mut remaining = collect_parallel_entry_usage(&shapes);
 
@@ -849,6 +937,17 @@ fn get_parallel_nodes_expr(
             #( #blocks )*
         },
         outputs,
+    }
+}
+
+fn contains_break(node: &NodeExpr) -> bool {
+    match node {
+        NodeExpr::Break => true,
+        NodeExpr::Single(_) => false,
+        NodeExpr::Sequence(nodes) | NodeExpr::Parallel(nodes) => nodes.iter().any(contains_break),
+        NodeExpr::Route(route) => route.routes.iter().any(|(_, n)| contains_break(n)),
+        NodeExpr::While(while_expr) => contains_break(&while_expr.body),
+        NodeExpr::Loop(loop_expr) => contains_break(&loop_expr.body),
     }
 }
 

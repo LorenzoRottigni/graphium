@@ -3,6 +3,7 @@ pub mod data;
 use data::ctx::{Context, Status};
 use futures::executor::block_on;
 use graphium_macro::{graph, node};
+use std::time::{Duration, Instant};
 
 /// graph! macro should propagate owned artifacts across nodes
 #[test]
@@ -624,4 +625,49 @@ fn e2e_graph_async_nodes() {
 
     let value = block_on(AsyncGraph::__graphium_run_async(&mut ctx));
     assert_eq!(value, 8);
+}
+
+#[test]
+// graph! `&` should run sibling branches in real parallelism for sync graphs.
+fn e2e_graph_parallel_branches_run_concurrently() {
+    let mut ctx = Context::default();
+
+    node! {
+        fn left_work() -> u32 {
+            std::thread::sleep(Duration::from_millis(200));
+            1
+        }
+    }
+
+    node! {
+        fn right_work() -> u32 {
+            std::thread::sleep(Duration::from_millis(200));
+            2
+        }
+    }
+
+    node! {
+        fn sum(left: u32, right: u32) -> u32 {
+            left + right
+        }
+    }
+
+    graph! {
+        #[metadata(context = Context, outputs = (value: u32))]
+        ParallelGraph {
+            LeftWork() -> (left) & RightWork() -> (right) >>
+            Sum(left, right) -> (value)
+        }
+    }
+
+    let start = Instant::now();
+    let value = ParallelGraph::__graphium_run(&mut ctx);
+    let elapsed = start.elapsed();
+
+    assert_eq!(value, 3);
+    assert!(
+        elapsed < Duration::from_millis(350),
+        "parallel branches took too long: {:?}",
+        elapsed
+    );
 }
