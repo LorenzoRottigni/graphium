@@ -15,6 +15,8 @@ pub struct NodeDef {
     pub inputs: Vec<(Ident, Type)>,
     pub param_kinds: Vec<ParamKind>,
     pub return_ty: Option<Type>,
+    pub metrics: MetricsSpec,
+    pub return_is_result: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -75,6 +77,44 @@ pub struct GraphInput {
     pub outputs: Vec<(Ident, Type)>,
     pub nodes: NodeExpr,
     pub async_enabled: bool,
+    pub metrics: MetricsSpec,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct MetricsSpec {
+    pub performance: bool,
+    pub errors: bool,
+    pub count: bool,
+    pub caller: bool,
+    pub success_rate: bool,
+    pub fail_rate: bool,
+}
+
+impl MetricsSpec {
+    pub fn enabled(&self) -> bool {
+        self.performance
+            || self.errors
+            || self.count
+            || self.caller
+            || self.success_rate
+            || self.fail_rate
+    }
+
+    pub fn track_panics_sync(&self) -> bool {
+        self.errors || self.success_rate || self.fail_rate
+    }
+}
+
+pub fn parse_metric_name(value: &str) -> Option<fn(&mut MetricsSpec)> {
+    match value {
+        "performance" => Some(|spec| spec.performance = true),
+        "errors" => Some(|spec| spec.errors = true),
+        "count" => Some(|spec| spec.count = true),
+        "caller" => Some(|spec| spec.caller = true),
+        "success_rate" => Some(|spec| spec.success_rate = true),
+        "fail_rate" => Some(|spec| spec.fail_rate = true),
+        _ => None,
+    }
 }
 
 // `UsageMap` is compile-time bookkeeping only.

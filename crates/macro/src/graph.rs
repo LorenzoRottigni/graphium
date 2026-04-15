@@ -4,9 +4,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use syn::parse_macro_input;
 
 use crate::shared::{
-    ExprShape, GeneratedExpr, GraphInput, LoopExpr, NodeCall, NodeExpr, Payload, RouteExpr,
-    UsageMap, WhileExpr,
-    fresh_ident, is_graph_run_path,
+    ExprShape, GeneratedExpr, GraphInput, LoopExpr, MetricsSpec, NodeCall, NodeExpr, Payload,
+    RouteExpr, UsageMap, WhileExpr, fresh_ident, is_graph_run_path,
 };
 
 enum SelectorParam {
@@ -75,6 +74,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
         outputs: graph_outputs,
         nodes,
         async_enabled,
+        metrics,
     } = parse_macro_input!(input as GraphInput);
 
     // for unique local variable names for hop payloads and node outputs.
@@ -103,7 +103,13 @@ pub fn expand(input: TokenStream) -> TokenStream {
     let generated = if async_enabled {
         None
     } else {
-        Some(get_node_expr(&nodes, &root_incoming, &mut counter, false, false))
+        Some(get_node_expr(
+            &nodes,
+            &root_incoming,
+            &mut counter,
+            false,
+            false,
+        ))
     };
     let generated_async = get_node_expr(&nodes, &root_incoming, &mut counter, false, true);
 
@@ -235,6 +241,69 @@ pub fn expand(input: TokenStream) -> TokenStream {
         }
     };
 
+    let graph_def_tokens = graph_definition_tokens(&name, &nodes);
+    let metrics_enabled = metrics.enabled();
+    let metrics_config_tokens = metric_config_tokens(metrics);
+    let track_panics = metrics.track_panics_sync();
+    let sync_graph_body = if metrics_enabled {
+        if track_panics {
+            quote! {
+                let __graphium_metrics = Self::__graphium_graph_metrics();
+                let __graphium_start = __graphium_metrics.start_timer();
+                let __graphium_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| #run_body));
+                match __graphium_result {
+                    Ok(value) => {
+                        __graphium_metrics.record_success(__graphium_start);
+                        value
+                    }
+                    Err(payload) => {
+                        __graphium_metrics.record_failure(__graphium_start);
+                        ::std::panic::resume_unwind(payload)
+                    }
+                }
+            }
+        } else {
+            quote! {
+                let __graphium_metrics = Self::__graphium_graph_metrics();
+                let __graphium_start = __graphium_metrics.start_timer();
+                let value = #run_body;
+                __graphium_metrics.record_success(__graphium_start);
+                value
+            }
+        }
+    } else {
+        run_body.clone()
+    };
+
+    let async_graph_body = if metrics_enabled {
+        quote! {
+            let __graphium_metrics = Self::__graphium_graph_metrics();
+            let __graphium_start = __graphium_metrics.start_timer();
+            let value = #run_body_async;
+            __graphium_metrics.record_success(__graphium_start);
+            value
+        }
+    } else {
+        run_body_async.clone()
+    };
+
+    let metrics_defs = if metrics_enabled {
+        quote! {
+            fn __graphium_graph_metrics() -> &'static ::graphium::metrics::GraphMetricsHandle {
+                static METRICS: ::std::sync::OnceLock<::graphium::metrics::GraphMetricsHandle> = ::std::sync::OnceLock::new();
+                METRICS.get_or_init(|| {
+                    ::graphium::metrics::graph_metrics(
+                        stringify!(#name),
+                        module_path!(),
+                        #metrics_config_tokens,
+                    )
+                })
+            }
+        }
+    } else {
+        quote! {}
+    };
+
     // AST expanded graph!
     let sync_impl = if async_enabled {
         quote! {}
@@ -248,7 +317,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
                 ctx: &mut #context,
                 #( #run_params ),*
             ) #run_return_sig {
-                #run_body
+                #sync_graph_body
             }
         }
     };
@@ -265,12 +334,11 @@ pub fn expand(input: TokenStream) -> TokenStream {
         }
     };
 
-    let graph_def_tokens = graph_definition_tokens(&name, &nodes);
-
     let expanded = quote! {
         pub struct #name;
 
         impl #name {
+            #metrics_defs
             #sync_impl
 
             /// Convenience async entry point that executes the graph directly.
@@ -282,7 +350,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
                 ctx: &mut #context,
                 #( #run_params ),*
             ) #run_return_sig {
-                #run_body_async
+                #async_graph_body
             }
 
             pub fn graph_def() -> ::graphium::GraphDef {
@@ -299,6 +367,26 @@ pub fn expand(input: TokenStream) -> TokenStream {
     };
 
     TokenStream::from(expanded)
+}
+
+fn metric_config_tokens(metrics: MetricsSpec) -> proc_macro2::TokenStream {
+    let performance = metrics.performance;
+    let errors = metrics.errors;
+    let count = metrics.count;
+    let caller = metrics.caller;
+    let success_rate = metrics.success_rate;
+    let fail_rate = metrics.fail_rate;
+
+    quote! {
+        ::graphium::metrics::MetricConfig {
+            performance: #performance,
+            errors: #errors,
+            count: #count,
+            caller: #caller,
+            success_rate: #success_rate,
+            fail_rate: #fail_rate,
+        }
+    }
 }
 
 /// Dispatches code generation to the correct handler for the current graph IR
@@ -323,7 +411,9 @@ pub(crate) fn get_node_expr(
             get_parallel_nodes_expr(nodes, incoming, counter, in_loop, async_mode)
         }
         // the graph has an exclusive route with multiple branches
-        NodeExpr::Route(route) => get_route_node_expr(route, incoming, counter, in_loop, async_mode),
+        NodeExpr::Route(route) => {
+            get_route_node_expr(route, incoming, counter, in_loop, async_mode)
+        }
         NodeExpr::While(while_expr) => {
             get_while_node_expr(while_expr, incoming, counter, async_mode)
         }
@@ -632,7 +722,6 @@ fn graph_type_path(path: &syn::Path) -> syn::Path {
 
     graph_path
 }
-
 
 /// Builds a fresh hop payload by moving the requested artifacts out of the
 /// current expression outputs.
@@ -986,13 +1075,10 @@ fn get_route_node_expr(
         }
     }
 
-    let selector_tokens = build_selector_bindings(
-        &selector_params,
-        incoming,
-        &needed_by_branches,
-        counter,
-    );
-    let selector_call = build_selector_call(on_expr, &selector_tokens.args, selector_tokens.is_empty);
+    let selector_tokens =
+        build_selector_bindings(&selector_params, incoming, &needed_by_branches, counter);
+    let selector_call =
+        build_selector_call(on_expr, &selector_tokens.args, selector_tokens.is_empty);
     let selector_bindings = &selector_tokens.bindings;
     let selector_key_ident = fresh_ident(counter, "selector_key", "if");
     let mut arms = Vec::new();
@@ -1060,8 +1146,11 @@ fn get_while_node_expr(
     let cond_params = selector_params_for_on_expr(&while_expr.condition);
     let cond_bindings = build_condition_bindings(&cond_params, incoming, counter);
     let cond_bindings_tokens = &cond_bindings.bindings;
-    let cond_call =
-        build_condition_call(&while_expr.condition, &cond_bindings.args, cond_bindings.is_empty);
+    let cond_call = build_condition_call(
+        &while_expr.condition,
+        &cond_bindings.args,
+        cond_bindings.is_empty,
+    );
 
     let required_owned = required_artifacts(&body_shape);
     let required_borrowed = required_borrowed(&body_shape);
@@ -1535,9 +1624,9 @@ fn build_condition_bindings(
                     if incoming.has_borrowed(&artifact_name) {
                         args.push(quote! { &ctx.#ident });
                     } else {
-                        let source = incoming
-                            .get_owned(&artifact_name)
-                            .unwrap_or_else(|| panic!("missing artifact `{artifact_name}` for @while condition"));
+                        let source = incoming.get_owned(&artifact_name).unwrap_or_else(|| {
+                            panic!("missing artifact `{artifact_name}` for @while condition")
+                        });
                         let arg_ident = fresh_ident(counter, "cond_borrow", &artifact_name);
                         bindings.push(quote! {
                             let #arg_ident = #source
@@ -1547,9 +1636,9 @@ fn build_condition_bindings(
                         args.push(quote! { #arg_ident });
                     }
                 } else {
-                    let source = incoming
-                        .get_owned(&artifact_name)
-                        .unwrap_or_else(|| panic!("missing artifact `{artifact_name}` for @while condition"));
+                    let source = incoming.get_owned(&artifact_name).unwrap_or_else(|| {
+                        panic!("missing artifact `{artifact_name}` for @while condition")
+                    });
                     let arg_ident = fresh_ident(counter, "cond_arg", &artifact_name);
                     bindings.push(quote! {
                         let #arg_ident = ::graphium::clone_artifact(
@@ -1624,11 +1713,7 @@ fn loop_exit_outputs(
     (owned, borrowed)
 }
 
-fn validate_loop_outputs(
-    outputs: &[syn::Ident],
-    output_borrows: &[bool],
-    body_shape: &ExprShape,
-) {
+fn validate_loop_outputs(outputs: &[syn::Ident], output_borrows: &[bool], body_shape: &ExprShape) {
     let mut expected_owned = BTreeSet::new();
     let mut expected_borrowed = BTreeSet::new();
     for (output, is_borrowed) in outputs.iter().zip(output_borrows.iter()) {
@@ -1660,10 +1745,7 @@ fn validate_loop_outputs(
         }
     }
 }
-fn route_exit_outputs(
-    route: &RouteExpr,
-    shapes: &[ExprShape],
-) -> (Vec<String>, BTreeSet<String>) {
+fn route_exit_outputs(route: &RouteExpr, shapes: &[ExprShape]) -> (Vec<String>, BTreeSet<String>) {
     if route.outputs.is_empty() {
         return (
             collect_route_outputs(shapes),
@@ -1673,11 +1755,7 @@ fn route_exit_outputs(
 
     let mut owned = Vec::new();
     let mut borrowed = BTreeSet::new();
-    for (output, is_borrowed) in route
-        .outputs
-        .iter()
-        .zip(route.output_borrows.iter())
-    {
+    for (output, is_borrowed) in route.outputs.iter().zip(route.output_borrows.iter()) {
         if *is_borrowed {
             borrowed.insert(output.to_string());
         } else {
@@ -1691,11 +1769,7 @@ fn route_exit_outputs(
 fn validate_route_outputs(route: &RouteExpr, shapes: &[ExprShape]) {
     let mut expected_owned = BTreeSet::new();
     let mut expected_borrowed = BTreeSet::new();
-    for (output, is_borrowed) in route
-        .outputs
-        .iter()
-        .zip(route.output_borrows.iter())
-    {
+    for (output, is_borrowed) in route.outputs.iter().zip(route.output_borrows.iter()) {
         if *is_borrowed {
             expected_borrowed.insert(output.to_string());
         } else {
@@ -1747,7 +1821,8 @@ fn parse_selector_params(on: &syn::Expr) -> Vec<SelectorParam> {
                 };
                 let name = pat_ident.ident.to_string();
                 if name == "ctx" || name == "_ctx" {
-                    let mutable = matches!(&*pat_type.ty, syn::Type::Reference(r) if r.mutability.is_some());
+                    let mutable =
+                        matches!(&*pat_type.ty, syn::Type::Reference(r) if r.mutability.is_some());
                     params.push(SelectorParam::Ctx { mutable });
                 } else {
                     let borrowed = matches!(&*pat_type.ty, syn::Type::Reference(_));
@@ -1805,9 +1880,9 @@ fn build_selector_bindings(
                         has_borrowed = true;
                         args.push(quote! { &ctx.#ident });
                     } else {
-                        let source = incoming
-                            .get_owned(&artifact_name)
-                            .unwrap_or_else(|| panic!("missing artifact `{artifact_name}` for @match selector"));
+                        let source = incoming.get_owned(&artifact_name).unwrap_or_else(|| {
+                            panic!("missing artifact `{artifact_name}` for @match selector")
+                        });
                         let arg_ident = fresh_ident(counter, "selector_borrow", &artifact_name);
                         bindings.push(quote! {
                             let #arg_ident = #source
@@ -1817,9 +1892,9 @@ fn build_selector_bindings(
                         args.push(quote! { #arg_ident });
                     }
                 } else {
-                    let source = incoming
-                        .get_owned(&artifact_name)
-                        .unwrap_or_else(|| panic!("missing artifact `{artifact_name}` for @match selector"));
+                    let source = incoming.get_owned(&artifact_name).unwrap_or_else(|| {
+                        panic!("missing artifact `{artifact_name}` for @match selector")
+                    });
                     let arg_ident = fresh_ident(counter, "selector_arg", &artifact_name);
                     if needed_by_branches.contains(&artifact_name) {
                         // If already marked borrowed, clone to avoid moving shared value.
@@ -1982,10 +2057,7 @@ fn node_call_step_tokens(call: &NodeCall) -> proc_macro2::TokenStream {
     }
 }
 
-fn artifact_list_tokens(
-    idents: &[syn::Ident],
-    borrows: &[bool],
-) -> Vec<proc_macro2::TokenStream> {
+fn artifact_list_tokens(idents: &[syn::Ident], borrows: &[bool]) -> Vec<proc_macro2::TokenStream> {
     idents
         .iter()
         .zip(borrows.iter())

@@ -22,10 +22,20 @@ pub enum GraphStep {
         inputs: Vec<&'static str>,
         outputs: Vec<&'static str>,
     },
-    Parallel { branches: Vec<Vec<GraphStep>> },
-    Route { on: &'static str, cases: Vec<GraphCase> },
-    While { condition: &'static str, body: Vec<GraphStep> },
-    Loop { body: Vec<GraphStep> },
+    Parallel {
+        branches: Vec<Vec<GraphStep>>,
+    },
+    Route {
+        on: &'static str,
+        cases: Vec<GraphCase>,
+    },
+    While {
+        condition: &'static str,
+        body: Vec<GraphStep>,
+    },
+    Loop {
+        body: Vec<GraphStep>,
+    },
     Break,
 }
 
@@ -61,13 +71,7 @@ impl Visualizer {
                     inputs,
                     outputs,
                 } => {
-                    println!(
-                        "{}{}{}{}",
-                        prefix,
-                        branch,
-                        name,
-                        format_io(inputs, outputs)
-                    );
+                    println!("{}{}{}{}", prefix, branch, name, format_io(inputs, outputs));
                 }
                 GraphStep::Nested {
                     graph,
