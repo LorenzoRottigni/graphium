@@ -2,8 +2,22 @@ pub mod data;
 
 use data::ctx::{Context, Status};
 use futures::executor::block_on;
-use graphium_macro::{graph, node};
+use graphium_macro::{graph, node, node_test};
 use std::time::{Duration, Instant};
+
+node! {
+    fn testable_add(left: u32, right: u32) -> u32 {
+        left + right
+    }
+}
+
+node_test! {
+    #[test]
+    fn e2e_node_test_supports_standard_test_items() {
+        let out = TestableAdd::__graphium_run(&(), 20, 22);
+        assert_eq!(out, 42);
+    }
+}
 
 /// graph! macro should propagate owned artifacts across nodes
 #[test]
