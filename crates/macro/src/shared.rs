@@ -160,7 +160,7 @@ pub fn pascal_case(ident: &Ident) -> String {
 // artifact name to keep debug output somewhat readable.
 /// Builds a unique local identifier used inside generated graph code.
 pub fn fresh_ident(counter: &mut usize, prefix: &str, name: &str) -> Ident {
-    let ident = format_ident!("__graphio_{}_{}_{}", prefix, *counter, name);
+    let ident = format_ident!("__graphium_{}_{}_{}", prefix, *counter, name);
     *counter += 1;
     ident
 }

@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
 use axum::{routing::get, Router};
-use graphio_macro::{graph, node};
+use graphium_macro::{graph, node};
 
 #[derive(Clone)]
 struct Context {
@@ -19,7 +19,7 @@ impl Default for Context {
 }
 
 async fn root_handler() -> &'static str {
-    "graphio axum server"
+    "graphium axum server"
 }
 
 async fn health_handler() -> &'static str {

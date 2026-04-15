@@ -6,7 +6,7 @@ mod parser;
 mod shared;
 
 /// Expands a `node! { ... }` item into a wrapper type plus a uniform
-/// `__graphio_run` entry point used by generated graphs.
+/// `__graphium_run` entry point used by generated graphs.
 #[proc_macro]
 pub fn node(input: TokenStream) -> TokenStream {
     node::expand(input)

@@ -2,7 +2,7 @@ pub mod data;
 
 use data::ctx::{Context, Status};
 use futures::executor::block_on;
-use graphio_macro::{graph, node};
+use graphium_macro::{graph, node};
 
 /// graph! macro should propagate owned artifacts across nodes
 #[test]
@@ -17,7 +17,7 @@ fn e2e_graph_macro_moves_artifacts() {
             data::node::PipeNumber(a_split) -> (a_split)
         }
     }
-    let duplicated = OwnedGraph::__graphio_run(&mut ctx);
+    let duplicated = OwnedGraph::__graphium_run(&mut ctx);
 
     assert_eq!(duplicated, 42);
 }
@@ -36,7 +36,7 @@ fn e2e_graph_macro_borrows_artifacts() {
             data::node::PipeNumber(a_number) -> (a_number)
         }
     }
-    let num = BorrowedGraph::__graphio_run(&mut ctx);
+    let num = BorrowedGraph::__graphium_run(&mut ctx);
     assert_eq!(num, 42);
 }
 
@@ -78,7 +78,7 @@ fn e2e_graph_macro_wires_ctx() {
         }
     }
 
-    CtxGraph::__graphio_run(&mut ctx);
+    CtxGraph::__graphium_run(&mut ctx);
 }
 
 #[test]
@@ -122,7 +122,7 @@ fn e2e_graph_branching_borrow() {
         }
     }
 
-    ConditionalGraph::__graphio_run(&mut ctx);
+    ConditionalGraph::__graphium_run(&mut ctx);
 }
 
 #[test]
@@ -166,7 +166,7 @@ fn e2e_graph_branching_move() {
         }
     }
 
-    ConditionalGraph::__graphio_run(&mut ctx);
+    ConditionalGraph::__graphium_run(&mut ctx);
 }
 
 #[test]
@@ -214,7 +214,7 @@ fn e2e_graph_nested_branching() {
         }
     }
 
-    NestedConditionalGraph::__graphio_run(&mut ctx);
+    NestedConditionalGraph::__graphium_run(&mut ctx);
 }
 
 #[test]
@@ -258,7 +258,7 @@ fn e2e_graph_match_outputs() {
         }
     }
 
-    let result = MatchOutputGraph::__graphio_run(&mut ctx);
+    let result = MatchOutputGraph::__graphium_run(&mut ctx);
     assert_eq!(result, 42);
 }
 
@@ -307,7 +307,7 @@ fn e2e_graph_if_elif_else_outputs() {
         }
     }
 
-    let result = IfGraph::__graphio_run(&mut ctx);
+    let result = IfGraph::__graphium_run(&mut ctx);
     assert_eq!(result, 10);
 }
 
@@ -356,7 +356,7 @@ fn e2e_graph_if_elif_else_borrow() {
         }
     }
 
-    IfBorrowGraph::__graphio_run(&mut ctx);
+    IfBorrowGraph::__graphium_run(&mut ctx);
 }
 
 #[test]
@@ -404,7 +404,7 @@ fn e2e_graph_if_elif_else_move() {
         }
     }
 
-    IfMoveGraph::__graphio_run(&mut ctx);
+    IfMoveGraph::__graphium_run(&mut ctx);
 }
 
 #[test]
@@ -460,7 +460,7 @@ fn e2e_graph_if_elif_else_nested() {
         }
     }
 
-    IfNestedGraph::__graphio_run(&mut ctx);
+    IfNestedGraph::__graphium_run(&mut ctx);
 }
 
 #[test]
@@ -500,7 +500,7 @@ fn e2e_graph_if_multiple_params() {
         }
     }
 
-    IfMultiParamGraph::__graphio_run(&mut ctx);
+    IfMultiParamGraph::__graphium_run(&mut ctx);
 }
 
 #[test]
@@ -530,7 +530,7 @@ fn e2e_graph_while_loop() {
         }
     }
 
-    WhileGraph::__graphio_run(&mut ctx);
+    WhileGraph::__graphium_run(&mut ctx);
     assert_eq!(ctx.a_number, 3);
 }
 
@@ -571,7 +571,7 @@ fn e2e_graph_loop_with_break() {
         }
     }
 
-    LoopBreakGraph::__graphio_run(&mut ctx);
+    LoopBreakGraph::__graphium_run(&mut ctx);
     assert_eq!(ctx.a_number, 3);
 }
 
@@ -593,7 +593,7 @@ fn e2e_graph_async_with_sync_nodes() {
         }
     }
 
-    block_on(AsyncSyncGraph::__graphio_run_async(&mut ctx));
+    block_on(AsyncSyncGraph::__graphium_run_async(&mut ctx));
     assert_eq!(ctx.a_number, 5);
 }
 
@@ -622,6 +622,6 @@ fn e2e_graph_async_nodes() {
         }
     }
 
-    let value = block_on(AsyncGraph::__graphio_run_async(&mut ctx));
+    let value = block_on(AsyncGraph::__graphium_run_async(&mut ctx));
     assert_eq!(value, 8);
 }

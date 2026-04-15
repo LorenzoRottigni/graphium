@@ -6,7 +6,7 @@ use crate::shared::{NodeDef, ParamKind, pascal_case};
 
 // Node expansion is intentionally simple now.
 // A node macro only validates the user function and generates a thin wrapper
-// exposing a uniform `__graphio_run` entry point. Artifact propagation is
+// exposing a uniform `__graphium_run` entry point. Artifact propagation is
 // handled entirely by `graph!`.
 
 /// Parses a user node function and emits its generated node wrapper type.
@@ -58,7 +58,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
         quote! {}
     } else {
         quote! {
-            pub fn __graphio_run #ctx_generic(
+            pub fn __graphium_run #ctx_generic(
                 ctx: #ctx_param,
                 #( #input_idents: #input_types ),*
             ) #return_sig {
@@ -70,7 +70,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
 
     let async_run = if is_async {
         quote! {
-            pub async fn __graphio_run_async #ctx_generic(
+            pub async fn __graphium_run_async #ctx_generic(
                 ctx: #ctx_param,
                 #( #input_idents: #input_types ),*
             ) #return_sig {
@@ -80,7 +80,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
         }
     } else {
         quote! {
-            pub async fn __graphio_run_async #ctx_generic(
+            pub async fn __graphium_run_async #ctx_generic(
                 ctx: #ctx_param,
                 #( #input_idents: #input_types ),*
             ) #return_sig {

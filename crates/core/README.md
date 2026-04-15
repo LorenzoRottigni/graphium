@@ -1,4 +1,4 @@
-# Graphio Core (Runtime)
+# Graphium Core (Runtime)
 
 The project at current status only provides real performance.
 

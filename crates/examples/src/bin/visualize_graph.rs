@@ -1,5 +1,5 @@
-use graphio::Visualizer;
-use graphio_macro::{graph, node};
+use graphium::Visualizer;
+use graphium_macro::{graph, node};
 
 #[derive(Default)]
 struct Context;

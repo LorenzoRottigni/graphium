@@ -178,25 +178,25 @@ dependencies = [
 ]
 
 [[package]]
-name = "graphio"
+name = "graphium"
 version = "0.1.0"
 
 [[package]]
-name = "graphio-examples"
+name = "graphium-examples"
 version = "0.1.0"
 dependencies = [
  "axum",
- "graphio",
- "graphio-macro",
+ "graphium",
+ "graphium-macro",
  "tokio",
 ]
 
 [[package]]
-name = "graphio-macro"
+name = "graphium-macro"
 version = "0.1.0"
 dependencies = [
  "futures",
- "graphio",
+ "graphium",
  "proc-macro2",
  "quote",
  "syn",

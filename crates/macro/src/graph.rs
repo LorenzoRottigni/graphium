@@ -23,14 +23,14 @@ fn node_run_call_tokens(
 ) -> proc_macro2::TokenStream {
     let call = if let Some(graph_path) = nested_graph_path {
         if async_mode {
-            quote! { #graph_path::__graphio_run_async(#ctx_arg, #( #arg_vars ),*) }
+            quote! { #graph_path::__graphium_run_async(#ctx_arg, #( #arg_vars ),*) }
         } else {
-            quote! { #graph_path::__graphio_run(#ctx_arg, #( #arg_vars ),*) }
+            quote! { #graph_path::__graphium_run(#ctx_arg, #( #arg_vars ),*) }
         }
     } else if async_mode {
-        quote! { #node_path::__graphio_run_async(#ctx_arg, #( #arg_vars ),*) }
+        quote! { #node_path::__graphium_run_async(#ctx_arg, #( #arg_vars ),*) }
     } else {
-        quote! { #node_path::__graphio_run(#ctx_arg, #( #arg_vars ),*) }
+        quote! { #node_path::__graphium_run(#ctx_arg, #( #arg_vars ),*) }
     };
 
     if async_mode {
@@ -66,7 +66,7 @@ fn selector_params_for_on_expr(on: &syn::Expr) -> Vec<SelectorParam> {
 // - artifacts die once the hop finishes unless a node re-emits them
 
 /// Expands a `graph!` definition into a graph configuration type plus a
-/// `graphio::Graph::run` implementation.
+/// `graphium::Graph::run` implementation.
 pub fn expand(input: TokenStream) -> TokenStream {
     let GraphInput {
         name,
@@ -205,7 +205,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
     // AST Graph::run() trait body
     let trait_run_body = if graph_inputs.is_empty() && graph_outputs.is_empty() {
         quote! {
-            Self::__graphio_run(ctx);
+            Self::__graphium_run(ctx);
         }
     } else {
         quote! {
@@ -221,7 +221,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
 
     let async_trait_run_body = if graph_inputs.is_empty() && graph_outputs.is_empty() {
         quote! {
-            Self::__graphio_run_async(ctx).await;
+            Self::__graphium_run_async(ctx).await;
         }
     } else {
         quote! {
@@ -241,10 +241,10 @@ pub fn expand(input: TokenStream) -> TokenStream {
     } else {
         quote! {
             pub fn run(ctx: &mut #context) {
-                <Self as ::graphio::Graph<#context>>::run(ctx);
+                <Self as ::graphium::Graph<#context>>::run(ctx);
             }
 
-            pub fn __graphio_run(
+            pub fn __graphium_run(
                 ctx: &mut #context,
                 #( #run_params ),*
             ) #run_return_sig {
@@ -257,7 +257,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
         quote! {}
     } else {
         quote! {
-            impl ::graphio::Graph<#context> for #name {
+            impl ::graphium::Graph<#context> for #name {
                 fn run(ctx: &mut #context) {
                     #trait_run_body
                 }
@@ -278,21 +278,21 @@ pub fn expand(input: TokenStream) -> TokenStream {
                 #async_trait_run_body
             }
 
-            pub async fn __graphio_run_async(
+            pub async fn __graphium_run_async(
                 ctx: &mut #context,
                 #( #run_params ),*
             ) #run_return_sig {
                 #run_body_async
             }
 
-            pub fn graph_def() -> ::graphio::GraphDef {
+            pub fn graph_def() -> ::graphium::GraphDef {
                 #graph_def_tokens
             }
         }
         #graph_impl
 
-        impl ::graphio::GraphDefProvider for #name {
-            fn graph_def() -> ::graphio::GraphDef {
+        impl ::graphium::GraphDefProvider for #name {
+            fn graph_def() -> ::graphium::GraphDef {
                 Self::graph_def()
             }
         }
@@ -443,7 +443,7 @@ fn get_single_node_expr(
             });
         } else {
             input_bindings.push(quote! {
-                let #arg_ident = ::graphio::clone_artifact(
+                let #arg_ident = ::graphium::clone_artifact(
                     #source
                         .as_ref()
                         .unwrap_or_else(|| panic!(concat!("missing artifact `", stringify!(#input), "`")))
@@ -466,9 +466,9 @@ fn get_single_node_expr(
                 if ctx_cloned.insert(output_name.clone()) {
                     let clone_ident = fresh_ident(counter, "ctx_clone", &output_name);
                     let clone_expr = if *input_is_borrowed {
-                        quote! { ::graphio::clone_artifact(#arg_ident) }
+                        quote! { ::graphium::clone_artifact(#arg_ident) }
                     } else {
-                        quote! { ::graphio::clone_artifact(&#arg_ident) }
+                        quote! { ::graphium::clone_artifact(&#arg_ident) }
                     };
                     ctx_clone_bindings.push(quote! {
                         let #clone_ident = #clone_expr;
@@ -688,7 +688,7 @@ fn prepare_parallel_payload(
             });
         } else {
             bindings.push(quote! {
-                let mut #payload_var = ::std::option::Option::Some(::graphio::clone_artifact(
+                let mut #payload_var = ::std::option::Option::Some(::graphium::clone_artifact(
                     #source
                         .as_ref()
                         .unwrap_or_else(|| panic!(concat!("missing artifact `", #artifact, "`")))
@@ -992,7 +992,7 @@ fn get_while_node_expr(
             .unwrap_or_else(|| panic!("missing artifact `{artifact}` for @while body"));
         let iter_var = fresh_ident(counter, "while_in", artifact);
         iter_payload_bindings.push(quote! {
-            let mut #iter_var = ::std::option::Option::Some(::graphio::clone_artifact(#stored));
+            let mut #iter_var = ::std::option::Option::Some(::graphium::clone_artifact(#stored));
         });
         iter_payload.insert_owned(artifact.clone(), iter_var.clone());
     }
@@ -1065,7 +1065,7 @@ fn get_loop_node_expr(
             .unwrap_or_else(|| panic!("missing artifact `{artifact}` for @loop body"));
         let iter_var = fresh_ident(counter, "loop_in", artifact);
         iter_payload_bindings.push(quote! {
-            let mut #iter_var = ::std::option::Option::Some(::graphio::clone_artifact(#stored));
+            let mut #iter_var = ::std::option::Option::Some(::graphium::clone_artifact(#stored));
         });
         iter_payload.insert_owned(artifact.clone(), iter_var.clone());
     }
@@ -1453,7 +1453,7 @@ fn build_condition_bindings(
                         .unwrap_or_else(|| panic!("missing artifact `{artifact_name}` for @while condition"));
                     let arg_ident = fresh_ident(counter, "cond_arg", &artifact_name);
                     bindings.push(quote! {
-                        let #arg_ident = ::graphio::clone_artifact(
+                        let #arg_ident = ::graphium::clone_artifact(
                             #source
                                 .as_ref()
                                 .unwrap_or_else(|| panic!(concat!("missing artifact `", #artifact_name, "`")))
@@ -1725,7 +1725,7 @@ fn build_selector_bindings(
                     if needed_by_branches.contains(&artifact_name) {
                         // If already marked borrowed, clone to avoid moving shared value.
                         bindings.push(quote! {
-                            let #arg_ident = ::graphio::clone_artifact(
+                            let #arg_ident = ::graphium::clone_artifact(
                                 #source
                                     .as_ref()
                                     .unwrap_or_else(|| panic!(concat!("missing artifact `", #artifact_name, "`")))
@@ -1787,7 +1787,7 @@ fn build_selector_call(
 fn graph_definition_tokens(name: &syn::Ident, nodes: &NodeExpr) -> proc_macro2::TokenStream {
     let steps = node_expr_steps_tokens(nodes);
     quote! {
-        ::graphio::GraphDef {
+        ::graphium::GraphDef {
             name: stringify!(#name),
             steps: vec![ #( #steps ),* ],
         }
@@ -1810,7 +1810,7 @@ fn node_expr_steps_tokens(node: &NodeExpr) -> Vec<proc_macro2::TokenStream> {
                 })
                 .collect();
             vec![quote! {
-                ::graphio::GraphStep::Parallel {
+                ::graphium::GraphStep::Parallel {
                     branches: vec![ #( #branches ),* ],
                 }
             }]
@@ -1823,7 +1823,7 @@ fn node_expr_steps_tokens(node: &NodeExpr) -> Vec<proc_macro2::TokenStream> {
                 .map(|(key, node)| {
                     let steps = node_expr_steps_tokens(node);
                     quote! {
-                        ::graphio::GraphCase {
+                        ::graphium::GraphCase {
                             label: stringify!(#key),
                             steps: vec![ #( #steps ),* ],
                         }
@@ -1831,7 +1831,7 @@ fn node_expr_steps_tokens(node: &NodeExpr) -> Vec<proc_macro2::TokenStream> {
                 })
                 .collect();
             vec![quote! {
-                ::graphio::GraphStep::Route {
+                ::graphium::GraphStep::Route {
                     on: stringify!(#on),
                     cases: vec![ #( #cases ),* ],
                 }
@@ -1841,7 +1841,7 @@ fn node_expr_steps_tokens(node: &NodeExpr) -> Vec<proc_macro2::TokenStream> {
             let condition = &while_expr.condition;
             let body_steps = node_expr_steps_tokens(&while_expr.body);
             vec![quote! {
-                ::graphio::GraphStep::While {
+                ::graphium::GraphStep::While {
                     condition: stringify!(#condition),
                     body: vec![ #( #body_steps ),* ],
                 }
@@ -1850,12 +1850,12 @@ fn node_expr_steps_tokens(node: &NodeExpr) -> Vec<proc_macro2::TokenStream> {
         NodeExpr::Loop(loop_expr) => {
             let body_steps = node_expr_steps_tokens(&loop_expr.body);
             vec![quote! {
-                ::graphio::GraphStep::Loop {
+                ::graphium::GraphStep::Loop {
                     body: vec![ #( #body_steps ),* ],
                 }
             }]
         }
-        NodeExpr::Break => vec![quote! { ::graphio::GraphStep::Break }],
+        NodeExpr::Break => vec![quote! { ::graphium::GraphStep::Break }],
     }
 }
 
@@ -1866,15 +1866,15 @@ fn node_call_step_tokens(call: &NodeCall) -> proc_macro2::TokenStream {
     let output_tokens = artifact_list_tokens(&call.outputs, &call.output_borrows);
     if let Some(graph_path) = nested_graph_path {
         quote! {
-            ::graphio::GraphStep::Nested {
-                graph: Box::new(<#graph_path as ::graphio::GraphDefProvider>::graph_def()),
+            ::graphium::GraphStep::Nested {
+                graph: Box::new(<#graph_path as ::graphium::GraphDefProvider>::graph_def()),
                 inputs: vec![ #( #input_tokens ),* ],
                 outputs: vec![ #( #output_tokens ),* ],
             }
         }
     } else {
         quote! {
-            ::graphio::GraphStep::Node {
+            ::graphium::GraphStep::Node {
                 name: stringify!(#node_path),
                 inputs: vec![ #( #input_tokens ),* ],
                 outputs: vec![ #( #output_tokens ),* ],

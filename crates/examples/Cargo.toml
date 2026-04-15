@@ -1,5 +1,5 @@
 [package]
-name = "graphio-examples"
+name = "graphium-examples"
 version = "0.1.0"
 edition = "2024"
 
@@ -7,6 +7,6 @@ edition = "2024"
 axum = "0.7"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
 
-# graphio crates
-graphio = { version = "0.1.0", path = "../core" }
-graphio-macro = { version = "0.1.0", path = "../macro" }
+# graphium crates
+graphium = { version = "0.1.0", path = "../core" }
+graphium-macro = { version = "0.1.0", path = "../macro" }
