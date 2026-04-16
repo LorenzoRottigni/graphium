@@ -19,7 +19,7 @@ pub struct NodeDef {
     pub return_is_result: bool,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ParamKind {
     Ctx,
     Input(usize),
