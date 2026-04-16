@@ -1,7 +1,5 @@
 # Graphium
 
-- automated isolated unit testing on nodes
-- allow nested graphs visualization
 - allow event bus publish like:
     node! {
         #[publish = EventName]
@@ -16,3 +14,8 @@
             7
         }
     }
+- allow to unpack references to remove them from ctx after they are read:
+    TrainTestSplit(input_features, output_features) -> (&X_train, &X_test, &y_train, &y_test) >>
+    Preprocessing(*X_train, *X_test) -> (X_train, X_test)
+
+    Once "Preprocessing" node takes in X_train and X_test consumes them from ctx.
