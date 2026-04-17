@@ -5,11 +5,12 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::Router;
+use axum::Form;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
-use axum::routing::get;
-use graphium::{GraphDef, GraphDefProvider, GraphStep};
+use axum::routing::{get, post};
+use graphium::{GraphDef, GraphStep};
 use reqwest::Url;
 use serde::Deserialize;
 
@@ -39,7 +40,7 @@ impl GraphiumUiConfig {
         }
     }
 
-    pub fn with_graph<G: GraphDefProvider + 'static>(mut self) -> Self {
+    pub fn with_graph<G: graphium::GraphPlayground + 'static>(mut self) -> Self {
         self.graphs.push(graph::<G>());
         self
     }
@@ -65,6 +66,7 @@ pub struct ConfiguredGraph {
     pub id: String,
     pub name: String,
     pub def: GraphDef,
+    pub playground: Option<Playground>,
 }
 
 impl ConfiguredGraph {
@@ -74,16 +76,41 @@ impl ConfiguredGraph {
             id,
             name: def.name.to_string(),
             def,
+            playground: None,
         }
     }
 
-    pub fn from_provider<G: GraphDefProvider + 'static>() -> Self {
-        Self::from_graph_def(G::graph_def())
+    pub fn from_provider<G: graphium::GraphPlayground + 'static>() -> Self {
+        let def = G::graph_def();
+        let id = slugify(def.name);
+        Self {
+            id,
+            name: def.name.to_string(),
+            def,
+            playground: Some(Playground {
+                supported: G::PLAYGROUND_SUPPORTED,
+                schema: G::playground_schema(),
+                run: G::playground_run,
+            }),
+        }
     }
 }
 
-pub fn graph<G: GraphDefProvider + 'static>() -> ConfiguredGraph {
-    ConfiguredGraph::from_graph_def(G::graph_def())
+pub fn graph<G: graphium::GraphPlayground + 'static>() -> ConfiguredGraph {
+    ConfiguredGraph::from_provider::<G>()
+}
+
+#[derive(Clone, Copy)]
+pub struct Playground {
+    supported: bool,
+    schema: graphium::PlaygroundSchema,
+    run: fn(&HashMap<String, String>) -> Result<String, String>,
+}
+
+#[derive(Default, Clone)]
+struct PlaygroundView {
+    values: HashMap<String, String>,
+    result: Option<Result<String, String>>,
 }
 
 #[derive(Clone)]
@@ -128,9 +155,7 @@ macro_rules! graphs {
     ($($graph:path),+ $(,)?) => {{
         vec![
             $(
-                $crate::ConfiguredGraph::from_graph_def(
-                    <$graph as ::graphium::GraphDefProvider>::graph_def()
-                )
+                $crate::ConfiguredGraph::from_provider::<$graph>()
             ),+
         ]
     }};
@@ -213,6 +238,7 @@ pub async fn serve(config: GraphiumUiConfig) -> Result<(), UiError> {
         .route("/", get(home))
         .route("/select/:id", get(select_graph))
         .route("/graph/:id", get(graph_page))
+        .route("/graph/:id/playground/run", post(run_playground))
         .route("/tests", get(tests_page))
         .route("/tests/run/:id", get(run_test_page))
         .with_state(state);
@@ -284,6 +310,40 @@ async fn graph_page(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Html<String>, AppHttpError> {
+    render_graph_page(state, id, PlaygroundView::default()).await
+}
+
+async fn run_playground(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Form(values): Form<HashMap<String, String>>,
+) -> Result<Html<String>, AppHttpError> {
+    let graph = state
+        .by_id
+        .get(&id)
+        .ok_or_else(|| AppHttpError::not_found("graph not configured"))?;
+
+    let result = graph
+        .playground
+        .map(|pg| (pg.run)(&values))
+        .unwrap_or_else(|| Err("playground not available for this graph".to_string()));
+
+    render_graph_page(
+        state,
+        id,
+        PlaygroundView {
+            values,
+            result: Some(result),
+        },
+    )
+    .await
+}
+
+async fn render_graph_page(
+    state: Arc<AppState>,
+    id: String,
+    playground_view: PlaygroundView,
+) -> Result<Html<String>, AppHttpError> {
     let graph = state
         .by_id
         .get(&id)
@@ -331,6 +391,7 @@ async fn graph_page(
 
     let graph_tests_widget = tests_widget_html("Graph Tests", &graph_scoped_tests);
     let node_tests_widget = tests_widget_html("Node Tests", &node_scoped_tests);
+    let playground_widget = playground_widget_html(graph, &id, &playground_view);
 
     Ok(Html(format!(
         r#"<!doctype html>
@@ -351,11 +412,16 @@ async fn graph_page(
     .mermaid-scroll svg {{ max-width: none !important; }}
     pre.mermaid {{ margin: 0; }}
     .below {{ display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; align-items: start; }}
+    .side-stack {{ display:grid; grid-template-columns: 1fr; gap: 1rem; }}
     .metrics {{ display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }}
     .metric {{ border: 1px solid #ebeff5; border-radius: 12px; padding: .65rem; }}
     .metric .k {{ font-size: .8rem; opacity: .75; }}
     .metric .v {{ font-size: 1rem; font-weight: 700; margin-top: .2rem; }}
     .tests-stack {{ display:grid; grid-template-columns: 1fr; gap: 1rem; }}
+    .play-label {{ font-size: .84rem; opacity: .8; margin-top: .3rem; }}
+    .play-field {{ display: grid; grid-template-columns: 1fr; gap: .4rem; margin: .55rem 0; }}
+    .play-field input[type="text"] {{ padding: .55rem .65rem; border-radius: 10px; border: 1px solid #d5dce5; }}
+    .play-out {{ background: #f2f6fb; border-radius: 10px; padding: .75rem; overflow: auto; }}
     .test-item {{ border: 1px solid #ebeff5; border-radius: 10px; padding: .55rem; display:flex; align-items:center; gap:.5rem; }}
     .test-target {{ font-size: .83rem; color:#5f7388; }}
     .test-name {{ font-size: .9rem; font-weight: 600; flex:1; }}
@@ -398,9 +464,12 @@ async fn graph_page(
         <div class="metric"><div class="k">P95 latency (s)</div><div class="v">{p95}</div></div>
       </div>
     </aside>
-    <section class="tests-stack">
-      {graph_tests_widget}
-      {node_tests_widget}
+    <section class="side-stack">
+      {playground_widget}
+      <section class="tests-stack">
+        {graph_tests_widget}
+        {node_tests_widget}
+      </section>
     </section>
   </section>
 
@@ -423,6 +492,7 @@ async fn graph_page(
         fail = fail,
         p50 = p50,
         p95 = p95,
+        playground_widget = playground_widget,
         graph_tests_widget = graph_tests_widget,
         node_tests_widget = node_tests_widget,
     )))
@@ -602,6 +672,121 @@ fn tests_widget_html(title: &str, tests: &[&UiTest]) -> String {
 </article>"#,
         escape_label(title),
         body
+    )
+}
+
+fn playground_widget_html(graph: &ConfiguredGraph, id: &str, view: &PlaygroundView) -> String {
+    let Some(playground) = graph.playground else {
+        return r#"<article class="card"><h3>Playground</h3><p style="opacity:.7; margin:.2rem 0;">Not available for this graph.</p></article>"#.to_string();
+    };
+
+    let mut fields = String::new();
+    for param in playground.schema.inputs {
+        let value = view.values.get(param.name).cloned().unwrap_or_default();
+        let checked = matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "true" | "1" | "yes" | "on"
+        );
+
+        let _ = writeln!(
+            fields,
+            r#"<div class="play-field">
+  <div class="play-label"><strong>{}</strong> <span style="opacity:.7;">({})</span></div>
+  {}
+</div>"#,
+            escape_label(param.name),
+            escape_label(param.ty),
+            if param.ty.trim() == "bool" {
+                format!(
+                    r#"<label style="display:flex; align-items:center; gap:.5rem;">
+  <input type="checkbox" name="{}" {}
+  />
+  <span style="opacity:.8;">true</span>
+</label>"#,
+                    escape_label(param.name),
+                    if checked { "checked" } else { "" }
+                )
+            } else {
+                format!(
+                    r#"<input type="text" name="{}" value="{}" />"#,
+                    escape_label(param.name),
+                    escape_label(&value)
+                )
+            }
+        );
+    }
+
+    let outputs = if playground.schema.outputs.is_empty() {
+        "Outputs: (none)".to_string()
+    } else {
+        let mut out = String::new();
+        for (idx, param) in playground.schema.outputs.iter().enumerate() {
+            if idx > 0 {
+                out.push_str(", ");
+            }
+            out.push_str(param.name);
+            out.push_str(": ");
+            out.push_str(param.ty);
+        }
+        format!("Outputs: {out}")
+    };
+
+    let status = if playground.supported {
+        format!(
+            r#"<p style="margin:.2rem 0; opacity:.75;">Context: <code>{}</code> · {}</p>"#,
+            escape_label(playground.schema.context),
+            escape_label(&outputs)
+        )
+    } else {
+        format!(
+            r#"<p style="margin:.2rem 0; opacity:.75;">Playground disabled for this graph. Context: <code>{}</code> · {}</p>"#,
+            escape_label(playground.schema.context),
+            escape_label(&outputs)
+        )
+    };
+
+    let result_html = match &view.result {
+        None => "".to_string(),
+        Some(Ok(value)) => format!(
+            r#"<div style="margin-top:.7rem;"><div class="play-label">Result</div><pre class="play-out">{}</pre></div>"#,
+            escape_label(value)
+        ),
+        Some(Err(err)) => format!(
+            r#"<div style="margin-top:.7rem;"><div class="play-label">Error</div><pre class="play-out" style="border:1px solid #fecaca; background:#fff1f2;">{}</pre></div>"#,
+            escape_label(err)
+        ),
+    };
+
+    // For checkbox inputs, browsers only send the key when checked. Add a tiny
+    // hint so users know unchecked = false.
+    let hint = if playground
+        .schema
+        .inputs
+        .iter()
+        .any(|p| p.ty.trim() == "bool")
+    {
+        r#"<p style="margin:.2rem 0; opacity:.7;">Tip: unchecked bool inputs are treated as false.</p>"#
+    } else {
+        ""
+    };
+
+    format!(
+        r#"<article class="card">
+  <h3>Playground</h3>
+  {status}
+  {hint}
+  <form method="post" action="/graph/{id}/playground/run">
+    {fields}
+    <button type="submit" {disabled}>Run</button>
+  </form>
+  {result_html}
+</article>"#,
+        status = status,
+        hint = hint,
+        id = escape_label(id),
+        fields = fields,
+        disabled = if playground.supported { "" } else { "disabled" },
+        result_html = result_html
     )
 }
 

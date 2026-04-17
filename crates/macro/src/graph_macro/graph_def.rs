@@ -172,19 +172,26 @@ fn node_expr_steps_tokens(node: &NodeExpr) -> Vec<proc_macro2::TokenStream> {
         }
         NodeExpr::Loop(loop_expr) => {
             let shape = super::analyze_expr(node);
+            let inputs = super::required_artifacts(&shape);
+            let borrowed_inputs = super::required_borrowed(&shape);
             let outputs = shape.exit_outputs;
             let borrowed_outputs: Vec<String> = shape.exit_borrowed.into_iter().collect();
+            let mut input_labels = inputs;
+            for borrowed in borrowed_inputs {
+                input_labels.push(format!("&{borrowed}"));
+            }
             let mut output_labels = outputs;
             for borrowed in borrowed_outputs {
                 output_labels.push(format!("&{borrowed}"));
             }
+            let input_tokens = static_str_list_tokens(&input_labels);
             let output_tokens = static_str_list_tokens(&output_labels);
 
             let body_steps = node_expr_steps_tokens(&loop_expr.body);
             vec![quote! {
                 ::graphium::GraphStep::Loop {
                     body: vec![ #( #body_steps ),* ],
-                    inputs: vec![],
+                    inputs: vec![ #( #input_tokens ),* ],
                     outputs: vec![ #( #output_tokens ),* ],
                 }
             }]

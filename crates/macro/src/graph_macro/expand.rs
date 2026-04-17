@@ -55,6 +55,13 @@ pub fn expand(input: TokenStream) -> TokenStream {
     let trait_run_body = build_trait_run_body(&name, &graph_inputs, &graph_outputs, false);
     let async_trait_run_body = build_trait_run_body(&name, &graph_inputs, &graph_outputs, true);
     let graph_def_tokens = graph_definition_tokens(&name, &graph_inputs, &graph_outputs, &nodes);
+    let playground_impl = build_playground_impl(
+        &name,
+        &context,
+        &graph_inputs,
+        &graph_outputs,
+        async_enabled,
+    );
     let metrics_enabled = metrics.enabled();
     let metrics_config_tokens = metric_config_tokens(metrics);
     let sync_graph_body = wrap_sync_graph_body(&run_body, metrics);
@@ -100,9 +107,154 @@ pub fn expand(input: TokenStream) -> TokenStream {
                 Self::graph_def()
             }
         }
+
+        #playground_impl
     };
 
     TokenStream::from(expanded)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PlaygroundParseKind {
+    String,
+    Bool,
+    FromStr,
+}
+
+fn playground_parse_kind(ty: &syn::Type) -> Option<PlaygroundParseKind> {
+    let syn::Type::Path(type_path) = ty else {
+        return None;
+    };
+    if type_path.qself.is_some() {
+        return None;
+    }
+    let last = type_path.path.segments.last()?.ident.to_string();
+    match last.as_str() {
+        "String" => Some(PlaygroundParseKind::String),
+        "bool" => Some(PlaygroundParseKind::Bool),
+        "i8" | "i16" | "i32" | "i64" | "i128" | "isize" | "u8" | "u16" | "u32" | "u64"
+        | "u128" | "usize" | "f32" | "f64" => Some(PlaygroundParseKind::FromStr),
+        _ => None,
+    }
+}
+
+fn build_playground_impl(
+    name: &syn::Ident,
+    context: &syn::Path,
+    graph_inputs: &[(syn::Ident, syn::Type)],
+    graph_outputs: &[(syn::Ident, syn::Type)],
+    async_enabled: bool,
+) -> proc_macro2::TokenStream {
+    let input_params: Vec<_> = graph_inputs
+        .iter()
+        .map(|(ident, ty)| {
+            quote! {
+                ::graphium::PlaygroundParam { name: stringify!(#ident), ty: stringify!(#ty) }
+            }
+        })
+        .collect();
+    let output_params: Vec<_> = graph_outputs
+        .iter()
+        .map(|(ident, ty)| {
+            quote! {
+                ::graphium::PlaygroundParam { name: stringify!(#ident), ty: stringify!(#ty) }
+            }
+        })
+        .collect();
+
+    // Playground is purely a UI convenience: it uses the graph's declared IO
+    // schema to build a form and runs the graph with a fresh `Ctx::default()`.
+    let supported =
+        !async_enabled && graph_inputs.iter().all(|(_, ty)| playground_parse_kind(ty).is_some());
+
+    let run_body = if supported {
+        let mut parse_bindings = Vec::new();
+        let mut args = Vec::new();
+        for (ident, ty) in graph_inputs {
+            let key = ident.to_string();
+            let raw_ident = syn::Ident::new(
+                &format!("__graphium_ui_raw_{key}"),
+                proc_macro2::Span::call_site(),
+            );
+            let var_ident = syn::Ident::new(
+                &format!("__graphium_ui_{key}"),
+                proc_macro2::Span::call_site(),
+            );
+            let kind = playground_parse_kind(ty).unwrap();
+            let parse_expr = match kind {
+                PlaygroundParseKind::String => quote! { #raw_ident.to_string() },
+                PlaygroundParseKind::Bool => quote! {{
+                    match #raw_ident.trim().to_ascii_lowercase().as_str() {
+                        "true" | "1" | "yes" | "on" => true,
+                        "false" | "0" | "no" | "off" => false,
+                        other => return ::std::result::Result::Err(format!("invalid input `{}`: expected bool, got `{}`", #key, other)),
+                    }
+                }},
+                PlaygroundParseKind::FromStr => quote! {{
+                    #raw_ident
+                        .trim()
+                        .parse::<#ty>()
+                        .map_err(|e| format!("invalid input `{}`: {}", #key, e))?
+                }},
+            };
+            let raw_binding = match kind {
+                PlaygroundParseKind::Bool => quote! {
+                    let #raw_ident = form.get(#key).map(|v| v.as_str()).unwrap_or("false");
+                },
+                _ => quote! {
+                    let #raw_ident = form
+                        .get(#key)
+                        .map(|v| v.as_str())
+                        .ok_or_else(|| format!("missing input `{}`", #key))?;
+                },
+            };
+            parse_bindings.push(quote! {
+                #raw_binding
+                let #var_ident: #ty = #parse_expr;
+            });
+            args.push(quote! { #var_ident });
+        }
+
+        let output_format = if graph_outputs.is_empty() {
+            quote! { ::std::result::Result::Ok("ok".to_string()) }
+        } else {
+            quote! { ::std::result::Result::Ok(format!("{:?}", result)) }
+        };
+
+        quote! {{
+            let mut ctx: #context = ::core::default::Default::default();
+            #( #parse_bindings )*
+            let result = #name::__graphium_run(&mut ctx, #( #args ),* );
+            #output_format
+        }}
+    } else {
+        quote! {{
+            let _ = form;
+            ::std::result::Result::Err("playground execution is not supported for this graph (requires a sync graph and supported input types)".to_string())
+        }}
+    };
+
+    quote! {
+        impl ::graphium::GraphPlayground for #name {
+            const PLAYGROUND_SUPPORTED: bool = #supported;
+
+            fn playground_schema() -> ::graphium::PlaygroundSchema {
+                static INPUTS: &[::graphium::PlaygroundParam] = &[ #( #input_params ),* ];
+                static OUTPUTS: &[::graphium::PlaygroundParam] = &[ #( #output_params ),* ];
+                ::graphium::PlaygroundSchema {
+                    inputs: INPUTS,
+                    outputs: OUTPUTS,
+                    context: stringify!(#context),
+                }
+            }
+
+            fn playground_run(
+                form: &::std::collections::HashMap<String, String>,
+            ) -> ::std::result::Result<String, String> {
+                #run_body
+            }
+        }
+    }
 }
 
 /// Root-level bindings needed before the graph body can run.

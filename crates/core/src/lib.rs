@@ -7,7 +7,10 @@ pub mod test_registry;
 pub mod visualizer;
 
 pub use inventory;
-pub use visualizer::{GraphCase, GraphDef, GraphDefProvider, GraphStep, Visualizer};
+pub use visualizer::{
+    GraphCase, GraphDef, GraphDefProvider, GraphPlayground, GraphStep, PlaygroundParam,
+    PlaygroundSchema, Visualizer,
+};
 
 pub trait Artifact: Clone + 'static {}
 
