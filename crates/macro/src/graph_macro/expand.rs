@@ -7,7 +7,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::parse_macro_input;
 
-use crate::shared::{GeneratedExpr, GraphInput, MetricsSpec, Payload, fresh_ident};
+use crate::shared::{fresh_ident, GeneratedExpr, GraphInput, MetricsSpec, Payload};
 
 use super::{get_node_expr, graph_definition_tokens};
 
@@ -101,6 +101,8 @@ pub fn expand(input: TokenStream) -> TokenStream {
             }
         }
     };
+
+    println!("expand into: \n {}", expanded);
 
     TokenStream::from(expanded)
 }

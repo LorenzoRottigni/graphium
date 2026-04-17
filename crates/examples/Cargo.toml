@@ -11,3 +11,4 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
 graphium = { version = "0.1.0", path = "../core" }
 graphium-macro = { version = "0.1.0", path = "../macro" }
 graphium-ui = { version = "0.1.0", path = "../ui" }
+
