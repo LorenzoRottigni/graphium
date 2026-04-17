@@ -68,3 +68,37 @@ fn e2e_graph_macro_borrows_artifacts() {
     let num = BorrowedGraph::__graphium_run(&mut ctx);
     assert_eq!(num, 42);
 }
+
+#[test]
+#[should_panic]
+fn e2e_graph_macro_reference_last_1_hop() {
+    #[derive(Default)]
+    pub struct Context {
+        pub number: u32,
+    }
+
+    let mut ctx = Context::default();
+
+    node! {
+        fn check_number(ctx: &Context, number: &u32) {
+            assert_eq!(ctx.number, *number);
+        }
+    }
+
+    node! {
+        fn check_reference_expiration(ctx: &Context) {
+            assert_eq!(ctx.number, 42);
+        }
+    }
+
+    graph! {
+        #[metadata(context = Context)]
+        ReferenceGraph {
+            GetNumber() -> (&number) >>
+            CheckNumber(&number) >>
+            CheckReferenceExpiration()
+        }
+    }
+
+    ReferenceGraph::__graphium_run(&mut ctx);
+}
