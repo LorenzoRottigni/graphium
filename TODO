@@ -19,4 +19,3 @@
     Preprocessing(*X_train, *X_test) -> (X_train, X_test)
 
     Once "Preprocessing" node takes in X_train and X_test consumes them from ctx.
-- make (metadata(context = Context)) optional

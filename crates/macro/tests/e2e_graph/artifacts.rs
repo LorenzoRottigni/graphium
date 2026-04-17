@@ -24,7 +24,7 @@ fn e2e_graph_macro_moves_artifacts() {
     }
 
     graph! {
-        #[metadata(context = graphium::Context, outputs = (a_split: u32))]
+        #[metadata(outputs = (a_split: u32))]
         OwnedGraph {
             GetNumber() -> (number) >>
             Duplicate(number) -> (a_split, b_split) >>

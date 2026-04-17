@@ -4,6 +4,7 @@ use syn::{
     Expr, Ident, Path, Result, Token, Type,
     parse::{Parse, ParseStream},
 };
+use syn::parse_quote;
 
 use crate::shared::{
     GraphInput, LoopExpr, MetricsSpec, NodeCall, NodeExpr, RouteExpr, WhileExpr, parse_metric_name,
@@ -524,15 +525,49 @@ fn parse_graph_input_legacy(input: ParseStream) -> Result<GraphInput> {
         input.parse::<Token![,]>().ok();
     }
 
+    let nodes = nodes.ok_or_else(|| input.error("missing `schema`"))?;
+    let context = match context {
+        Some(ctx) => ctx,
+        None => {
+            if node_expr_uses_borrowed_artifacts(&nodes) {
+                return Err(input.error(
+                    "missing `context`; graphs that borrow artifacts (e.g. `(&x)` or `-> (&x)`) must declare a context type that stores borrowed artifacts as fields",
+                ));
+            }
+            parse_quote!(::graphium::Context)
+        }
+    };
+
     Ok(GraphInput {
         name: name.ok_or_else(|| input.error("missing `name`"))?,
-        context: context.ok_or_else(|| input.error("missing `context`"))?,
+        context,
         inputs: graph_inputs,
         outputs: graph_outputs,
-        nodes: nodes.ok_or_else(|| input.error("missing `schema`"))?,
+        nodes,
         async_enabled,
         metrics,
     })
+}
+
+fn node_expr_uses_borrowed_artifacts(node: &NodeExpr) -> bool {
+    match node {
+        NodeExpr::Single(call) => call.input_borrows.iter().any(|b| *b) || call.output_borrows.iter().any(|b| *b),
+        NodeExpr::Sequence(nodes) | NodeExpr::Parallel(nodes) => nodes.iter().any(node_expr_uses_borrowed_artifacts),
+        NodeExpr::Route(route) => {
+            route.output_borrows.iter().any(|b| *b)
+                || route
+                    .routes
+                    .iter()
+                    .any(|(_, node)| node_expr_uses_borrowed_artifacts(node))
+        }
+        NodeExpr::While(while_expr) => {
+            while_expr.output_borrows.iter().any(|b| *b) || node_expr_uses_borrowed_artifacts(&while_expr.body)
+        }
+        NodeExpr::Loop(loop_expr) => {
+            loop_expr.output_borrows.iter().any(|b| *b) || node_expr_uses_borrowed_artifacts(&loop_expr.body)
+        }
+        NodeExpr::Break => false,
+    }
 }
 
 /// Parses the ergonomic metadata style:
@@ -626,9 +661,21 @@ fn parse_graph_input_with_metadata(input: ParseStream) -> Result<GraphInput> {
         return Err(input.error("unexpected tokens after graph definition"));
     }
 
+    let context = match context {
+        Some(ctx) => ctx,
+        None => {
+            if node_expr_uses_borrowed_artifacts(&nodes) {
+                return Err(input.error(
+                    "missing `context`; graphs that borrow artifacts (e.g. `(&x)` or `-> (&x)`) must declare a context type that stores borrowed artifacts as fields",
+                ));
+            }
+            parse_quote!(::graphium::Context)
+        }
+    };
+
     Ok(GraphInput {
         name,
-        context: context.ok_or_else(|| input.error("missing `context`"))?,
+        context,
         inputs: graph_inputs,
         outputs: graph_outputs,
         nodes,
