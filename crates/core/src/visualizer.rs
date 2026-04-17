@@ -1,6 +1,8 @@
 #[derive(Clone, Debug)]
 pub struct GraphDef {
     pub name: &'static str,
+    pub inputs: Vec<&'static str>,
+    pub outputs: Vec<&'static str>,
     pub steps: Vec<GraphStep>,
 }
 
@@ -24,17 +26,25 @@ pub enum GraphStep {
     },
     Parallel {
         branches: Vec<Vec<GraphStep>>,
+        inputs: Vec<&'static str>,
+        outputs: Vec<&'static str>,
     },
     Route {
         on: &'static str,
         cases: Vec<GraphCase>,
+        inputs: Vec<&'static str>,
+        outputs: Vec<&'static str>,
     },
     While {
         condition: &'static str,
         body: Vec<GraphStep>,
+        inputs: Vec<&'static str>,
+        outputs: Vec<&'static str>,
     },
     Loop {
         body: Vec<GraphStep>,
+        inputs: Vec<&'static str>,
+        outputs: Vec<&'static str>,
     },
     Break,
 }
@@ -92,7 +102,7 @@ impl Visualizer {
                     };
                     self.print_steps(&graph.steps, &next_prefix);
                 }
-                GraphStep::Parallel { branches } => {
+                GraphStep::Parallel { branches, .. } => {
                     println!("{}{}@parallel", prefix, branch);
                     let next_prefix = if is_last {
                         format!("{}  ", prefix)
@@ -111,7 +121,7 @@ impl Visualizer {
                         self.print_steps(branch_steps, &branch_prefix);
                     }
                 }
-                GraphStep::Route { on, cases } => {
+                GraphStep::Route { on, cases, .. } => {
                     println!("{}{}@match {}", prefix, branch, on);
                     let next_prefix = if is_last {
                         format!("{}  ", prefix)
@@ -130,7 +140,7 @@ impl Visualizer {
                         self.print_steps(&case.steps, &case_prefix);
                     }
                 }
-                GraphStep::While { condition, body } => {
+                GraphStep::While { condition, body, .. } => {
                     println!("{}{}@while {}", prefix, branch, condition);
                     let next_prefix = if is_last {
                         format!("{}  ", prefix)
@@ -139,7 +149,7 @@ impl Visualizer {
                     };
                     self.print_steps(body, &next_prefix);
                 }
-                GraphStep::Loop { body } => {
+                GraphStep::Loop { body, .. } => {
                     println!("{}{}@loop", prefix, branch);
                     let next_prefix = if is_last {
                         format!("{}  ", prefix)

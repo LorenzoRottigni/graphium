@@ -345,19 +345,22 @@ async fn graph_page(
     h1 {{ margin: 0; font-size: 1.35rem; }}
     select, button {{ padding: .6rem .8rem; font-size: .95rem; border-radius: 10px; border: 1px solid #d5dce5; }}
     button {{ background: #0f7bff; color: white; border: none; cursor: pointer; }}
-    .layout {{ display: grid; grid-template-columns: 1.8fr 1fr; gap: 1rem; }}
+    .hero {{ min-height: 420px; }}
     .card {{ background: white; border-radius: 14px; box-shadow: 0 10px 20px rgba(0,0,0,.06); padding: 1rem; overflow: auto; }}
+    .mermaid-scroll {{ overflow-x: auto; overflow-y: auto; padding-bottom: .35rem; }}
+    .mermaid-scroll svg {{ max-width: none !important; }}
+    pre.mermaid {{ margin: 0; }}
+    .below {{ display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; align-items: start; }}
     .metrics {{ display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }}
     .metric {{ border: 1px solid #ebeff5; border-radius: 12px; padding: .65rem; }}
     .metric .k {{ font-size: .8rem; opacity: .75; }}
     .metric .v {{ font-size: 1rem; font-weight: 700; margin-top: .2rem; }}
-    .tests-row {{ display:grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; }}
+    .tests-stack {{ display:grid; grid-template-columns: 1fr; gap: 1rem; }}
     .test-item {{ border: 1px solid #ebeff5; border-radius: 10px; padding: .55rem; display:flex; align-items:center; gap:.5rem; }}
     .test-target {{ font-size: .83rem; color:#5f7388; }}
     .test-name {{ font-size: .9rem; font-weight: 600; flex:1; }}
     .test-run {{ text-decoration: none; background: #0f7bff; color: white; border-radius: 8px; padding: .3rem .55rem; font-size: .84rem; }}
-    @media (max-width: 960px) {{ .layout {{ grid-template-columns: 1fr; }} }}
-    @media (max-width: 960px) {{ .tests-row {{ grid-template-columns: 1fr; }} }}
+    @media (max-width: 960px) {{ .below {{ grid-template-columns: 1fr; }} }}
   </style>
   <script type="module">
     import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
@@ -375,11 +378,14 @@ async fn graph_page(
     </form>
   </header>
 
-  <section class="layout">
-    <article class="card">
+  <section class="card hero">
       <h3>Graph structure</h3>
-      <pre class="mermaid">{mermaid}</pre>
-    </article>
+      <div class="mermaid-scroll">
+        <pre class="mermaid">{mermaid}</pre>
+      </div>
+  </section>
+
+  <section class="below">
     <aside class="card">
       <h3>Prometheus metrics</h3>
       <p style="margin-top:0; opacity:.75;">Source: {prometheus}</p>
@@ -392,11 +398,10 @@ async fn graph_page(
         <div class="metric"><div class="k">P95 latency (s)</div><div class="v">{p95}</div></div>
       </div>
     </aside>
-  </section>
-
-  <section class="tests-row">
-    {graph_tests_widget}
-    {node_tests_widget}
+    <section class="tests-stack">
+      {graph_tests_widget}
+      {node_tests_widget}
+    </section>
   </section>
 
   <script>
@@ -674,7 +679,7 @@ fn collect_graph_node_symbols_from_steps(steps: &[GraphStep], out: &mut HashSet<
             GraphStep::Nested { graph, .. } => {
                 collect_graph_node_symbols_from_steps(&graph.steps, out)
             }
-            GraphStep::Parallel { branches } => {
+            GraphStep::Parallel { branches, .. } => {
                 for branch in branches {
                     collect_graph_node_symbols_from_steps(branch, out);
                 }
@@ -684,7 +689,7 @@ fn collect_graph_node_symbols_from_steps(steps: &[GraphStep], out: &mut HashSet<
                     collect_graph_node_symbols_from_steps(&case.steps, out);
                 }
             }
-            GraphStep::While { body, .. } | GraphStep::Loop { body } => {
+            GraphStep::While { body, .. } | GraphStep::Loop { body, .. } => {
                 collect_graph_node_symbols_from_steps(body, out);
             }
             GraphStep::Break => {}
@@ -693,99 +698,475 @@ fn collect_graph_node_symbols_from_steps(steps: &[GraphStep], out: &mut HashSet<
 }
 
 fn to_mermaid(graph: &GraphDef) -> String {
-    let mut lines = vec!["flowchart TD".to_string()];
+    let mut lines = Vec::new();
     let mut counter = 0usize;
 
+    // Tune layout a bit so linear graphs read cleanly and complex graphs don't
+    // feel as cramped by default.
+    lines.push(r#"%%{init: {"flowchart": {"curve":"basis","nodeSpacing":50,"rankSpacing":70}} }%%"#.to_string());
+    // Prefer a horizontal layout so execution reads left-to-right; the UI wraps
+    // the SVG in a horizontal scroller.
+    lines.push("flowchart LR".to_string());
+
+    lines.push("classDef graphRoot fill:#0b1f3a,stroke:#0b1f3a,color:#ffffff,stroke-width:2px".to_string());
+    lines.push("classDef io fill:#fff7ed,stroke:#f97316,color:#7c2d12,stroke-width:2px".to_string());
+    lines.push("classDef ctx fill:#eef2ff,stroke:#4f46e5,color:#1e1b4b,stroke-width:2px".to_string());
+    lines.push("classDef stepNode fill:#ecfeff,stroke:#06b6d4,color:#083344,stroke-width:2px".to_string());
+    lines.push("classDef stepGraph fill:#f1f5f9,stroke:#334155,color:#0f172a,stroke-width:2px,stroke-dasharray: 6 4".to_string());
+    lines.push("classDef control fill:#fefce8,stroke:#eab308,color:#422006,stroke-width:2px".to_string());
+
     let root = next_id(&mut counter);
-    lines.push(format!(r#"{root}["{}"]"#, escape_label(graph.name)));
-    append_steps(&graph.steps, &root, &mut lines, &mut counter);
+    lines.push(format!(r#"{root}["{}"]:::graphRoot"#, escape_label(graph.name)));
+
+    let mut tracker = ArtifactTracker::default();
+
+    let inputs_node = if graph.inputs.is_empty() {
+        None
+    } else {
+        let node_id = next_id(&mut counter);
+        lines.push(format!(
+            r#"{node_id}(["{}"]):::io"#,
+            escape_label(&format!("in: {}", graph.inputs.join(", ")))
+        ));
+        lines.push(format!("{root} --> {node_id}"));
+        Some(node_id)
+    };
+
+    let has_ctx = graph_uses_borrowed_artifacts(graph);
+    let ctx_node = if has_ctx {
+        let node_id = next_id(&mut counter);
+        lines.push(format!(r#"{node_id}[(ctx)]:::ctx"#));
+        lines.push(format!("{root} -.-> {node_id}"));
+        Some(node_id)
+    } else {
+        None
+    };
+
+    tracker.inputs_node = inputs_node.clone();
+    tracker.ctx_node = ctx_node.clone();
+    if let Some(inputs_node) = &inputs_node {
+        for input in &graph.inputs {
+            tracker.owned.insert(input.to_string(), inputs_node.clone());
+        }
+    }
+
+    if graph.steps.is_empty() {
+        return lines.join("\n");
+    }
+
+    let rendered = append_steps(&graph.steps, &mut tracker, &mut lines, &mut counter);
+    lines.push(format!("{root} --> {}", rendered.head));
+
+    let outputs_node = if graph.outputs.is_empty() {
+        None
+    } else {
+        let node_id = next_id(&mut counter);
+        lines.push(format!(
+            r#"{node_id}(["{}"]):::io"#,
+            escape_label(&format!("out: {}", graph.outputs.join(", ")))
+        ));
+        Some(node_id)
+    };
+
+    if let Some(outputs_node) = &outputs_node {
+        lines.push(format!("{} --> {outputs_node}", rendered.tail));
+        // Add explicit data edges for declared graph outputs.
+        for &output in graph.outputs.iter() {
+            if let Some(src) = tracker.owned.get(output) {
+                lines.push(format!(
+                    r#"{src} -. "{}" .-> {outputs_node}"#,
+                    escape_label(output)
+                ));
+            }
+        }
+    }
+
     lines.join("\n")
+}
+
+#[derive(Clone, Default)]
+struct ArtifactTracker {
+    owned: HashMap<String, String>,
+    inputs_node: Option<String>,
+    ctx_node: Option<String>,
+}
+
+#[derive(Clone)]
+struct RenderedSteps {
+    head: String,
+    tail: String,
 }
 
 fn append_steps(
     steps: &[GraphStep],
-    parent: &str,
+    tracker: &mut ArtifactTracker,
     lines: &mut Vec<String>,
     counter: &mut usize,
-) -> String {
-    let mut previous = parent.to_string();
+) -> RenderedSteps {
+    let mut head: Option<String> = None;
+    let mut previous_tail: Option<String> = None;
 
     for step in steps {
-        let (head, tail) = render_step(step, lines, counter);
-        lines.push(format!("{previous} --> {head}"));
-        previous = tail;
+        let rendered = render_step(step, tracker, lines, counter);
+        if head.is_none() {
+            head = Some(rendered.head.clone());
+        }
+        if let Some(prev) = previous_tail {
+            lines.push(format!("{prev} --> {}", rendered.head));
+        }
+        previous_tail = Some(rendered.tail);
     }
 
-    previous
+    RenderedSteps {
+        head: head.unwrap_or_else(|| next_id(counter)),
+        tail: previous_tail.unwrap_or_else(|| next_id(counter)),
+    }
 }
 
-fn render_step(step: &GraphStep, lines: &mut Vec<String>, counter: &mut usize) -> (String, String) {
-    let node_id = next_id(counter);
-    let label = match step {
-        GraphStep::Node { name, .. } => format!("Node: {name}"),
-        GraphStep::Nested { graph, .. } => format!("Nested: {}", graph.name),
-        GraphStep::Parallel { .. } => "Parallel (&)".to_string(),
-        GraphStep::Route { on, .. } => format!("Route: {on}"),
-        GraphStep::While { condition, .. } => format!("While: {condition}"),
-        GraphStep::Loop { .. } => "Loop".to_string(),
-        GraphStep::Break => "Break".to_string(),
-    };
-    lines.push(format!(r#"{node_id}["{}"]"#, escape_label(&label)));
-
+fn render_step(
+    step: &GraphStep,
+    tracker: &mut ArtifactTracker,
+    lines: &mut Vec<String>,
+    counter: &mut usize,
+) -> RenderedSteps {
     match step {
-        GraphStep::Nested { graph, .. } => {
-            let subgraph_id = format!("sg{}", next_id(counter));
-            let nested_entry = next_id(counter);
-            let nested_exit = next_id(counter);
+        GraphStep::Node {
+            name,
+            inputs,
+            outputs,
+        } => {
+            let node_id = next_id(counter);
+            let label = normalize_symbol(name);
+            lines.push(format!(r#"{node_id}(["{}"]):::stepNode"#, escape_label(&label)));
+            emit_artifact_edges(tracker, &node_id, inputs, outputs, lines);
+            RenderedSteps {
+                head: node_id.clone(),
+                tail: node_id,
+            }
+        }
+        GraphStep::Nested {
+            graph,
+            inputs,
+            outputs,
+        } => {
+            // Keep nested graphs collapsed by default; expanding them inline makes
+            // even simple graphs hard to read.
+            let node_id = next_id(counter);
             lines.push(format!(
-                r#"subgraph {subgraph_id}["Nested Graph: {}"]"#,
+                r#"{node_id}[["{}"]]:::stepGraph"#,
                 escape_label(graph.name)
             ));
-            lines.push("direction TB".to_string());
-            lines.push(format!(
-                r#"{nested_entry}["{}"]"#,
-                escape_label(&format!("{}::entry", graph.name))
-            ));
-            let nested_tail = append_steps(&graph.steps, &nested_entry, lines, counter);
-            lines.push(format!(
-                r#"{nested_exit}["{}"]"#,
-                escape_label(&format!("{}::exit", graph.name))
-            ));
-            lines.push(format!("{nested_tail} --> {nested_exit}"));
-            lines.push("end".to_string());
-            lines.push(format!(
-                r#"style {subgraph_id} fill:#f7fbff,stroke:#3a7bd5,stroke-width:2px"#
-            ));
-            lines.push(format!("{node_id} -.-> {nested_entry}"));
-            lines.push(format!("{nested_exit} -.-> {node_id}"));
-            (node_id.clone(), node_id)
+            emit_artifact_edges(tracker, &node_id, inputs, outputs, lines);
+            RenderedSteps {
+                head: node_id.clone(),
+                tail: node_id,
+            }
         }
-        GraphStep::Parallel { branches } => {
+        GraphStep::Parallel {
+            branches,
+            inputs,
+            outputs,
+        } => {
+            let fork = next_id(counter);
+            let join = next_id(counter);
+            lines.push(format!(r#"{fork}(("&")):::control"#));
+            lines.push(format!(r#"{join}(("join")):::control"#));
+
+            emit_artifact_edges(tracker, &fork, inputs, &[], lines);
+
             for (idx, branch) in branches.iter().enumerate() {
-                let branch_root = next_id(counter);
-                lines.push(format!(r#"{branch_root}["Branch {}"]"#, idx + 1));
-                lines.push(format!("{node_id} --> {branch_root}"));
-                append_steps(branch, &branch_root, lines, counter);
+                if branch.is_empty() {
+                    continue;
+                }
+                let mut branch_tracker = tracker.clone();
+                let rendered = append_steps(branch, &mut branch_tracker, lines, counter);
+                lines.push(format!(r#"{fork} -->|b{}| {}"#, idx + 1, rendered.head));
+                lines.push(format!("{} --> {join}", rendered.tail));
+
+                for &output in outputs.iter() {
+                    let (base, borrowed) = parse_artifact(output);
+                    if borrowed {
+                        continue;
+                    }
+                    if let Some(src) = branch_tracker.owned.get(base) {
+                        lines.push(format!(
+                            r#"{src} -. "{}" .-> {join}"#,
+                            escape_label(base)
+                        ));
+                    }
+                }
             }
-            (node_id.clone(), node_id)
+
+            // Join outputs are the union of branch exit artifacts.
+            for &output in outputs.iter() {
+                let (base, borrowed) = parse_artifact(output);
+                if borrowed {
+                    if let Some(ctx) = &tracker.ctx_node {
+                        lines.push(format!(
+                            r#"{join} -. "{}" .-> {ctx}"#,
+                            escape_label(output)
+                        ));
+                    }
+                } else {
+                    tracker.owned.insert(base.to_string(), join.clone());
+                }
+            }
+
+            RenderedSteps { head: fork, tail: join }
         }
-        GraphStep::Route { cases, .. } => {
+        GraphStep::Route {
+            on,
+            cases,
+            inputs,
+            outputs,
+        } => {
+            let decision = next_id(counter);
+            let join = next_id(counter);
+
+            lines.push(format!(
+                r#"{decision}{{"{}"}}:::control"#,
+                escape_label(&route_label(on, inputs))
+            ));
+            lines.push(format!(r#"{join}(("join")):::control"#));
+
+            emit_artifact_edges(tracker, &decision, inputs, &[], lines);
+
             for case in cases {
-                let case_root = next_id(counter);
+                if case.steps.is_empty() {
+                    continue;
+                }
+                let mut case_tracker = tracker.clone();
+                let rendered = append_steps(&case.steps, &mut case_tracker, lines, counter);
                 lines.push(format!(
-                    r#"{case_root}["Case {}"]"#,
-                    escape_label(case.label)
+                    r#"{decision} -->|"{}"| {}"#,
+                    escape_label(case.label),
+                    rendered.head
                 ));
-                lines.push(format!("{node_id} --> {case_root}"));
-                append_steps(&case.steps, &case_root, lines, counter);
+                lines.push(format!("{} --> {join}", rendered.tail));
+
+                for &output in outputs.iter() {
+                    let (base, borrowed) = parse_artifact(output);
+                    if borrowed {
+                        continue;
+                    }
+                    if let Some(src) = case_tracker.owned.get(base) {
+                        lines.push(format!(
+                            r#"{src} -. "{}" .-> {join}"#,
+                            escape_label(base)
+                        ));
+                    }
+                }
             }
-            (node_id.clone(), node_id)
+
+            for &output in outputs.iter() {
+                let (base, borrowed) = parse_artifact(output);
+                if borrowed {
+                    if let Some(ctx) = &tracker.ctx_node {
+                        lines.push(format!(
+                            r#"{join} -. "{}" .-> {ctx}"#,
+                            escape_label(output)
+                        ));
+                    }
+                } else {
+                    tracker.owned.insert(base.to_string(), join.clone());
+                }
+            }
+
+            RenderedSteps {
+                head: decision,
+                tail: join,
+            }
         }
-        GraphStep::While { body, .. } | GraphStep::Loop { body } => {
-            append_steps(body, &node_id, lines, counter);
-            (node_id.clone(), node_id)
+        GraphStep::While {
+            condition,
+            body,
+            inputs,
+            outputs,
+        } => {
+            let cond = next_id(counter);
+            let exit = next_id(counter);
+            lines.push(format!(
+                r#"{cond}{{"{}"}}:::control"#,
+                escape_label(&format!("while {condition}"))
+            ));
+            lines.push(format!(r#"{exit}(("exit")):::control"#));
+
+            emit_artifact_edges(tracker, &cond, inputs, &[], lines);
+
+            if !body.is_empty() {
+                let mut body_tracker = tracker.clone();
+                let rendered = append_steps(body, &mut body_tracker, lines, counter);
+                lines.push(format!(r#"{cond} -->|"true"| {}"#, rendered.head));
+                lines.push(format!("{} --> {cond}", rendered.tail));
+            }
+            lines.push(format!(r#"{cond} -->|"false"| {exit}"#));
+
+            for &output in outputs.iter() {
+                let (base, borrowed) = parse_artifact(output);
+                if borrowed {
+                    if let Some(ctx) = &tracker.ctx_node {
+                        lines.push(format!(
+                            r#"{exit} -. "{}" .-> {ctx}"#,
+                            escape_label(output)
+                        ));
+                    }
+                } else {
+                    tracker.owned.insert(base.to_string(), exit.clone());
+                }
+            }
+
+            RenderedSteps { head: cond, tail: exit }
         }
-        GraphStep::Node { .. } | GraphStep::Break => (node_id.clone(), node_id),
+        GraphStep::Loop {
+            body,
+            inputs,
+            outputs,
+        } => {
+            let start = next_id(counter);
+            let exit = next_id(counter);
+            lines.push(format!(r#"{start}(("loop")):::control"#));
+            lines.push(format!(r#"{exit}(("exit")):::control"#));
+            lines.push(format!(r#"{start} -->|"exit"| {exit}"#));
+
+            emit_artifact_edges(tracker, &start, inputs, &[], lines);
+
+            if !body.is_empty() {
+                let mut body_tracker = tracker.clone();
+                let rendered = append_steps(body, &mut body_tracker, lines, counter);
+                lines.push(format!("{start} --> {}", rendered.head));
+                lines.push(format!("{} --> {start}", rendered.tail));
+            }
+
+            // The macro's `Break` is modeled as a step; leave the explicit break
+            // node to visually indicate exits.
+            for &output in outputs.iter() {
+                let (base, borrowed) = parse_artifact(output);
+                if borrowed {
+                    if let Some(ctx) = &tracker.ctx_node {
+                        lines.push(format!(
+                            r#"{exit} -. "{}" .-> {ctx}"#,
+                            escape_label(output)
+                        ));
+                    }
+                } else {
+                    tracker.owned.insert(base.to_string(), exit.clone());
+                }
+            }
+
+            RenderedSteps { head: start, tail: exit }
+        }
+        GraphStep::Break => {
+            let node_id = next_id(counter);
+            lines.push(format!(r#"{node_id}(("break")):::control"#));
+            RenderedSteps {
+                head: node_id.clone(),
+                tail: node_id,
+            }
+        }
+    }
+}
+
+fn graph_uses_borrowed_artifacts(graph: &GraphDef) -> bool {
+    steps_use_borrows(&graph.steps)
+}
+
+fn steps_use_borrows(steps: &[GraphStep]) -> bool {
+    for step in steps {
+        match step {
+            GraphStep::Node {
+                inputs, outputs, ..
+            } => {
+                if inputs.iter().any(|v| v.starts_with('&')) || outputs.iter().any(|v| v.starts_with('&')) {
+                    return true;
+                }
+            }
+            GraphStep::Nested {
+                inputs, outputs, ..
+            } => {
+                if inputs.iter().any(|v| v.starts_with('&')) || outputs.iter().any(|v| v.starts_with('&')) {
+                    return true;
+                }
+            }
+            GraphStep::Parallel { branches, .. } => {
+                if branches.iter().any(|b| steps_use_borrows(b)) {
+                    return true;
+                }
+            }
+            GraphStep::Route { cases, .. } => {
+                if cases.iter().any(|c| steps_use_borrows(&c.steps)) {
+                    return true;
+                }
+            }
+            GraphStep::While { body, .. } | GraphStep::Loop { body, .. } => {
+                if steps_use_borrows(body) {
+                    return true;
+                }
+            }
+            GraphStep::Break => {}
+        }
+    }
+    false
+}
+
+fn parse_artifact(value: &str) -> (&str, bool) {
+    if let Some(rest) = value.strip_prefix('&') {
+        (rest, true)
+    } else {
+        (value, false)
+    }
+}
+
+fn route_label(on: &str, inputs: &[&'static str]) -> String {
+    if inputs.len() == 1 {
+        return format!("match {}", inputs[0]);
+    }
+    let trimmed = on.trim();
+    let noisy = trimmed.contains('{') || trimmed.contains('|') || trimmed.len() > 60;
+    if noisy {
+        "match".to_string()
+    } else {
+        format!("match {trimmed}")
+    }
+}
+
+fn emit_artifact_edges(
+    tracker: &mut ArtifactTracker,
+    step_node: &str,
+    inputs: &[&'static str],
+    outputs: &[&'static str],
+    lines: &mut Vec<String>,
+) {
+    for input in inputs {
+        let (base, borrowed) = parse_artifact(input);
+        if borrowed {
+            if let Some(ctx) = &tracker.ctx_node {
+                lines.push(format!(r#"{ctx} -. "{}" .-> {step_node}"#, escape_label(input)));
+            }
+            continue;
+        }
+        if let Some(src) = tracker.owned.get(base) {
+            lines.push(format!(
+                r#"{src} -. "{}" .-> {step_node}"#,
+                escape_label(base)
+            ));
+        } else if let Some(inputs_node) = &tracker.inputs_node {
+            lines.push(format!(
+                r#"{inputs_node} -. "{}" .-> {step_node}"#,
+                escape_label(base)
+            ));
+            tracker.owned.insert(base.to_string(), inputs_node.clone());
+        }
+    }
+
+    for output in outputs {
+        let (base, borrowed) = parse_artifact(output);
+        if borrowed {
+            if let Some(ctx) = &tracker.ctx_node {
+                lines.push(format!(r#"{step_node} -. "{}" .-> {ctx}"#, escape_label(output)));
+            }
+            continue;
+        }
+        tracker.owned.insert(base.to_string(), step_node.to_string());
     }
 }
 

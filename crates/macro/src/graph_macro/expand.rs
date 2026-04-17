@@ -54,7 +54,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
     );
     let trait_run_body = build_trait_run_body(&name, &graph_inputs, &graph_outputs, false);
     let async_trait_run_body = build_trait_run_body(&name, &graph_inputs, &graph_outputs, true);
-    let graph_def_tokens = graph_definition_tokens(&name, &nodes);
+    let graph_def_tokens = graph_definition_tokens(&name, &graph_inputs, &graph_outputs, &nodes);
     let metrics_enabled = metrics.enabled();
     let metrics_config_tokens = metric_config_tokens(metrics);
     let sync_graph_body = wrap_sync_graph_body(&run_body, metrics);
@@ -101,8 +101,6 @@ pub fn expand(input: TokenStream) -> TokenStream {
             }
         }
     };
-
-    println!("expand into: \n {}", expanded);
 
     TokenStream::from(expanded)
 }
