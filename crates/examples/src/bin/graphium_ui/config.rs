@@ -8,10 +8,29 @@ enum Status {
     Fail,
 }
 
+#[derive(Clone, Debug, Default)]
+struct Dataset {
+    input: Vec<f32>,
+    output: Vec<f32>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct Model {
+    weight: f32,
+    bias: f32,
+}
+
 #[derive(Default)]
+#[allow(non_snake_case)]
 struct Context {
     a_number: u32,
     attempts: u32,
+    dataset: Dataset,
+    X_train: Vec<f32>,
+    X_test: Vec<f32>,
+    y_train: Vec<f32>,
+    y_test: Vec<f32>,
+    model: Model,
 }
 
 node! {
@@ -157,6 +176,81 @@ node! {
     }
 }
 
+node! {
+    #[metrics("performance", "count")]
+    fn get_dataset() -> Dataset {
+        // Small, deterministic dataset for the UI demo.
+        let input: Vec<f32> = (0..20).map(|i| i as f32).collect();
+        let output: Vec<f32> = input.iter().map(|x| 2.0 * x + 1.0).collect();
+        Dataset { input, output }
+    }
+}
+
+node! {
+    #[metrics("performance", "count")]
+    fn parse_input_features(dataset: &Dataset) -> Vec<f32> {
+        dataset.input.clone()
+    }
+}
+
+node! {
+    #[metrics("performance", "count")]
+    fn parse_output_features(dataset: &Dataset) -> Vec<f32> {
+        dataset.output.clone()
+    }
+}
+
+node! {
+    #[metrics("performance", "count")]
+    fn train_test_split(
+        input_features: Vec<f32>,
+        output_features: Vec<f32>,
+    ) -> (Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>) {
+        let split = input_features.len().min(output_features.len()) / 2;
+        let x_train = input_features[..split].to_vec();
+        let x_test = input_features[split..].to_vec();
+        let y_train = output_features[..split].to_vec();
+        let y_test = output_features[split..].to_vec();
+        (x_train, x_test, y_train, y_test)
+    }
+}
+
+node! {
+    #[metrics("performance", "count")]
+    fn preprocessing(x_train: &Vec<f32>, x_test: &Vec<f32>) -> (Vec<f32>, Vec<f32>) {
+        (x_train.clone(), x_test.clone())
+    }
+}
+
+node! {
+    #[metrics("performance", "count")]
+    fn init_model() -> Model {
+        Model::default()
+    }
+}
+
+node! {
+    #[metrics("performance", "count")]
+    fn fit_model(model: &Model, x_train: &Vec<f32>, y_train: &Vec<f32>) {
+        // UI demo only: this node intentionally does not mutate the shared model.
+        let _ = (model, x_train.len(), y_train.len());
+    }
+}
+
+node! {
+    #[metrics("performance", "count")]
+    fn evaluate_model(model: &Model) {
+        let _ = model;
+    }
+}
+
+node! {
+    #[metrics("performance", "count")]
+    fn export_model(model: &Model) -> Model {
+        model.clone()
+    }
+}
+
 graph! {
     #[metadata(
         context = Context,
@@ -236,11 +330,32 @@ graph! {
     }
 }
 
+graph! {
+    #[metadata(context = Context, outputs = (model: Model))]
+    #[metrics("performance", "errors", "count", "caller", "success_rate", "fail_rate")]
+    LinearRegressionGraph {
+        GetDataset() -> (&dataset) >>
+        ParseInputFeatures(&dataset) -> (input_features) & ParseOutputFeatures(&dataset) -> (output_features) >>
+        TrainTestSplit(input_features, output_features) -> (&X_train, &X_test, &y_train, &y_test) >>
+        Preprocessing(&X_train, &X_test) -> (&X_train, &X_test) >>
+        InitModel() -> (&model) >>
+        FitModel(&model, &X_train, &y_train) -> (&model) >>
+        EvaluateModel(&model) >>
+        ExportModel(&model) -> (model)
+    }
+}
+
 pub fn config() -> GraphiumUiConfig {
     GraphiumUiConfig {
         prometheus_url: std::env::var("GRAPHIUM_PROMETHEUS_URL")
             .unwrap_or_else(|_| "http://127.0.0.1:9090".to_string()),
-        graphs: graphs![OwnedGraph, BorrowedGraph, ControlFlowGraph, DeepInnerGraph],
+        graphs: graphs![
+            LinearRegressionGraph,
+            OwnedGraph,
+            BorrowedGraph,
+            ControlFlowGraph,
+            DeepInnerGraph
+        ],
         ..Default::default()
     }
 }
@@ -290,5 +405,15 @@ graph_test! {
         let mut ctx = Context::default();
         let out = ControlFlowGraph::__graphium_run(&mut ctx);
         assert_eq!(out, 30);
+    }
+}
+
+graph_test! {
+    #[test]
+    #[for_graph(LinearRegressionGraph)]
+    fn linear_regression_graph_exports_default_model() {
+        let mut ctx = Context::default();
+        let out = LinearRegressionGraph::__graphium_run(&mut ctx);
+        assert_eq!(out, Model::default());
     }
 }

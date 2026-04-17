@@ -19,17 +19,17 @@ The example above shows how Graphium, in a few lines, allows you to:
 
 ```rust
 graph! {
-    #[metadata(context = Context, #[metadata(context = Context, outputs = (output_number: u32))])]
+    #[metadata(context = Context, outputs = (model: Model))]
     #[metrics("performance", "errors", "count", "caller", "success_rate", "fail_rate")]
     LinearRegressionGraph {
-        GetDataset() -> (dataset) >>
+        GetDataset() -> (&dataset) >>
         ParseInputFeatures(&dataset) -> (input_features) & ParseOutputFeatures(&dataset) -> (output_features) >>
         TrainTestSplit(input_features, output_features) -> (&X_train, &X_test, &y_train, &y_test) >>
         Preprocessing(&X_train, &X_test) -> (&X_train, &X_test) >>
         InitModel() -> (&model) >>
         FitModel(&model, &X_train, &y_train) -> (&model) >>
         EvaluateModel(&model) >>
-        ExportModel(&model) -> model
+        ExportModel(&model) -> (model)
     }
 }
 ```
