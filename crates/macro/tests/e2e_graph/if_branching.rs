@@ -1,5 +1,5 @@
-use graphium_macro::{graph, node};
 use graphium;
+use graphium_macro::{graph, node};
 
 #[derive(Default, PartialEq, Eq, Debug, Copy, Clone)]
 pub enum Status {
@@ -63,7 +63,6 @@ fn e2e_graph_if_elif_else_borrow() {
     pub struct Context {
         pub status: Status,
     }
-
 
     let mut ctx = Context::default();
 

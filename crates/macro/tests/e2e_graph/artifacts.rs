@@ -1,5 +1,5 @@
-use graphium_macro::{graph, node};
 use graphium;
+use graphium_macro::{graph, node};
 
 node! {
     fn get_number() -> u32 {
@@ -23,7 +23,6 @@ fn e2e_graph_macro_moves_artifacts() {
         }
     }
 
-
     graph! {
         #[metadata(context = graphium::Context, outputs = (a_split: u32))]
         OwnedGraph {
@@ -41,7 +40,7 @@ fn e2e_graph_macro_moves_artifacts() {
 fn e2e_graph_macro_borrows_artifacts() {
     #[derive(Default)]
     pub struct Context {
-        pub number: u32
+        pub number: u32,
     }
 
     let mut ctx = Context::default();
@@ -56,7 +55,6 @@ fn e2e_graph_macro_borrows_artifacts() {
             *a
         }
     }
-
 
     graph! {
         #[metadata(context = Context, outputs = (number: u32))]

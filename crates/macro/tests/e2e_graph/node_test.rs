@@ -1,5 +1,5 @@
-use graphium_macro::{graph, graph_test, node};
 use graphium;
+use graphium_macro::{graph, graph_test, node};
 
 node! {
     fn get_number() -> u32 {
