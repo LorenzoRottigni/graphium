@@ -102,3 +102,36 @@ fn e2e_graph_macro_reference_last_1_hop() {
 
     ReferenceGraph::__graphium_run(&mut ctx);
 }
+
+#[test]
+fn e2e_graph_macro_reference_can_be_forwarded() {
+    #[derive(Default)]
+    pub struct Context {
+        pub number: u32,
+    }
+
+    let mut ctx = Context::default();
+
+    node! {
+        fn check_number(ctx: &Context, number: &u32) {
+            assert_eq!(ctx.number, *number);
+        }
+    }
+
+    node! {
+        fn check_reference_expiration(ctx: &Context) {
+            assert_eq!(ctx.number, 42);
+        }
+    }
+
+    graph! {
+        #[metadata(context = Context)]
+        ReferenceGraphForwarded {
+            GetNumber() -> (&number) >>
+            CheckNumber(&number) -> &number >>
+            CheckReferenceExpiration()
+        }
+    }
+
+    ReferenceGraphForwarded::__graphium_run(&mut ctx);
+}

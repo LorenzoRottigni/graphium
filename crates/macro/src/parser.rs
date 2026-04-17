@@ -152,9 +152,20 @@ impl Parse for NodeCall {
 
         let (outputs, output_borrows) = if input.peek(Token![->]) {
             input.parse::<Token![->]>()?;
-            let content;
-            syn::parenthesized!(content in input);
-            parse_ident_list(&content)?
+            if input.peek(syn::token::Paren) {
+                let content;
+                syn::parenthesized!(content in input);
+                parse_ident_list(&content)?
+            } else {
+                let is_borrowed = if input.peek(Token![&]) {
+                    input.parse::<Token![&]>()?;
+                    true
+                } else {
+                    false
+                };
+                let ident: Ident = input.parse()?;
+                (vec![ident], vec![is_borrowed])
+            }
         } else {
             (Vec::new(), Vec::new())
         };

@@ -62,11 +62,8 @@ pub(super) fn get_route_node_expr(
     let mut arms = Vec::new();
     for ((key, node), shape) in route.routes.iter().zip(branch_shapes.iter()) {
         let artifacts = required_artifacts(shape);
-        let (mut branch_payload, branch_bindings) =
+        let (branch_payload, branch_bindings) =
             prepare_move_payload(incoming, &artifacts, "route_in", counter);
-        for artifact in required_borrowed(shape) {
-            branch_payload.insert_borrowed(artifact);
-        }
 
         let generated = super::get_node_expr(node, &branch_payload, counter, in_loop, async_mode);
         let generated_tokens = generated.tokens;
