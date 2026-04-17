@@ -26,3 +26,6 @@ pub trait Graph<Ctx> {
 pub fn clone_artifact<T: Artifact>(value: &T) -> T {
     value.clone()
 }
+
+#[derive(Default)]
+pub struct Context {}
