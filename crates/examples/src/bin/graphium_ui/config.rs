@@ -240,7 +240,7 @@ pub fn config() -> GraphiumUiConfig {
     GraphiumUiConfig {
         prometheus_url: std::env::var("GRAPHIUM_PROMETHEUS_URL")
             .unwrap_or_else(|_| "http://127.0.0.1:9090".to_string()),
-        graphs: graphs![OwnedGraph, BorrowedGraph, ControlFlowGraph],
+        graphs: graphs![OwnedGraph, BorrowedGraph, ControlFlowGraph, DeepInnerGraph],
         ..Default::default()
     }
 }

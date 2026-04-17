@@ -193,12 +193,29 @@ pub async fn serve(config: GraphiumUiConfig) -> Result<(), UiError> {
         return Err(UiError::EmptyGraphs);
     }
 
-    let by_id = config
-        .graphs
+    let mut ordered = config.graphs;
+    let mut by_id = ordered
         .iter()
         .cloned()
         .map(|g| (g.id.clone(), g))
         .collect::<HashMap<_, _>>();
+
+    // Auto-register nested graphs so users can click into subgraphs.
+    let mut discovered = HashMap::<String, GraphDef>::new();
+    let mut visited = HashSet::<String>::new();
+    for graph in &ordered {
+        collect_nested_graph_defs(&graph.def, &mut discovered, &mut visited);
+    }
+    let mut discovered_defs: Vec<GraphDef> = discovered.into_values().collect();
+    discovered_defs.sort_by_key(|def| def.name.to_string());
+    for def in discovered_defs {
+        let candidate = ConfiguredGraph::from_graph_def(def);
+        if by_id.contains_key(&candidate.id) {
+            continue;
+        }
+        by_id.insert(candidate.id.clone(), candidate.clone());
+        ordered.push(candidate);
+    }
 
     let tests_ordered: Vec<UiTest> = graphium::test_registry::registered_tests()
         .into_iter()
@@ -228,7 +245,7 @@ pub async fn serve(config: GraphiumUiConfig) -> Result<(), UiError> {
     let state = Arc::new(AppState {
         prometheus_base_url: config.prometheus_url,
         client: reqwest::Client::new(),
-        ordered: config.graphs,
+        ordered,
         by_id,
         tests_by_id,
         tests_ordered,
@@ -349,7 +366,8 @@ async fn render_graph_page(
         .get(&id)
         .ok_or_else(|| AppHttpError::not_found("graph not configured"))?;
 
-    let mermaid = to_mermaid(&graph.def);
+    let linkable_graphs: HashSet<String> = state.by_id.keys().cloned().collect();
+    let mermaid = to_mermaid(&graph.def, &linkable_graphs);
     let metrics = fetch_metrics(&state, graph.def.name).await;
 
     let mut options = String::new();
@@ -882,7 +900,50 @@ fn collect_graph_node_symbols_from_steps(steps: &[GraphStep], out: &mut HashSet<
     }
 }
 
-fn to_mermaid(graph: &GraphDef) -> String {
+fn collect_nested_graph_defs(
+    graph: &GraphDef,
+    out: &mut HashMap<String, GraphDef>,
+    visited: &mut HashSet<String>,
+) {
+    let id = slugify(graph.name);
+    if !visited.insert(id) {
+        return;
+    }
+    collect_nested_graph_defs_from_steps(&graph.steps, out, visited);
+}
+
+fn collect_nested_graph_defs_from_steps(
+    steps: &[GraphStep],
+    out: &mut HashMap<String, GraphDef>,
+    visited: &mut HashSet<String>,
+) {
+    for step in steps {
+        match step {
+            GraphStep::Nested { graph, .. } => {
+                let def = (**graph).clone();
+                let id = slugify(def.name);
+                out.entry(id).or_insert_with(|| def.clone());
+                collect_nested_graph_defs(&def, out, visited);
+            }
+            GraphStep::Parallel { branches, .. } => {
+                for branch in branches {
+                    collect_nested_graph_defs_from_steps(branch, out, visited);
+                }
+            }
+            GraphStep::Route { cases, .. } => {
+                for case in cases {
+                    collect_nested_graph_defs_from_steps(&case.steps, out, visited);
+                }
+            }
+            GraphStep::While { body, .. } | GraphStep::Loop { body, .. } => {
+                collect_nested_graph_defs_from_steps(body, out, visited);
+            }
+            GraphStep::Node { .. } | GraphStep::Break => {}
+        }
+    }
+}
+
+fn to_mermaid(graph: &GraphDef, linkable_graphs: &HashSet<String>) -> String {
     let mut lines = Vec::new();
     let mut counter = 0usize;
 
@@ -939,7 +1000,13 @@ fn to_mermaid(graph: &GraphDef) -> String {
         return lines.join("\n");
     }
 
-    let rendered = append_steps(&graph.steps, &mut tracker, &mut lines, &mut counter);
+    let rendered = append_steps(
+        &graph.steps,
+        &mut tracker,
+        linkable_graphs,
+        &mut lines,
+        &mut counter,
+    );
     lines.push(format!("{root} --> {}", rendered.head));
 
     let outputs_node = if graph.outputs.is_empty() {
@@ -985,6 +1052,7 @@ struct RenderedSteps {
 fn append_steps(
     steps: &[GraphStep],
     tracker: &mut ArtifactTracker,
+    linkable_graphs: &HashSet<String>,
     lines: &mut Vec<String>,
     counter: &mut usize,
 ) -> RenderedSteps {
@@ -992,7 +1060,7 @@ fn append_steps(
     let mut previous_tail: Option<String> = None;
 
     for step in steps {
-        let rendered = render_step(step, tracker, lines, counter);
+        let rendered = render_step(step, tracker, linkable_graphs, lines, counter);
         if head.is_none() {
             head = Some(rendered.head.clone());
         }
@@ -1011,6 +1079,7 @@ fn append_steps(
 fn render_step(
     step: &GraphStep,
     tracker: &mut ArtifactTracker,
+    linkable_graphs: &HashSet<String>,
     lines: &mut Vec<String>,
     counter: &mut usize,
 ) -> RenderedSteps {
@@ -1042,6 +1111,14 @@ fn render_step(
                 escape_label(graph.name)
             ));
             emit_artifact_edges(tracker, &node_id, inputs, outputs, lines);
+            let nested_id = slugify(graph.name);
+            if linkable_graphs.contains(&nested_id) {
+                lines.push(format!(
+                    r#"click {node_id} "/graph/{nested_id}" "Open {}" _self"#,
+                    escape_label(graph.name)
+                ));
+                lines.push(format!(r#"style {node_id} cursor:pointer"#));
+            }
             RenderedSteps {
                 head: node_id.clone(),
                 tail: node_id,
@@ -1064,7 +1141,8 @@ fn render_step(
                     continue;
                 }
                 let mut branch_tracker = tracker.clone();
-                let rendered = append_steps(branch, &mut branch_tracker, lines, counter);
+                let rendered =
+                    append_steps(branch, &mut branch_tracker, linkable_graphs, lines, counter);
                 lines.push(format!(r#"{fork} -->|b{}| {}"#, idx + 1, rendered.head));
                 lines.push(format!("{} --> {join}", rendered.tail));
 
@@ -1121,7 +1199,8 @@ fn render_step(
                     continue;
                 }
                 let mut case_tracker = tracker.clone();
-                let rendered = append_steps(&case.steps, &mut case_tracker, lines, counter);
+                let rendered =
+                    append_steps(&case.steps, &mut case_tracker, linkable_graphs, lines, counter);
                 lines.push(format!(
                     r#"{decision} -->|"{}"| {}"#,
                     escape_label(case.label),
@@ -1180,7 +1259,8 @@ fn render_step(
 
             if !body.is_empty() {
                 let mut body_tracker = tracker.clone();
-                let rendered = append_steps(body, &mut body_tracker, lines, counter);
+                let rendered =
+                    append_steps(body, &mut body_tracker, linkable_graphs, lines, counter);
                 lines.push(format!(r#"{cond} -->|"true"| {}"#, rendered.head));
                 lines.push(format!("{} --> {cond}", rendered.tail));
             }
@@ -1217,7 +1297,8 @@ fn render_step(
 
             if !body.is_empty() {
                 let mut body_tracker = tracker.clone();
-                let rendered = append_steps(body, &mut body_tracker, lines, counter);
+                let rendered =
+                    append_steps(body, &mut body_tracker, linkable_graphs, lines, counter);
                 lines.push(format!("{start} --> {}", rendered.head));
                 lines.push(format!("{} --> {start}", rendered.tail));
             }
