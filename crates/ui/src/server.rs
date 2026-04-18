@@ -6,9 +6,10 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::Form;
 use axum::Router;
+use serde::Deserialize;
 
 use crate::http::AppHttpError;
-use crate::pages::{graph as graph_pages, tests as tests_pages};
+use crate::pages::{graph as graph_pages, home as home_pages, tests as tests_pages};
 use crate::state::{build_state, AppState};
 use crate::types::{GraphiumUiConfig, UiError};
 
@@ -21,6 +22,8 @@ pub async fn serve(config: GraphiumUiConfig) -> Result<(), UiError> {
 
     let app = Router::new()
         .route("/", get(home))
+        .route("/dashboard", get(dashboard))
+        .route("/select", get(select_graph_query))
         .route("/select/:id", get(select_graph))
         .route("/graph/:id", get(graph_page))
         .route("/fragment/graph/:id", get(graph_fragment))
@@ -36,12 +39,27 @@ pub async fn serve(config: GraphiumUiConfig) -> Result<(), UiError> {
 }
 
 async fn home(State(state): State<Arc<AppState>>) -> Html<String> {
+    Html(home_pages::home_page_html(&state))
+}
+
+async fn dashboard(State(state): State<Arc<AppState>>) -> Html<String> {
     let default_id = state
         .ordered
         .first()
         .map(|g| g.id.clone())
         .unwrap_or_else(|| "missing".to_string());
     Html(graph_pages::shell_page_html(&state, &default_id))
+}
+
+#[derive(Deserialize)]
+struct SelectQuery {
+    id: String,
+}
+
+async fn select_graph_query(
+    axum::extract::Query(q): axum::extract::Query<SelectQuery>,
+) -> Redirect {
+    Redirect::to(&format!("/graph/{}", q.id))
 }
 
 async fn select_graph(Path(id): Path<String>) -> Redirect {

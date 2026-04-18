@@ -2,7 +2,7 @@ use crate::util::escape_label;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ActiveNav {
-    Graphs,
+    Dashboard,
     Tests,
 }
 
@@ -16,7 +16,7 @@ pub(crate) struct LayoutContext {
 impl LayoutContext {
     pub(crate) fn graphs(_state: &crate::state::AppState, selected_graph_id: &str) -> Self {
         Self {
-            active: ActiveNav::Graphs,
+            active: ActiveNav::Dashboard,
             header_extra_html: None,
             alpine_data: Some(format!(
                 "{{ graphId: '{}' }}",
@@ -89,7 +89,7 @@ pub(crate) fn render_page(title: &str, ctx: LayoutContext, main_html: String) ->
 }
 
 fn header_html(ctx: &LayoutContext) -> String {
-    let active_graphs = if ctx.active == ActiveNav::Graphs {
+    let active_dash = if ctx.active == ActiveNav::Dashboard {
         "nav-active"
     } else {
         ""
@@ -102,10 +102,11 @@ fn header_html(ctx: &LayoutContext) -> String {
 
     let nav = format!(
         r#"<nav class="nav">
-  <a class="{active_graphs}" href="/">Graphs</a>
+  <a href="/">Home</a>
+  <a class="{active_dash}" href="/dashboard">Dashboard</a>
   <a class="{active_tests}" href="/tests">Tests</a>
 </nav>"#,
-        active_graphs = active_graphs,
+        active_dash = active_dash,
         active_tests = active_tests
     );
 
@@ -135,12 +136,12 @@ fn footer_html() -> String {
 
 const BASE_CSS: &str = r#"
   :root {
-    --bg: #0b1220;
+    --bg: #0b0b0c;
     --fg: #e5e7eb;
-    --card: #0f172a;
+    --card: #121214;
     --muted: #9ca3af;
-    --border: #243044;
-    --blue: #3b82f6;
+    --border: #2a2a2f;
+    --primary: #f97316;
     --shadow: rgba(0, 0, 0, 0.35);
   }
 
@@ -201,13 +202,13 @@ const BASE_CSS: &str = r#"
     padding: .6rem .8rem;
     font-size: .95rem;
     border-radius: 10px;
-    border: 1px solid #334155;
-    background: #0b1220;
+    border: 1px solid #3a3a42;
+    background: #0f0f12;
     color: var(--fg);
   }
 
   button {
-    background: var(--blue);
+    background: var(--primary);
     color: white;
     border: none;
     cursor: pointer;
@@ -256,7 +257,7 @@ const BASE_CSS: &str = r#"
     height: 520px;
     border: 1px solid var(--border);
     border-radius: 12px;
-    background: #0b1220;
+    background: #0f0f12;
   }
   .mermaid-scroll svg { max-width: none !important; width: auto !important; height: auto !important; }
   pre.mermaid { margin: 0; }
@@ -270,17 +271,80 @@ const BASE_CSS: &str = r#"
   .test-item { border: 1px solid var(--border); border-radius: 10px; padding: .55rem; display:flex; align-items:center; gap:.5rem; }
   .test-target { font-size: .83rem; color: var(--muted); }
   .test-name { font-size: .9rem; font-weight: 600; flex:1; }
-  .test-run { text-decoration: none; background: var(--blue); color: white; border-radius: 8px; padding: .3rem .55rem; font-size: .84rem; }
+  .test-run { text-decoration: none; background: var(--primary); color: white; border-radius: 8px; padding: .3rem .55rem; font-size: .84rem; }
 
   .play-label { font-size: .84rem; opacity: .8; margin-top: .3rem; }
   .play-field { display: grid; grid-template-columns: 1fr; gap: .4rem; margin: .55rem 0; }
-  .play-out { background: #0b1220; border: 1px solid var(--border); border-radius: 10px; padding: .75rem; overflow: auto; }
+  .play-out { background: #0f0f12; border: 1px solid var(--border); border-radius: 10px; padding: .75rem; overflow: auto; }
 
   .test-card { background: rgba(255,255,255,.02); border-radius: 12px; padding: 1rem; border: 1px solid var(--border); display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; }
-  .test-card .kind { font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; color: #cbd5e1; background: rgba(59,130,246,.15); padding: .25rem .5rem; border-radius: 999px; }
+  .test-card .kind { font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; color: #fed7aa; background: rgba(249,115,22,.16); padding: .25rem .5rem; border-radius: 999px; }
   .test-card .name { font-weight: 600; flex: 1; }
   .test-card .target { font-size:.86rem; color: var(--muted); flex-basis: 100%; }
-  .test-card .run { text-decoration: none; background: var(--blue); color: white; border-radius: 8px; padding: .45rem .7rem; }
+  .test-card .run { text-decoration: none; background: var(--primary); color: white; border-radius: 8px; padding: .45rem .7rem; }
+
+  .home-hero {
+    min-height: 70vh;
+    display: grid;
+    place-items: center;
+    text-align: center;
+    padding: 2.2rem 0;
+  }
+
+  .home-logo {
+    display: grid;
+    place-items: center;
+    margin-bottom: .6rem;
+  }
+
+  .home-title {
+    margin: .2rem 0;
+    font-size: 2.15rem;
+    letter-spacing: .01em;
+  }
+
+  .home-tagline {
+    max-width: 720px;
+    margin: .25rem auto 1.25rem auto;
+    color: var(--muted);
+    font-size: 1.05rem;
+    line-height: 1.55;
+  }
+
+  .home-cta {
+    width: min(760px, 100%);
+    margin: 0 auto;
+  }
+
+  .home-form {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: .75rem;
+    align-items: center;
+  }
+
+  .home-links {
+    margin-top: .75rem;
+    display: flex;
+    gap: .55rem;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .home-links a {
+    color: var(--muted);
+    text-decoration: none;
+    font-weight: 600;
+  }
+
+  .home-links a:hover {
+    color: var(--fg);
+  }
+
+  @media (max-width: 720px) {
+    .home-form { grid-template-columns: 1fr; }
+    .home-title { font-size: 1.85rem; }
+  }
 
   @media (max-width: 960px) { .below { grid-template-columns: 1fr; } }
 "#;
