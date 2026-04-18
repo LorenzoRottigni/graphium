@@ -132,8 +132,8 @@ fn playground_parse_kind(ty: &syn::Type) -> Option<PlaygroundParseKind> {
     match last.as_str() {
         "String" => Some(PlaygroundParseKind::String),
         "bool" => Some(PlaygroundParseKind::Bool),
-        "i8" | "i16" | "i32" | "i64" | "i128" | "isize" | "u8" | "u16" | "u32" | "u64"
-        | "u128" | "usize" | "f32" | "f64" => Some(PlaygroundParseKind::FromStr),
+        "i8" | "i16" | "i32" | "i64" | "i128" | "isize" | "u8" | "u16" | "u32" | "u64" | "u128"
+        | "usize" | "f32" | "f64" => Some(PlaygroundParseKind::FromStr),
         _ => None,
     }
 }
@@ -164,8 +164,10 @@ fn build_playground_impl(
 
     // Playground is purely a UI convenience: it uses the graph's declared IO
     // schema to build a form and runs the graph with a fresh `Ctx::default()`.
-    let supported =
-        !async_enabled && graph_inputs.iter().all(|(_, ty)| playground_parse_kind(ty).is_some());
+    let supported = !async_enabled
+        && graph_inputs
+            .iter()
+            .all(|(_, ty)| playground_parse_kind(ty).is_some());
 
     let run_body = if supported {
         let mut parse_bindings = Vec::new();

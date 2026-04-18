@@ -84,9 +84,7 @@ pub trait GraphPlayground: GraphDefProvider {
 
     fn playground_schema() -> PlaygroundSchema;
 
-    fn playground_run(
-        form: &std::collections::HashMap<String, String>,
-    ) -> Result<String, String>;
+    fn playground_run(form: &std::collections::HashMap<String, String>) -> Result<String, String>;
 }
 
 pub struct Visualizer;
@@ -190,7 +188,9 @@ impl Visualizer {
                         self.print_steps(&case.steps, &case_prefix);
                     }
                 }
-                GraphStep::While { condition, body, .. } => {
+                GraphStep::While {
+                    condition, body, ..
+                } => {
                     println!("{}{}@while {}", prefix, branch, condition);
                     let next_prefix = if is_last {
                         format!("{}  ", prefix)

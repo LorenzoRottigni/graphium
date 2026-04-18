@@ -5,7 +5,7 @@
 
 use quote::quote;
 
-use crate::shared::{ExprShape, Payload, UsageMap, fresh_ident};
+use crate::shared::{fresh_ident, ExprShape, Payload, UsageMap};
 
 use super::required_artifacts;
 

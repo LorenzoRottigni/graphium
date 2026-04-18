@@ -4,7 +4,7 @@ pub fn main() {
     let mut ctx = graphium::Context::default();
 
     node! {
-        
+
         fn duplicate(a: u32) -> (u32, u32) {
             (a, a)
         }

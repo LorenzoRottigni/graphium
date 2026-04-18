@@ -5,7 +5,7 @@
 
 use quote::quote;
 
-use crate::shared::{NodeCall, NodeExpr, is_graph_run_path};
+use crate::shared::{is_graph_run_path, NodeCall, NodeExpr};
 
 use super::graph_type_path;
 
@@ -290,7 +290,8 @@ mod tests {
             }),
         ]);
 
-        let tokens = graph_definition_tokens(&parse_quote!(DemoGraph), &[], &[], &nodes).to_string();
+        let tokens =
+            graph_definition_tokens(&parse_quote!(DemoGraph), &[], &[], &nodes).to_string();
 
         assert!(tokens.contains("GraphStep :: Parallel"));
         assert!(tokens.contains("demo :: A"));

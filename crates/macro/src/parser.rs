@@ -1,13 +1,13 @@
 use proc_macro2::TokenTree;
 use syn::parse::discouraged::Speculative;
-use syn::{
-    Expr, Ident, Path, Result, Token, Type,
-    parse::{Parse, ParseStream},
-};
 use syn::parse_quote;
+use syn::{
+    parse::{Parse, ParseStream},
+    Expr, Ident, Path, Result, Token, Type,
+};
 
 use crate::shared::{
-    GraphInput, LoopExpr, MetricsSpec, NodeCall, NodeExpr, RouteExpr, WhileExpr, parse_metric_name,
+    parse_metric_name, GraphInput, LoopExpr, MetricsSpec, NodeCall, NodeExpr, RouteExpr, WhileExpr,
 };
 
 // Parsing module for the graph DSL.
@@ -562,8 +562,12 @@ fn parse_graph_input_legacy(input: ParseStream) -> Result<GraphInput> {
 
 fn node_expr_uses_borrowed_artifacts(node: &NodeExpr) -> bool {
     match node {
-        NodeExpr::Single(call) => call.input_borrows.iter().any(|b| *b) || call.output_borrows.iter().any(|b| *b),
-        NodeExpr::Sequence(nodes) | NodeExpr::Parallel(nodes) => nodes.iter().any(node_expr_uses_borrowed_artifacts),
+        NodeExpr::Single(call) => {
+            call.input_borrows.iter().any(|b| *b) || call.output_borrows.iter().any(|b| *b)
+        }
+        NodeExpr::Sequence(nodes) | NodeExpr::Parallel(nodes) => {
+            nodes.iter().any(node_expr_uses_borrowed_artifacts)
+        }
         NodeExpr::Route(route) => {
             route.output_borrows.iter().any(|b| *b)
                 || route
@@ -572,10 +576,12 @@ fn node_expr_uses_borrowed_artifacts(node: &NodeExpr) -> bool {
                     .any(|(_, node)| node_expr_uses_borrowed_artifacts(node))
         }
         NodeExpr::While(while_expr) => {
-            while_expr.output_borrows.iter().any(|b| *b) || node_expr_uses_borrowed_artifacts(&while_expr.body)
+            while_expr.output_borrows.iter().any(|b| *b)
+                || node_expr_uses_borrowed_artifacts(&while_expr.body)
         }
         NodeExpr::Loop(loop_expr) => {
-            loop_expr.output_borrows.iter().any(|b| *b) || node_expr_uses_borrowed_artifacts(&loop_expr.body)
+            loop_expr.output_borrows.iter().any(|b| *b)
+                || node_expr_uses_borrowed_artifacts(&loop_expr.body)
         }
         NodeExpr::Break => false,
     }

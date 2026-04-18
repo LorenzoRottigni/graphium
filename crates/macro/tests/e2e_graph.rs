@@ -1,7 +1,7 @@
-#[path = "e2e_graph/async_graph.rs"]
-mod async_graph;
 #[path = "e2e_graph/artifacts.rs"]
 mod artifacts;
+#[path = "e2e_graph/async_graph.rs"]
+mod async_graph;
 #[path = "e2e_graph/context.rs"]
 mod context;
 #[path = "e2e_graph/if_branching.rs"]
@@ -20,4 +20,3 @@ mod node_test;
 mod nodes;
 #[path = "e2e_graph/parallel.rs"]
 mod parallel;
-
