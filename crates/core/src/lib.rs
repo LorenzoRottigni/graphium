@@ -8,7 +8,7 @@ pub mod visualizer;
 
 pub use inventory;
 pub use visualizer::{
-    GraphCase, GraphDef, GraphDefProvider, GraphPlayground, GraphStep, PlaygroundParam,
+    CtxAccess, GraphCase, GraphDef, GraphDefProvider, GraphPlayground, GraphStep, PlaygroundParam,
     PlaygroundSchema, Visualizer,
 };
 

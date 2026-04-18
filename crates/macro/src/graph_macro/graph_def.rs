@@ -226,6 +226,7 @@ fn node_call_step_tokens(call: &NodeCall) -> proc_macro2::TokenStream {
         quote! {
             ::graphium::GraphStep::Nested {
                 graph: Box::new(<#graph_path as ::graphium::GraphDefProvider>::graph_def()),
+                ctx: ::graphium::CtxAccess::Mut,
                 inputs: vec![ #( #input_tokens ),* ],
                 outputs: vec![ #( #output_tokens ),* ],
             }
@@ -234,6 +235,7 @@ fn node_call_step_tokens(call: &NodeCall) -> proc_macro2::TokenStream {
         quote! {
             ::graphium::GraphStep::Node {
                 name: stringify!(#node_path),
+                ctx: #node_path::CTX_ACCESS,
                 inputs: vec![ #( #input_tokens ),* ],
                 outputs: vec![ #( #output_tokens ),* ],
             }

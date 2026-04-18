@@ -217,15 +217,19 @@ node! {
 
 node! {
     #[metrics("performance", "count")]
-    fn preprocessing(x_train: &Vec<f32>, x_test: &Vec<f32>) -> (Vec<f32>, Vec<f32>) {
-        (x_train.clone(), x_test.clone())
+    fn preprocessing(
+        x_train: &Vec<f32>,
+        x_test: &Vec<f32>,
+        y_train: &Vec<f32>,
+    ) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
+        (x_train.clone(), x_test.clone(), y_train.clone())
     }
 }
 
 node! {
     #[metrics("performance", "count")]
-    fn init_model() -> Model {
-        Model::default()
+    fn init_model(x_train: &Vec<f32>, y_train: &Vec<f32>) -> (Model, Vec<f32>, Vec<f32>) {
+        (Model::default(), x_train.clone(), y_train.clone())
     }
 }
 
@@ -337,16 +341,20 @@ graph! {
         GetDataset() -> (&dataset) >>
         ParseInputFeatures(&dataset) -> (input_features) & ParseOutputFeatures(&dataset) -> (output_features) >>
         TrainTestSplit(input_features, output_features) -> (&X_train, &X_test, &y_train, &y_test) >>
-        Preprocessing(&X_train, &X_test) -> (&X_train, &X_test) >>
-        InitModel() -> (&model) >>
+        Preprocessing(&X_train, &X_test, &y_train) -> (&X_train, &X_test, &y_train) >>
+        InitModel(&X_train, &y_train) -> (&model, &X_train, &y_train) >>
         FitModel(&model, &X_train, &y_train) -> (&model) >>
-        EvaluateModel(&model) >>
+        EvaluateModel(&model) -> (&model) >>
         ExportModel(&model) -> (model)
     }
 }
 
 pub fn config() -> GraphiumUiConfig {
     GraphiumUiConfig {
+        bind: std::env::var("GRAPHIUM_UI_BIND")
+            .unwrap_or_else(|_| "127.0.0.1:4000".to_string())
+            .parse()
+            .unwrap_or_else(|_| "127.0.0.1:4000".parse().expect("valid default bind")),
         prometheus_url: std::env::var("GRAPHIUM_PROMETHEUS_URL")
             .unwrap_or_else(|_| "http://127.0.0.1:9090".to_string()),
         graphs: graphs![

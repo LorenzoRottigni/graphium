@@ -25,10 +25,10 @@ graph! {
         GetDataset() -> (&dataset) >>
         ParseInputFeatures(&dataset) -> (input_features) & ParseOutputFeatures(&dataset) -> (output_features) >>
         TrainTestSplit(input_features, output_features) -> (&X_train, &X_test, &y_train, &y_test) >>
-        Preprocessing(&X_train, &X_test) -> (&X_train, &X_test) >>
-        InitModel() -> (&model) >>
+        Preprocessing(&X_train, &X_test, &y_train) -> (&X_train, &X_test, &y_train) >>
+        InitModel(&X_train, &y_train) -> (&model, &X_train, &y_train) >>
         FitModel(&model, &X_train, &y_train) -> (&model) >>
-        EvaluateModel(&model) >>
+        EvaluateModel(&model) -> (&model) >>
         ExportModel(&model) -> (model)
     }
 }

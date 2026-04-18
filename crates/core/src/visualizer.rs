@@ -12,15 +12,24 @@ pub struct GraphCase {
     pub steps: Vec<GraphStep>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CtxAccess {
+    None,
+    Ref,
+    Mut,
+}
+
 #[derive(Clone, Debug)]
 pub enum GraphStep {
     Node {
         name: &'static str,
+        ctx: CtxAccess,
         inputs: Vec<&'static str>,
         outputs: Vec<&'static str>,
     },
     Nested {
         graph: Box<GraphDef>,
+        ctx: CtxAccess,
         inputs: Vec<&'static str>,
         outputs: Vec<&'static str>,
     },
@@ -105,13 +114,27 @@ impl Visualizer {
             match step {
                 GraphStep::Node {
                     name,
+                    ctx,
                     inputs,
                     outputs,
                 } => {
-                    println!("{}{}{}{}", prefix, branch, name, format_io(inputs, outputs));
+                    let ctx_label = match ctx {
+                        CtxAccess::None => "",
+                        CtxAccess::Ref => " (ctx: &)",
+                        CtxAccess::Mut => " (ctx: &mut)",
+                    };
+                    println!(
+                        "{}{}{}{}{}",
+                        prefix,
+                        branch,
+                        name,
+                        ctx_label,
+                        format_io(inputs, outputs)
+                    );
                 }
                 GraphStep::Nested {
                     graph,
+                    ctx: _,
                     inputs,
                     outputs,
                 } => {

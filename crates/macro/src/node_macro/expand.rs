@@ -77,6 +77,16 @@ pub fn expand(input: TokenStream) -> TokenStream {
     } else {
         quote! {}
     };
+    let ctx_access = match &node_def.ctx_type {
+        None => quote! { ::graphium::CtxAccess::None },
+        Some(_) => {
+            if node_def.ctx_mut {
+                quote! { ::graphium::CtxAccess::Mut }
+            } else {
+                quote! { ::graphium::CtxAccess::Ref }
+            }
+        }
+    };
     let call_args: Vec<proc_macro2::TokenStream> = node_def
         .param_kinds
         .iter()
@@ -246,6 +256,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
 
         impl #struct_name {
             pub const NAME: &'static str = stringify!(#fn_name);
+            pub const CTX_ACCESS: ::graphium::CtxAccess = #ctx_access;
             #metrics_defs
 
             #sync_run
