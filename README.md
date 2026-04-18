@@ -1,7 +1,7 @@
 
 # GRAPHIUM
 
-<img src="https://s3.rottigni.tech/public/github/graphium_logo_nobg.png" alt="graphium" width="400px" />
+<img src="https://s3.rottigni.tech/public/github/graphium_logo.png" alt="graphium" width="250px" />
 
 A Rust framework for defining observable DAG-based computation workflows through declarative procedural macros.
 
