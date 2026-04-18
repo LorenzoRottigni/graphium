@@ -1110,7 +1110,7 @@ fn render_step(
                 }
                 graphium::CtxAccess::None => {}
             }
-            emit_artifact_edges(tracker, &node_id, *ctx, inputs, outputs, lines);
+            emit_artifact_edges(tracker, &node_id, *ctx, inputs, outputs, None, lines);
             RenderedSteps {
                 head: node_id.clone(),
                 tail: node_id,
@@ -1134,7 +1134,7 @@ fn render_step(
                 r#"{node_id}[["{}"]]:::stepGraph"#,
                 escape_label(&format!("{}{}", graph.name, ctx_label))
             ));
-            emit_artifact_edges(tracker, &node_id, *ctx, inputs, outputs, lines);
+            emit_artifact_edges(tracker, &node_id, *ctx, inputs, outputs, None, lines);
             let nested_id = slugify(graph.name);
             if linkable_graphs.contains(&nested_id) {
                 lines.push(format!(
@@ -1158,7 +1158,16 @@ fn render_step(
             lines.push(format!(r#"{fork}(("&")):::control"#));
             lines.push(format!(r#"{join}(("join")):::control"#));
 
-            emit_artifact_edges(tracker, &fork, graphium::CtxAccess::None, inputs, &[], lines);
+            let fanout = parallel_fanout(branches);
+            emit_artifact_edges(
+                tracker,
+                &fork,
+                graphium::CtxAccess::None,
+                inputs,
+                &[],
+                Some(&fanout),
+                lines,
+            );
 
             for (idx, branch) in branches.iter().enumerate() {
                 if branch.is_empty() {
@@ -1213,12 +1222,14 @@ fn render_step(
             ));
             lines.push(format!(r#"{join}(("join")):::control"#));
 
+            let fanout = route_selector_fanout(cases, inputs);
             emit_artifact_edges(
                 tracker,
                 &decision,
                 graphium::CtxAccess::None,
                 inputs,
                 &[],
+                Some(&fanout),
                 lines,
             );
 
@@ -1280,7 +1291,15 @@ fn render_step(
             ));
             lines.push(format!(r#"{exit}(("exit")):::control"#));
 
-            emit_artifact_edges(tracker, &cond, graphium::CtxAccess::None, inputs, &[], lines);
+            emit_artifact_edges(
+                tracker,
+                &cond,
+                graphium::CtxAccess::None,
+                inputs,
+                &[],
+                None,
+                lines,
+            );
 
             if !body.is_empty() {
                 let mut body_tracker = tracker.clone();
@@ -1315,7 +1334,15 @@ fn render_step(
             lines.push(format!(r#"{exit}(("exit")):::control"#));
             lines.push(format!(r#"{start} -->|"exit"| {exit}"#));
 
-            emit_artifact_edges(tracker, &start, graphium::CtxAccess::None, inputs, &[], lines);
+            emit_artifact_edges(
+                tracker,
+                &start,
+                graphium::CtxAccess::None,
+                inputs,
+                &[],
+                None,
+                lines,
+            );
 
             if !body.is_empty() {
                 let mut body_tracker = tracker.clone();
@@ -1432,6 +1459,7 @@ fn emit_artifact_edges(
     ctx_access: graphium::CtxAccess,
     inputs: &[&'static str],
     outputs: &[&'static str],
+    owned_fanout: Option<&HashMap<String, usize>>,
     lines: &mut Vec<String>,
 ) {
     if let Some(ctx) = &tracker.ctx_node {
@@ -1447,21 +1475,35 @@ fn emit_artifact_edges(
     }
 
     let mut borrowed_inputs: Vec<&str> = Vec::new();
+    let mut owned_inputs: Vec<&str> = Vec::new();
     for input in inputs {
         let (base, borrowed) = parse_artifact(input);
         if borrowed {
             borrowed_inputs.push(base);
-            continue;
+        } else {
+            owned_inputs.push(base);
         }
+    }
+
+    owned_inputs.sort();
+    owned_inputs.dedup();
+    for base in owned_inputs {
+        let fanout = owned_fanout.and_then(|m| m.get(base)).copied().unwrap_or(1);
+        let label = if fanout > 1 {
+            format!("clone x{} + move: {base}", fanout - 1)
+        } else {
+            format!("move: {base}")
+        };
+
         if let Some(src) = tracker.owned.get(base) {
             lines.push(format!(
                 r#"{src} -. "{}" .-> {step_node}"#,
-                escape_label(base)
+                escape_label(&label)
             ));
         } else if let Some(inputs_node) = &tracker.inputs_node {
             lines.push(format!(
                 r#"{inputs_node} -. "{}" .-> {step_node}"#,
-                escape_label(base)
+                escape_label(&label)
             ));
             tracker.owned.insert(base.to_string(), inputs_node.clone());
         }
@@ -1496,14 +1538,112 @@ fn emit_artifact_edges(
     apply_borrowed_lifetimes(tracker, step_node, &borrowed_outputs, lines);
 }
 
+fn parallel_fanout(branches: &[Vec<GraphStep>]) -> HashMap<String, usize> {
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for branch in branches {
+        let required = steps_owned_requirements(branch);
+        for artifact in required {
+            *counts.entry(artifact).or_insert(0) += 1;
+        }
+    }
+    counts
+}
+
+fn route_selector_fanout(
+    cases: &[graphium::GraphCase],
+    selector_inputs: &[&'static str],
+) -> HashMap<String, usize> {
+    let mut branch_required: HashSet<String> = HashSet::new();
+    for case in cases {
+        branch_required.extend(steps_owned_requirements(&case.steps));
+    }
+
+    let mut out: HashMap<String, usize> = HashMap::new();
+    for &input in selector_inputs {
+        let (base, borrowed) = parse_artifact(input);
+        if borrowed {
+            continue;
+        }
+        if branch_required.contains(base) {
+            // Selector needs a clone so the chosen branch can still consume the value.
+            out.insert(base.to_string(), 2);
+        }
+    }
+    out
+}
+
+fn steps_owned_requirements(steps: &[GraphStep]) -> HashSet<String> {
+    let mut out = HashSet::new();
+    collect_steps_owned_requirements(steps, &mut out);
+    out
+}
+
+fn collect_steps_owned_requirements(steps: &[GraphStep], out: &mut HashSet<String>) {
+    for step in steps {
+        match step {
+            GraphStep::Node { inputs, .. } | GraphStep::Nested { inputs, .. } => {
+                for &input in inputs {
+                    let (base, borrowed) = parse_artifact(input);
+                    if !borrowed {
+                        out.insert(base.to_string());
+                    }
+                }
+            }
+            GraphStep::Parallel { branches, .. } => {
+                for branch in branches {
+                    collect_steps_owned_requirements(branch, out);
+                }
+            }
+            GraphStep::Route { inputs, cases, .. } => {
+                for &input in inputs {
+                    let (base, borrowed) = parse_artifact(input);
+                    if !borrowed {
+                        out.insert(base.to_string());
+                    }
+                }
+                for case in cases {
+                    collect_steps_owned_requirements(&case.steps, out);
+                }
+            }
+            GraphStep::While { body, inputs, .. } | GraphStep::Loop { body, inputs, .. } => {
+                for &input in inputs {
+                    let (base, borrowed) = parse_artifact(input);
+                    if !borrowed {
+                        out.insert(base.to_string());
+                    }
+                }
+                collect_steps_owned_requirements(body, out);
+            }
+            GraphStep::Break => {}
+        }
+    }
+}
+
 fn apply_borrowed_lifetimes(
     tracker: &mut ArtifactTracker,
     step_node: &str,
     borrowed_outputs: &[&str],
     lines: &mut Vec<String>,
 ) {
-    let mut next_live: HashSet<String> = borrowed_outputs.iter().map(|v| (*v).to_string()).collect();
+    let next_live: HashSet<String> = borrowed_outputs.iter().map(|v| (*v).to_string()).collect();
     if let Some(ctx) = &tracker.ctx_node {
+        if !next_live.is_empty() {
+            let mut introduced: Vec<&str> = next_live
+                .iter()
+                .filter(|artifact| !tracker.borrowed_live.contains(*artifact))
+                .map(|s| s.as_str())
+                .collect();
+            introduced.sort();
+            introduced.dedup();
+            if !introduced.is_empty() {
+                let label = format!("ctx set refs: {}", introduced.join(", "));
+                lines.push(format!(
+                    r#"{step_node} -. "{}" .- {ctx}"#,
+                    escape_label(&label)
+                ));
+            }
+        }
+
         if !tracker.borrowed_live.is_empty() {
             let mut dropped: Vec<&str> = tracker
                 .borrowed_live
@@ -1522,7 +1662,7 @@ fn apply_borrowed_lifetimes(
             }
         }
     }
-    tracker.borrowed_live = std::mem::take(&mut next_live);
+    tracker.borrowed_live = next_live;
 }
 
 fn escape_label(value: &str) -> String {
