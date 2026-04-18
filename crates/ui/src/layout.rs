@@ -135,12 +135,13 @@ fn footer_html() -> String {
 
 const BASE_CSS: &str = r#"
   :root {
-    --bg: #f7f9fc;
-    --fg: #1c2733;
-    --card: #ffffff;
-    --muted: #5f7388;
-    --border: #e6ebf2;
-    --blue: #0f7bff;
+    --bg: #0b1220;
+    --fg: #e5e7eb;
+    --card: #0f172a;
+    --muted: #9ca3af;
+    --border: #243044;
+    --blue: #3b82f6;
+    --shadow: rgba(0, 0, 0, 0.35);
   }
 
   body {
@@ -200,7 +201,9 @@ const BASE_CSS: &str = r#"
     padding: .6rem .8rem;
     font-size: .95rem;
     border-radius: 10px;
-    border: 1px solid #d5dce5;
+    border: 1px solid #334155;
+    background: #0b1220;
+    color: var(--fg);
   }
 
   button {
@@ -225,7 +228,7 @@ const BASE_CSS: &str = r#"
   .card {
     background: var(--card);
     border-radius: 14px;
-    box-shadow: 0 10px 20px rgba(0,0,0,.06);
+    box-shadow: 0 10px 20px var(--shadow);
     padding: 1rem;
     overflow: auto;
   }
@@ -246,27 +249,35 @@ const BASE_CSS: &str = r#"
     gap: 1rem;
   }
 
-  .mermaid-scroll { overflow-x: auto; overflow-y: auto; padding-bottom: .35rem; }
-  .mermaid-scroll svg { max-width: none !important; }
+  .mermaid-scroll {
+    overflow-x: auto;
+    overflow-y: auto;
+    padding-bottom: .35rem;
+    height: 520px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: #0b1220;
+  }
+  .mermaid-scroll svg { max-width: none !important; width: auto !important; height: auto !important; }
   pre.mermaid { margin: 0; }
 
   .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
-  .metric { border: 1px solid #ebeff5; border-radius: 12px; padding: .65rem; }
+  .metric { border: 1px solid var(--border); border-radius: 12px; padding: .65rem; background: rgba(255,255,255,.02); }
   .metric .k { font-size: .8rem; opacity: .75; }
   .metric .v { font-size: 1rem; font-weight: 700; margin-top: .2rem; }
 
   .tests-stack { display:grid; grid-template-columns: 1fr; gap: 1rem; }
-  .test-item { border: 1px solid #ebeff5; border-radius: 10px; padding: .55rem; display:flex; align-items:center; gap:.5rem; }
+  .test-item { border: 1px solid var(--border); border-radius: 10px; padding: .55rem; display:flex; align-items:center; gap:.5rem; }
   .test-target { font-size: .83rem; color: var(--muted); }
   .test-name { font-size: .9rem; font-weight: 600; flex:1; }
   .test-run { text-decoration: none; background: var(--blue); color: white; border-radius: 8px; padding: .3rem .55rem; font-size: .84rem; }
 
   .play-label { font-size: .84rem; opacity: .8; margin-top: .3rem; }
   .play-field { display: grid; grid-template-columns: 1fr; gap: .4rem; margin: .55rem 0; }
-  .play-out { background: #f2f6fb; border-radius: 10px; padding: .75rem; overflow: auto; }
+  .play-out { background: #0b1220; border: 1px solid var(--border); border-radius: 10px; padding: .75rem; overflow: auto; }
 
-  .test-card { background: white; border-radius: 12px; padding: 1rem; border: 1px solid var(--border); display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; }
-  .test-card .kind { font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; color: #47617a; background: #edf4fb; padding: .25rem .5rem; border-radius: 999px; }
+  .test-card { background: rgba(255,255,255,.02); border-radius: 12px; padding: 1rem; border: 1px solid var(--border); display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; }
+  .test-card .kind { font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; color: #cbd5e1; background: rgba(59,130,246,.15); padding: .25rem .5rem; border-radius: 999px; }
   .test-card .name { font-weight: 600; flex: 1; }
   .test-card .target { font-size:.86rem; color: var(--muted); flex-basis: 100%; }
   .test-card .run { text-decoration: none; background: var(--blue); color: white; border-radius: 8px; padding: .45rem .7rem; }

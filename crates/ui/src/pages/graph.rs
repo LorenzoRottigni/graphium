@@ -50,7 +50,12 @@ pub(crate) fn shell_page_html(state: &AppState, selected_id: &str) -> String {
   <script type="module">
     import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
     window.__graphiumMermaid = mermaid;
-    mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'dark',
+      securityLevel: 'loose',
+      flowchart: { useMaxWidth: false }
+    });
     window.__graphiumRenderMermaid = () => {
       try {
         if (window.__graphiumMermaid?.run) {
@@ -285,7 +290,7 @@ fn playground_widget_html(graph: &ConfiguredGraph, id: &str, view: &PlaygroundVi
             escape_label(value)
         ),
         Some(Err(err)) => format!(
-            r#"<div style="margin-top:.7rem;"><div class="play-label">Error</div><pre class="play-out" style="border:1px solid #fecaca; background:#fff1f2;">{}</pre></div>"#,
+            r#"<div style="margin-top:.7rem;"><div class="play-label">Error</div><pre class="play-out" style="border:1px solid #7f1d1d; background:#2a0f13;">{}</pre></div>"#,
             escape_label(err)
         ),
     };
