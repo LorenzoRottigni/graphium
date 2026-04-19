@@ -1,24 +1,13 @@
 use std::collections::{HashMap, HashSet};
 
-use graphium::{GraphDef, GraphStep};
+use graphium::export::{GraphDefDto, GraphStepDto};
 
 use crate::types::ConfiguredGraph;
 use crate::util::{normalize_symbol, slugify};
 
 #[derive(Clone)]
 pub(crate) struct UiNode {
-    pub(crate) id: String,
-    pub(crate) target: String,
-    pub(crate) label: String,
-    pub(crate) file: String,
-    pub(crate) start_line: u32,
-    pub(crate) end_line: u32,
-    pub(crate) ctx_access: graphium::CtxAccess,
-    pub(crate) metrics_graph: String,
-    pub(crate) metrics_node: String,
-    pub(crate) playground_supported: bool,
-    pub(crate) playground_schema: graphium::PlaygroundSchema,
-    pub(crate) playground_run: fn(&HashMap<String, String>) -> Result<String, String>,
+    pub(crate) dto: graphium::export::NodeDto,
 }
 
 #[derive(Clone)]
@@ -77,19 +66,22 @@ pub(crate) fn build_state(prometheus_url: String, graphs: Vec<ConfiguredGraph>) 
         .map(|g| (g.id.clone(), g))
         .collect::<HashMap<_, _>>();
 
-    // Auto-register nested graphs so users can click into subgraphs.
-    let mut discovered = HashMap::<String, GraphDef>::new();
-    let mut visited = HashSet::<String>::new();
-    for graph in &ordered {
-        collect_nested_graph_defs(&graph.def, &mut discovered, &mut visited);
-    }
-    let mut discovered_defs: Vec<GraphDef> = discovered.into_values().collect();
-    discovered_defs.sort_by_key(|def| def.name.to_string());
-    for def in discovered_defs {
-        let candidate = ConfiguredGraph::from_graph_def(def);
-        if by_id.contains_key(&candidate.id) {
+    // Expand the configured root graphs into a fixed set of graphs/nodes
+    // exported at build time by `graph!` / `node!`.
+    let root_exports: Vec<graphium::export::GraphDto> =
+        ordered.iter().map(|g| g.export.clone()).collect();
+    let bundle = graphium::export::GraphiumBundleDto::from_graph_roots(&root_exports);
+    let graphium::export::GraphiumBundleDto {
+        graphs: bundle_graphs,
+        nodes: bundle_nodes,
+        ..
+    } = bundle;
+
+    for export in bundle_graphs {
+        if by_id.contains_key(&export.id) {
             continue;
         }
+        let candidate = ConfiguredGraph::from_export(export);
         by_id.insert(candidate.id.clone(), candidate.clone());
         ordered.push(candidate);
     }
@@ -119,28 +111,9 @@ pub(crate) fn build_state(prometheus_url: String, graphs: Vec<ConfiguredGraph>) 
         .map(|t| (t.id.clone(), t))
         .collect::<HashMap<_, _>>();
 
-    let mut nodes_ordered: Vec<UiNode> = graphium::registered_nodes()
+    let nodes_by_id = bundle_nodes
         .into_iter()
-        .map(|node| UiNode {
-            id: node.id.to_string(),
-            target: node.target.to_string(),
-            label: node.label.to_string(),
-            file: node.file.to_string(),
-            start_line: node.start_line,
-            end_line: node.end_line,
-            ctx_access: node.ctx_access,
-            metrics_graph: node.metrics_graph.to_string(),
-            metrics_node: node.metrics_node.to_string(),
-            playground_supported: node.playground_supported,
-            playground_schema: node.playground_schema,
-            playground_run: node.playground_run,
-        })
-        .collect();
-    nodes_ordered.sort_by_key(|n| n.label.to_string());
-    let nodes_by_id = nodes_ordered
-        .iter()
-        .cloned()
-        .map(|n| (n.id.clone(), n))
+        .map(|dto| (dto.id.clone(), UiNode { dto }))
         .collect::<HashMap<_, _>>();
 
     AppState {
@@ -154,13 +127,13 @@ pub(crate) fn build_state(prometheus_url: String, graphs: Vec<ConfiguredGraph>) 
     }
 }
 
-pub(crate) fn collect_graph_node_symbols(graph: &GraphDef) -> HashSet<String> {
+pub(crate) fn collect_graph_node_symbols(graph: &GraphDefDto) -> HashSet<String> {
     let mut symbols = HashSet::new();
     collect_graph_node_symbols_from_steps(&graph.steps, &mut symbols);
     symbols
 }
 
-pub(crate) fn collect_graph_node_names(graph: &GraphDef) -> Vec<String> {
+pub(crate) fn collect_graph_node_names(graph: &GraphDefDto) -> Vec<String> {
     let mut out = Vec::new();
     collect_graph_node_names_from_steps(&graph.steps, &mut out);
     out.sort();
@@ -168,97 +141,56 @@ pub(crate) fn collect_graph_node_names(graph: &GraphDef) -> Vec<String> {
     out
 }
 
-fn collect_graph_node_names_from_steps(steps: &[GraphStep], out: &mut Vec<String>) {
+fn collect_graph_node_names_from_steps(steps: &[GraphStepDto], out: &mut Vec<String>) {
     for step in steps {
         match step {
-            GraphStep::Node { name, .. } => out.push(name.to_string()),
-            GraphStep::Nested { graph, .. } => {
+            GraphStepDto::Node { name, .. } => out.push(name.to_string()),
+            GraphStepDto::Nested { graph, .. } => {
                 collect_graph_node_names_from_steps(&graph.steps, out)
             }
-            GraphStep::Parallel { branches, .. } => {
+            GraphStepDto::Parallel { branches, .. } => {
                 for branch in branches {
                     collect_graph_node_names_from_steps(branch, out);
                 }
             }
-            GraphStep::Route { cases, .. } => {
+            GraphStepDto::Route { cases, .. } => {
                 for case in cases {
                     collect_graph_node_names_from_steps(&case.steps, out);
                 }
             }
-            GraphStep::While { body, .. } | GraphStep::Loop { body, .. } => {
+            GraphStepDto::While { body, .. } | GraphStepDto::Loop { body, .. } => {
                 collect_graph_node_names_from_steps(body, out);
             }
-            GraphStep::Break => {}
+            GraphStepDto::Break => {}
         }
     }
 }
 
-fn collect_graph_node_symbols_from_steps(steps: &[GraphStep], out: &mut HashSet<String>) {
+fn collect_graph_node_symbols_from_steps(steps: &[GraphStepDto], out: &mut HashSet<String>) {
     for step in steps {
         match step {
-            GraphStep::Node { name, .. } => {
+            GraphStepDto::Node { name, .. } => {
                 out.insert(normalize_symbol(name));
             }
-            GraphStep::Nested { graph, .. } => {
+            GraphStepDto::Nested { graph, .. } => {
                 collect_graph_node_symbols_from_steps(&graph.steps, out)
             }
-            GraphStep::Parallel { branches, .. } => {
+            GraphStepDto::Parallel { branches, .. } => {
                 for branch in branches {
                     collect_graph_node_symbols_from_steps(branch, out);
                 }
             }
-            GraphStep::Route { cases, .. } => {
+            GraphStepDto::Route { cases, .. } => {
                 for case in cases {
                     collect_graph_node_symbols_from_steps(&case.steps, out);
                 }
             }
-            GraphStep::While { body, .. } | GraphStep::Loop { body, .. } => {
+            GraphStepDto::While { body, .. } | GraphStepDto::Loop { body, .. } => {
                 collect_graph_node_symbols_from_steps(body, out);
             }
-            GraphStep::Break => {}
+            GraphStepDto::Break => {}
         }
     }
 }
 
-fn collect_nested_graph_defs(
-    graph: &GraphDef,
-    out: &mut HashMap<String, GraphDef>,
-    visited: &mut HashSet<String>,
-) {
-    let id = slugify(graph.name);
-    if !visited.insert(id) {
-        return;
-    }
-    collect_nested_graph_defs_from_steps(&graph.steps, out, visited);
-}
-
-fn collect_nested_graph_defs_from_steps(
-    steps: &[GraphStep],
-    out: &mut HashMap<String, GraphDef>,
-    visited: &mut HashSet<String>,
-) {
-    for step in steps {
-        match step {
-            GraphStep::Nested { graph, .. } => {
-                let def = (**graph).clone();
-                let id = slugify(def.name);
-                out.entry(id).or_insert_with(|| def.clone());
-                collect_nested_graph_defs(&def, out, visited);
-            }
-            GraphStep::Parallel { branches, .. } => {
-                for branch in branches {
-                    collect_nested_graph_defs_from_steps(branch, out, visited);
-                }
-            }
-            GraphStep::Route { cases, .. } => {
-                for case in cases {
-                    collect_nested_graph_defs_from_steps(&case.steps, out, visited);
-                }
-            }
-            GraphStep::While { body, .. } | GraphStep::Loop { body, .. } => {
-                collect_nested_graph_defs_from_steps(body, out, visited);
-            }
-            GraphStep::Node { .. } | GraphStep::Break => {}
-        }
-    }
-}
+// Note: nested graph discovery is DTO-driven now via `GraphDto.subgraphs`.

@@ -3,17 +3,15 @@
 // `graph!` emits fully inlined orchestration code.
 
 pub mod metrics;
-pub mod node_registry;
 pub mod test_registry;
 pub mod visualizer;
+pub mod export;
 
 pub use inventory;
 pub use visualizer::{
     CtxAccess, GraphCase, GraphDef, GraphDefProvider, GraphPlayground, GraphStep, PlaygroundParam,
     PlaygroundSchema, Visualizer,
 };
-
-pub use node_registry::{node_by_id, node_by_target, registered_nodes, RegisteredNode};
 
 pub trait Artifact: Clone + 'static {}
 

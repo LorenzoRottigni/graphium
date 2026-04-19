@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 
-use graphium::GraphDef;
-
 use crate::util::{default_bind, slugify};
 
 #[derive(Clone)]
@@ -29,7 +27,9 @@ impl GraphiumUiConfig {
         }
     }
 
-    pub fn with_graph<G: graphium::GraphPlayground + 'static>(mut self) -> Self {
+    pub fn with_graph<G: graphium::GraphPlayground + graphium::export::GraphExport + 'static>(
+        mut self,
+    ) -> Self {
         self.graphs.push(graph::<G>());
         self
     }
@@ -54,28 +54,48 @@ impl Default for GraphiumUiConfig {
 pub struct ConfiguredGraph {
     pub id: String,
     pub name: String,
-    pub def: GraphDef,
+    pub export: graphium::export::GraphDto,
     pub playground: Option<Playground>,
 }
 
 impl ConfiguredGraph {
-    pub fn from_graph_def(def: GraphDef) -> Self {
-        let id = slugify(def.name);
+    pub fn from_export(export: graphium::export::GraphDto) -> Self {
         Self {
-            id,
-            name: def.name.to_string(),
-            def,
+            id: export.id.clone(),
+            name: export.name.clone(),
+            export,
             playground: None,
         }
     }
 
-    pub fn from_provider<G: graphium::GraphPlayground + 'static>() -> Self {
-        let def = G::graph_def();
-        let id = slugify(def.name);
+    pub fn from_export_def(def: graphium::export::GraphDefDto) -> Self {
+        let id = slugify(&def.name);
+        Self {
+            id: id.clone(),
+            name: def.name.clone(),
+            export: graphium::export::GraphDto {
+                id,
+                name: def.name.clone(),
+                schema: None,
+                def,
+                raw_schema: None,
+                raw_span: None,
+                nodes: Vec::new(),
+                subgraphs: Vec::new(),
+                playground: None,
+            },
+            playground: None,
+        }
+    }
+
+    pub fn from_provider<G: graphium::GraphPlayground + graphium::export::GraphExport + 'static>(
+    ) -> Self {
+        let export = G::export();
+        let id = export.id.clone();
         Self {
             id,
-            name: def.name.to_string(),
-            def,
+            name: export.name.clone(),
+            export,
             playground: Some(Playground {
                 supported: G::PLAYGROUND_SUPPORTED,
                 schema: G::playground_schema(),
@@ -85,7 +105,8 @@ impl ConfiguredGraph {
     }
 }
 
-pub fn graph<G: graphium::GraphPlayground + 'static>() -> ConfiguredGraph {
+pub fn graph<G: graphium::GraphPlayground + graphium::export::GraphExport + 'static>(
+) -> ConfiguredGraph {
     ConfiguredGraph::from_provider::<G>()
 }
 

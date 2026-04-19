@@ -8,7 +8,7 @@ use crate::mermaid::to_mermaid;
 use crate::metrics::{fetch_metrics, fmt_metric};
 use crate::state::{collect_graph_node_names, collect_graph_node_symbols, AppState, UiTest};
 use crate::types::ConfiguredGraph;
-use crate::util::{escape_label, normalize_symbol, slugify};
+use crate::util::{escape_label, escape_pre, normalize_symbol, slugify};
 
 #[derive(Default, Clone)]
 pub(crate) struct PlaygroundView {
@@ -103,12 +103,11 @@ pub(crate) async fn render_graph_fragment(
 
     let linkable_graphs: HashSet<String> = state.by_id.keys().cloned().collect();
     let mermaid = to_mermaid(
-        &graph.def,
+        &graph.export.def,
         graph.playground.map(|p| p.schema.context),
-        Some(&id),
         &linkable_graphs,
     );
-    let metrics = fetch_metrics(&state, graph.def.name).await;
+    let metrics = fetch_metrics(&state, &graph.export.def.name).await;
 
     let count = fmt_metric(metrics.count);
     let errors = fmt_metric(metrics.errors);
@@ -116,8 +115,8 @@ pub(crate) async fn render_graph_fragment(
     let fail = fmt_metric(metrics.fail);
     let p50 = fmt_metric(metrics.p50_seconds);
     let p95 = fmt_metric(metrics.p95_seconds);
-    let graph_name_key = normalize_symbol(graph.def.name);
-    let node_symbols = collect_graph_node_symbols(&graph.def);
+    let graph_name_key = normalize_symbol(&graph.export.def.name);
+    let node_symbols = collect_graph_node_symbols(&graph.export.def);
 
     let graph_scoped_tests: Vec<&UiTest> = state
         .tests_ordered
@@ -140,7 +139,8 @@ pub(crate) async fn render_graph_fragment(
     let graph_tests_widget = tests_widget_html("Graph Tests", &graph_scoped_tests);
     let node_tests_widget = tests_widget_html("Node Tests", &node_scoped_tests);
     let playground_widget = playground_widget_html(graph, &id, &playground_view);
-    let nodes_widget = nodes_widget_html(&graph.def, &id);
+    let nodes_widget = nodes_widget_html(&graph.export.def);
+    let raw_schema_widget = raw_schema_widget_html(graph);
 
     Ok(format!(
         r#"<section class="card hero">
@@ -165,6 +165,7 @@ pub(crate) async fn render_graph_fragment(
   </aside>
   <section class="side-stack">
     {nodes_widget}
+    {raw_schema_widget}
     {playground_widget}
     <section class="tests-stack">
       {graph_tests_widget}
@@ -181,13 +182,14 @@ pub(crate) async fn render_graph_fragment(
         p50 = p50,
         p95 = p95,
         nodes_widget = nodes_widget,
+        raw_schema_widget = raw_schema_widget,
         playground_widget = playground_widget,
         graph_tests_widget = graph_tests_widget,
         node_tests_widget = node_tests_widget,
     ))
 }
 
-fn nodes_widget_html(def: &graphium::GraphDef, graph_id: &str) -> String {
+fn nodes_widget_html(def: &graphium::export::GraphDefDto) -> String {
     let node_names = collect_graph_node_names(def);
     if node_names.is_empty() {
         return r#"<article class="card"><h3>Nodes</h3><p class="muted" style="margin:.2rem 0;">No nodes.</p></article>"#.to_string();
@@ -200,11 +202,10 @@ fn nodes_widget_html(def: &graphium::GraphDef, graph_id: &str) -> String {
             body,
             r#"<div class="test-item">
   <span class="test-name" style="font-weight:700;">{}</span>
-  <a class="test-run" href="/node/{}?graph={}">Open</a>
+  <a class="test-run" href="/node/{}">Open</a>
 </div>"#,
             escape_label(&normalize_symbol(&name)),
             escape_label(&node_id),
-            escape_label(graph_id)
         );
     }
 
@@ -215,6 +216,40 @@ fn nodes_widget_html(def: &graphium::GraphDef, graph_id: &str) -> String {
 </article>"#,
         body = body
     )
+}
+
+fn raw_schema_widget_html(graph: &ConfiguredGraph) -> String {
+    let schema = read_source_span(graph.export.raw_span.as_ref())
+        .map(|s| escape_pre(&s))
+        .or_else(|| graph.export.raw_schema.as_deref().map(escape_pre))
+        .unwrap_or_else(|| "Raw schema not available for this graph.".to_string());
+    format!(
+        r#"<article class="card">
+  <h3 style="margin-top:0;">Raw schema</h3>
+  <pre class="play-out" style="white-space:pre; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">{schema}</pre>
+</article>"#,
+        schema = schema
+    )
+}
+
+fn read_source_span(span: Option<&graphium::export::SourceSpanDto>) -> Option<String> {
+    let span = span?;
+    if span.start_line == 0 || span.end_line == 0 || span.end_line < span.start_line {
+        return None;
+    }
+    let src = std::fs::read_to_string(&span.file).ok()?;
+    let mut out = String::new();
+    for (idx, line) in src.lines().enumerate() {
+        let line_no = (idx + 1) as u32;
+        if line_no < span.start_line {
+            continue;
+        }
+        if line_no > span.end_line {
+            break;
+        }
+        let _ = writeln!(out, "{line}");
+    }
+    if out.is_empty() { None } else { Some(out) }
 }
 
 fn tests_widget_html(title: &str, tests: &[&UiTest]) -> String {

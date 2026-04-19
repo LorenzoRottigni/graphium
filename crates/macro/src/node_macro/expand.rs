@@ -151,7 +151,8 @@ pub fn expand(input: TokenStream) -> TokenStream {
 
     let span = func.span().unwrap();
     let start_line: u32 = span.start().line() as u32;
-    let end_line: u32 = span.end().line() as u32;
+    let end_span = func.block.span().unwrap();
+    let end_line: u32 = end_span.end().line() as u32;
 
     let playground_inputs: Vec<_> = node_def
         .inputs
@@ -497,32 +498,40 @@ pub fn expand(input: TokenStream) -> TokenStream {
 
             #sync_run
             #async_run
+
+            pub fn export() -> ::graphium::export::NodeDto {
+                <Self as ::graphium::export::NodeExport>::export()
+            }
         }
 
         static #play_inputs_ident: &[::graphium::PlaygroundParam] = &[ #( #playground_inputs ),* ];
         static #play_outputs_ident: &[::graphium::PlaygroundParam] = &[ #( #output_params ),* ];
 
-        ::graphium::inventory::submit! {
-            ::graphium::node_registry::RegisteredNode {
-                id: #id_literal,
-                target: stringify!(#struct_name),
-                aliases: &[ stringify!(#struct_name), concat!(module_path!(), "::", stringify!(#struct_name)) ],
-                label: stringify!(#struct_name),
-                file: concat!(env!("CARGO_MANIFEST_DIR"), "/", file!()),
-                start_line: #start_line,
-                end_line: #end_line,
-                ctx_access: #ctx_access,
-                metrics_graph: module_path!(),
-                metrics_node: stringify!(#fn_name),
-                playground_supported: #playground_supported,
-                playground_schema: ::graphium::PlaygroundSchema {
+        impl ::graphium::export::NodeExport for #struct_name {
+            fn export() -> ::graphium::export::NodeDto {
+                let schema = ::graphium::PlaygroundSchema {
                     inputs: #play_inputs_ident,
                     outputs: #play_outputs_ident,
                     context: #ctx_ty_tokens,
-                },
-                playground_run: #struct_name::__graphium_playground_run,
+                };
+                ::graphium::export::NodeDto {
+                    id: #id_literal.to_string(),
+                    target: stringify!(#struct_name).to_string(),
+                    label: stringify!(#struct_name).to_string(),
+                    source: ::std::option::Option::Some(::graphium::export::SourceSpanDto {
+                        file: file!().to_string(),
+                        start_line: #start_line,
+                        end_line: #end_line,
+                    }),
+                    ctx_access: ::graphium::export::CtxAccessDto::from(#ctx_access),
+                    metrics_graph: module_path!().to_string(),
+                    metrics_node: stringify!(#fn_name).to_string(),
+                    playground_supported: #playground_supported,
+                    playground_schema: ::graphium::export::PlaygroundSchemaDto::from_schema(&schema),
+                }
             }
         }
+
     };
 
     TokenStream::from(expanded)

@@ -31,6 +31,21 @@ pub(crate) fn escape_label(value: &str) -> String {
     value.replace('"', "'").replace('\n', " ")
 }
 
+pub(crate) fn escape_pre(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
 pub(crate) fn next_id(counter: &mut usize) -> String {
     let id = format!("n{counter}");
     *counter += 1;

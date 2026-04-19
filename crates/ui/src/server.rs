@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::Form;
@@ -31,7 +31,6 @@ pub async fn serve(config: GraphiumUiConfig) -> Result<(), UiError> {
         .route("/fragment/graph/:id", get(graph_fragment))
         .route("/graph/:id/playground/run", post(run_playground))
         .route("/node/:id", get(node_page))
-        .route("/node/:id/playground/run", post(run_node_playground))
         .route("/tests", get(tests_page))
         .route("/tests/run/:id", get(run_test_page))
         .with_state(state);
@@ -132,35 +131,8 @@ async fn tests_page(State(state): State<Arc<AppState>>) -> Html<String> {
 async fn node_page(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-    Query(query): Query<node_pages::NodeQuery>,
 ) -> Result<Html<String>, AppHttpError> {
-    Ok(Html(
-        node_pages::node_page_html(state, id, query, Default::default()).await?,
-    ))
-}
-
-async fn run_node_playground(
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<String>,
-    Query(query): Query<node_pages::NodeQuery>,
-    Form(values): Form<HashMap<String, String>>,
-) -> Result<Response, AppHttpError> {
-    let node = state
-        .nodes_by_id
-        .get(&id)
-        .ok_or_else(|| AppHttpError::not_found("node not registered"))?;
-
-    let result = (node.playground_run)(&values);
-    let widget = node_pages::NodePlaygroundView {
-        values,
-        result: Some(result),
-    };
-    Ok(Html(node_pages::playground_widget_html(
-        node,
-        query.graph.as_deref(),
-        &widget,
-    ))
-    .into_response())
+    Ok(Html(node_pages::node_page_html(state, id).await?))
 }
 
 async fn run_test_page(

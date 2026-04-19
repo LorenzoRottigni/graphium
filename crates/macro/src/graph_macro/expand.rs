@@ -4,10 +4,10 @@
 //! the lower-level graph-expression helpers.
 
 use proc_macro::TokenStream;
-use quote::quote;
+use quote::{quote, ToTokens as _};
 use syn::parse_macro_input;
 
-use crate::shared::{fresh_ident, GeneratedExpr, GraphInput, MetricsSpec, Payload};
+use crate::shared::{fresh_ident, GeneratedExpr, GraphInput, MetricsSpec, NodeExpr, Payload};
 
 use super::{get_node_expr, graph_definition_tokens};
 
@@ -21,6 +21,26 @@ use super::{get_node_expr, graph_definition_tokens};
 /// providing `graph!(Demo, Ctx => A >> B)` expands into a `Demo` type with
 /// generated runner methods and graph-definition helpers.
 pub fn expand(input: TokenStream) -> TokenStream {
+    let raw_span = input_span(&input);
+    let raw_span_tokens = match raw_span {
+        Some((start, end)) => {
+            let start_line = start;
+            let end_line = end;
+            quote! {
+                ::std::option::Option::Some(::graphium::export::SourceSpanDto {
+                    file: file!().to_string(),
+                    start_line: #start_line,
+                    end_line: #end_line,
+                })
+            }
+        }
+        None => quote! { ::std::option::Option::None },
+    };
+
+    let raw_schema_string = input.to_string();
+    let raw_schema_lit =
+        syn::LitStr::new(&raw_schema_string, proc_macro2::Span::call_site());
+
     let GraphInput {
         name,
         context,
@@ -76,6 +96,40 @@ pub fn expand(input: TokenStream) -> TokenStream {
     );
     let graph_impl = build_graph_impl(&name, &context, async_enabled, &trait_run_body);
     let async_run_params = &root_setup.run_params;
+    let export_inputs: Vec<_> = graph_inputs
+        .iter()
+        .map(|(ident, ty)| {
+            quote! {
+                ::graphium::export::IoParamDto {
+                    name: stringify!(#ident).to_string(),
+                    ty: stringify!(#ty).to_string(),
+                }
+            }
+        })
+        .collect();
+    let export_outputs: Vec<_> = graph_outputs
+        .iter()
+        .map(|(ident, ty)| {
+            quote! {
+                ::graphium::export::IoParamDto {
+                    name: stringify!(#ident).to_string(),
+                    ty: stringify!(#ty).to_string(),
+                }
+            }
+        })
+        .collect();
+    let export_metrics = metric_names_tokens(metrics);
+    let export_paths = collect_export_paths(&nodes);
+    let export_nodes: Vec<_> = export_paths
+        .node_paths
+        .iter()
+        .map(|path| quote! { <#path as ::graphium::export::NodeExport>::export() })
+        .collect();
+    let export_subgraphs: Vec<_> = export_paths
+        .graph_paths
+        .iter()
+        .map(|path| quote! { <#path as ::graphium::export::GraphExport>::export() })
+        .collect();
 
     let expanded = quote! {
         pub struct #name;
@@ -99,6 +153,10 @@ pub fn expand(input: TokenStream) -> TokenStream {
             pub fn graph_def() -> ::graphium::GraphDef {
                 #graph_def_tokens
             }
+
+            pub fn export() -> ::graphium::export::GraphDto {
+                <Self as ::graphium::export::GraphExport>::export()
+            }
         }
         #graph_impl
 
@@ -109,6 +167,33 @@ pub fn expand(input: TokenStream) -> TokenStream {
         }
 
         #playground_impl
+
+        impl ::graphium::export::GraphExport for #name {
+            fn export() -> ::graphium::export::GraphDto {
+                let def = Self::graph_def();
+                ::graphium::export::GraphDto {
+                    id: ::graphium::export::slugify(def.name),
+                    name: def.name.to_string(),
+                    schema: ::std::option::Option::Some(::graphium::export::GraphSchemaDto {
+                        context: stringify!(#context).to_string(),
+                        inputs: vec![ #( #export_inputs ),* ],
+                        outputs: vec![ #( #export_outputs ),* ],
+                        metrics: vec![ #( #export_metrics ),* ],
+                    }),
+                    def: ::graphium::export::GraphDefDto::from_def(&def),
+                    raw_schema: ::std::option::Option::Some(#raw_schema_lit.to_string()),
+                    raw_span: #raw_span_tokens,
+                    nodes: vec![ #( #export_nodes ),* ],
+                    subgraphs: vec![ #( #export_subgraphs ),* ],
+                    playground: ::std::option::Option::Some(::graphium::export::PlaygroundDto {
+                        supported: <Self as ::graphium::GraphPlayground>::PLAYGROUND_SUPPORTED,
+                        schema: ::graphium::export::PlaygroundSchemaDto::from_schema(
+                            &<Self as ::graphium::GraphPlayground>::playground_schema(),
+                        ),
+                    }),
+                }
+            }
+        }
     };
 
     TokenStream::from(expanded)
@@ -119,6 +204,96 @@ enum PlaygroundParseKind {
     String,
     Bool,
     FromStr,
+}
+
+fn metric_names_tokens(spec: MetricsSpec) -> Vec<proc_macro2::TokenStream> {
+    let mut out = Vec::new();
+    if spec.performance {
+        out.push(quote! { "performance".to_string() });
+    }
+    if spec.errors {
+        out.push(quote! { "errors".to_string() });
+    }
+    if spec.count {
+        out.push(quote! { "count".to_string() });
+    }
+    if spec.caller {
+        out.push(quote! { "caller".to_string() });
+    }
+    if spec.success_rate {
+        out.push(quote! { "success_rate".to_string() });
+    }
+    if spec.fail_rate {
+        out.push(quote! { "fail_rate".to_string() });
+    }
+    out
+}
+
+struct ExportPaths {
+    node_paths: Vec<syn::Path>,
+    graph_paths: Vec<syn::Path>,
+}
+
+fn collect_export_paths(expr: &NodeExpr) -> ExportPaths {
+    use std::collections::BTreeMap;
+
+    let mut nodes = BTreeMap::<String, syn::Path>::new();
+    let mut graphs = BTreeMap::<String, syn::Path>::new();
+    collect_export_paths_inner(expr, &mut nodes, &mut graphs);
+
+    ExportPaths {
+        node_paths: nodes.into_values().collect(),
+        graph_paths: graphs.into_values().collect(),
+    }
+}
+
+fn collect_export_paths_inner(
+    expr: &NodeExpr,
+    nodes: &mut std::collections::BTreeMap<String, syn::Path>,
+    graphs: &mut std::collections::BTreeMap<String, syn::Path>,
+) {
+    match expr {
+        NodeExpr::Single(call) => {
+            let path = &call.path;
+            if crate::shared::is_graph_run_path(path) {
+                let graph_path = super::single::graph_type_path(path);
+                graphs.entry(graph_path.to_token_stream().to_string()).or_insert(graph_path);
+            } else {
+                nodes.entry(path.to_token_stream().to_string())
+                    .or_insert_with(|| path.clone());
+            }
+        }
+        NodeExpr::Sequence(items) | NodeExpr::Parallel(items) => {
+            for item in items {
+                collect_export_paths_inner(item, nodes, graphs);
+            }
+        }
+        NodeExpr::Route(route) => {
+            for (_label, item) in &route.routes {
+                collect_export_paths_inner(item, nodes, graphs);
+            }
+        }
+        NodeExpr::While(while_expr) => {
+            collect_export_paths_inner(while_expr.body.as_ref(), nodes, graphs);
+        }
+        NodeExpr::Loop(loop_expr) => {
+            collect_export_paths_inner(loop_expr.body.as_ref(), nodes, graphs);
+        }
+        NodeExpr::Break => {}
+    }
+}
+
+fn input_span(input: &proc_macro::TokenStream) -> Option<(u32, u32)> {
+    let mut it = input.clone().into_iter();
+    let first = it.next()?;
+    let mut start = first.span().start().line() as u32;
+    let mut end = first.span().end().line() as u32;
+    for token in it {
+        let span = token.span();
+        start = start.min(span.start().line() as u32);
+        end = end.max(span.end().line() as u32);
+    }
+    Some((start, end))
 }
 
 fn playground_parse_kind(ty: &syn::Type) -> Option<PlaygroundParseKind> {

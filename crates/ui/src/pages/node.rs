@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::sync::Arc;
 
@@ -6,24 +5,11 @@ use crate::http::AppHttpError;
 use crate::layout::{render_page, LayoutContext};
 use crate::metrics::{fetch_node_metrics, fmt_metric};
 use crate::state::{AppState, UiNode, UiTest};
-use crate::util::{escape_label, normalize_symbol};
-
-#[derive(serde::Deserialize, Default)]
-pub(crate) struct NodeQuery {
-    pub(crate) graph: Option<String>,
-}
-
-#[derive(Default, Clone)]
-pub(crate) struct NodePlaygroundView {
-    pub(crate) values: HashMap<String, String>,
-    pub(crate) result: Option<Result<String, String>>,
-}
+use crate::util::{escape_label, escape_pre, normalize_symbol};
 
 pub(crate) async fn node_page_html(
     state: Arc<AppState>,
     node_id: String,
-    query: NodeQuery,
-    playground_view: NodePlaygroundView,
 ) -> Result<String, AppHttpError> {
     let node = state
         .nodes_by_id
@@ -37,16 +23,15 @@ pub(crate) async fn node_page_html(
         .iter()
         .filter(|test| {
             matches!(test.kind, graphium::test_registry::TestKind::Node)
-                && normalize_symbol(&test.target) == normalize_symbol(&node.target)
+                && normalize_symbol(&test.target) == normalize_symbol(&node.dto.target)
         })
         .collect();
 
-    let graph_id = query.graph.as_deref();
-    let metrics = fetch_node_metrics(&state, &node.metrics_graph, &node.metrics_node).await;
+    let metrics =
+        fetch_node_metrics(&state, &node.dto.metrics_graph, &node.dto.metrics_node).await;
 
     let metrics_widget = node_metrics_widget(node, &metrics);
     let tests_widget = node_tests_widget(&tests);
-    let playground_widget = playground_widget_html(node, graph_id, &playground_view);
     let code_widget = node_code_widget(node, &source);
 
     let main = format!(
@@ -58,7 +43,6 @@ pub(crate) async fn node_page_html(
 
 <section class="below">
   <section class="side-stack">
-    {playground_widget}
     {metrics_widget}
     {tests_widget}
   </section>
@@ -66,17 +50,16 @@ pub(crate) async fn node_page_html(
     {code_widget}
   </section>
 </section>"#,
-        label = escape_label(&node.label),
-        target = escape_label(&node.target),
-        ctx_access = escape_label(ctx_access_label(node.ctx_access)),
-        playground_widget = playground_widget,
+        label = escape_label(&node.dto.label),
+        target = escape_label(&node.dto.target),
+        ctx_access = escape_label(ctx_access_label(node.dto.ctx_access)),
         metrics_widget = metrics_widget,
         tests_widget = tests_widget,
         code_widget = code_widget
     );
 
     Ok(render_page(
-        &format!("Node: {} | Graphium UI", node.label),
+        &format!("Node: {} | Graphium UI", node.dto.label),
         LayoutContext::dashboard(),
         main,
     ))
@@ -84,18 +67,37 @@ pub(crate) async fn node_page_html(
 
 fn node_code_widget(node: &UiNode, snippet: &SourceSnippet) -> String {
     let header = if snippet.available {
+        let file = node
+            .dto
+            .source
+            .as_ref()
+            .map(|s| s.file.as_str())
+            .unwrap_or("unknown");
+        let start = node.dto.source.as_ref().map(|s| s.start_line).unwrap_or(0);
+        let end = node.dto.source.as_ref().map(|s| s.end_line).unwrap_or(0);
         format!(
             r#"<p class="muted" style="margin:.2rem 0;">{file} · lines {start}–{end}</p>"#,
-            file = escape_label(&node.file),
-            start = node.start_line,
-            end = node.end_line
+            file = escape_label(file),
+            start = start,
+            end = end
         )
     } else {
-        r#"<p class="muted" style="margin:.2rem 0;">Source not available.</p>"#.to_string()
+        let extra = node.dto.source.as_ref().map(|s| {
+            format!(
+                r#" <span style="opacity:.75;">({file}:{start}-{end})</span>"#,
+                file = escape_label(&s.file),
+                start = s.start_line,
+                end = s.end_line
+            )
+        });
+        format!(
+            r#"<p class="muted" style="margin:.2rem 0;">Source not available.{}</p>"#,
+            extra.unwrap_or_default()
+        )
     };
 
     let code = if snippet.available {
-        escape_label(&snippet.text)
+        escape_pre(&snippet.text)
     } else {
         "".to_string()
     };
@@ -108,133 +110,6 @@ fn node_code_widget(node: &UiNode, snippet: &SourceSnippet) -> String {
 </article>"#,
         header = header,
         code = code
-    )
-}
-
-pub(crate) fn playground_widget_html(
-    node: &UiNode,
-    graph_id: Option<&str>,
-    view: &NodePlaygroundView,
-) -> String {
-    let mut fields = String::new();
-    for param in node.playground_schema.inputs {
-        let value = view.values.get(param.name).cloned().unwrap_or_default();
-        let checked = matches!(
-            value.trim().to_ascii_lowercase().as_str(),
-            "true" | "1" | "yes" | "on"
-        );
-
-        let _ = writeln!(
-            fields,
-            r#"<div class="play-field">
-  <div class="play-label"><strong>{}</strong> <span style="opacity:.7;">({})</span></div>
-  {}
-</div>"#,
-            escape_label(param.name),
-            escape_label(param.ty),
-            if param.ty.trim() == "bool" {
-                format!(
-                    r#"<label style="display:flex; align-items:center; gap:.5rem;">
-  <input type="checkbox" name="{}" {}
-  />
-  <span style="opacity:.8;">true</span>
-</label>"#,
-                    escape_label(param.name),
-                    if checked { "checked" } else { "" }
-                )
-            } else {
-                format!(
-                    r#"<input type="text" name="{}" value="{}" />"#,
-                    escape_label(param.name),
-                    escape_label(&value)
-                )
-            }
-        );
-    }
-
-    let outputs = if node.playground_schema.outputs.is_empty() {
-        "Outputs: (none)".to_string()
-    } else {
-        let mut out = String::new();
-        for (idx, param) in node.playground_schema.outputs.iter().enumerate() {
-            if idx > 0 {
-                out.push_str(", ");
-            }
-            out.push_str(param.name);
-            out.push_str(": ");
-            out.push_str(param.ty);
-        }
-        format!("Outputs: {out}")
-    };
-
-    let status = if node.playground_supported {
-        format!(
-            r#"<p style="margin:.2rem 0; opacity:.75;">Context: <code>{}</code> · {}</p>"#,
-            escape_label(node.playground_schema.context),
-            escape_label(&outputs)
-        )
-    } else {
-        format!(
-            r#"<p style="margin:.2rem 0; opacity:.75;">Playground disabled for this node. Context: <code>{}</code> · {}</p>"#,
-            escape_label(node.playground_schema.context),
-            escape_label(&outputs)
-        )
-    };
-
-    let result_html = match &view.result {
-        None => "".to_string(),
-        Some(Ok(value)) => format!(
-            r#"<div style="margin-top:.7rem;"><div class="play-label">Result</div><pre class="play-out">{}</pre></div>"#,
-            escape_label(value)
-        ),
-        Some(Err(err)) => format!(
-            r#"<div style="margin-top:.7rem;"><div class="play-label">Error</div><pre class="play-out" style="border:1px solid #7f1d1d; background:#2a0f13;">{}</pre></div>"#,
-            escape_label(err)
-        ),
-    };
-
-    let hint = if node
-        .playground_schema
-        .inputs
-        .iter()
-        .any(|p| p.ty.trim() == "bool")
-    {
-        r#"<p style="margin:.2rem 0; opacity:.7;">Tip: unchecked bool inputs are treated as false.</p>"#
-    } else {
-        ""
-    };
-
-    let graph_q = graph_id
-        .map(|g| format!("?graph={}", escape_label(g)))
-        .unwrap_or_default();
-    format!(
-        r##"<article class="card" id="node-playground">
-  <h3 style="margin-top:0;">Playground</h3>
-  {status}
-  {hint}
-  <form method="post"
-    action="/node/{id}/playground/run{graph_q}"
-    hx-post="/node/{id}/playground/run{graph_q}"
-    hx-target="#node-playground"
-    hx-swap="outerHTML"
-    hx-indicator="#loading"
-  >
-    {fields}
-    <button type="submit" {disabled}>Run</button>
-  </form>
-  {result_html}
-</article>"##,
-        status = status,
-        hint = hint,
-        id = escape_label(&node.id),
-        graph_q = graph_q,
-        fields = fields,
-        disabled = if node.playground_supported {
-            ""
-        } else {
-            "disabled"
-        },
-        result_html = result_html
     )
 }
 
@@ -261,8 +136,8 @@ fn node_metrics_widget(node: &UiNode, metrics: &crate::metrics::NodeMetricsView)
     <div class="metric"><div class="k">P95 latency (s)</div><div class="v">{p95}</div></div>
   </div>
 </article>"#,
-        g = escape_label(&node.metrics_graph),
-        n = escape_label(&node.metrics_node),
+        g = escape_label(&node.dto.metrics_graph),
+        n = escape_label(&node.dto.metrics_node),
         count = count,
         errors = errors,
         success = success,
@@ -301,11 +176,11 @@ fn node_tests_widget(tests: &[&UiTest]) -> String {
     )
 }
 
-fn ctx_access_label(access: graphium::CtxAccess) -> &'static str {
+fn ctx_access_label(access: graphium::export::CtxAccessDto) -> &'static str {
     match access {
-        graphium::CtxAccess::None => "none",
-        graphium::CtxAccess::Ref => "&",
-        graphium::CtxAccess::Mut => "&mut",
+        graphium::export::CtxAccessDto::None => "none",
+        graphium::export::CtxAccessDto::Ref => "&",
+        graphium::export::CtxAccessDto::Mut => "&mut",
     }
 }
 
@@ -315,28 +190,33 @@ struct SourceSnippet {
 }
 
 fn read_source_snippet(node: &UiNode) -> SourceSnippet {
-    if node.start_line == 0 || node.end_line == 0 || node.end_line < node.start_line {
+    let Some(span) = node.dto.source.as_ref() else {
+        return SourceSnippet {
+            available: false,
+            text: String::new(),
+        };
+    };
+    if span.start_line == 0 || span.end_line == 0 || span.end_line < span.start_line {
         return SourceSnippet {
             available: false,
             text: String::new(),
         };
     }
 
-    let Ok(src) = std::fs::read_to_string(&node.file) else {
+    let Ok(src) = std::fs::read_to_string(&span.file) else {
         return SourceSnippet {
             available: false,
             text: String::new(),
         };
     };
 
-    let start = node.start_line.saturating_sub(1) as usize;
-    let end = node.end_line as usize;
     let mut out = String::new();
     for (idx, line) in src.lines().enumerate() {
-        if idx < start {
+        let line_no = (idx + 1) as u32;
+        if line_no < span.start_line {
             continue;
         }
-        if idx >= end {
+        if line_no > span.end_line {
             break;
         }
         let _ = writeln!(out, "{line}");

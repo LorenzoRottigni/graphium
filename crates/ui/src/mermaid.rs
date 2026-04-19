@@ -1,13 +1,12 @@
 use std::collections::{HashMap, HashSet};
 
-use graphium::{GraphCase, GraphDef, GraphStep};
+use graphium::export::{CtxAccessDto, GraphCaseDto, GraphDefDto, GraphStepDto};
 
 use crate::util::{escape_label, next_id, normalize_symbol, parse_artifact, slugify};
 
 pub(crate) fn to_mermaid(
-    graph: &GraphDef,
+    graph: &GraphDefDto,
     context_label: Option<&str>,
-    graph_id: Option<&str>,
     linkable_graphs: &HashSet<String>,
 ) -> String {
     let mut lines = Vec::new();
@@ -47,7 +46,7 @@ pub(crate) fn to_mermaid(
     let root = next_id(&mut counter);
     lines.push(format!(
         r#"{root}(["{}"]):::graphRoot"#,
-        escape_label(graph.name)
+        escape_label(&graph.name)
     ));
 
     let inputs_node = if graph.inputs.is_empty() {
@@ -86,7 +85,7 @@ pub(crate) fn to_mermaid(
     };
     if let Some(inputs_node) = &tracker.inputs_node {
         for input in &graph.inputs {
-            tracker.owned.insert(input.to_string(), inputs_node.clone());
+            tracker.owned.insert(input.clone(), inputs_node.clone());
         }
     }
 
@@ -97,7 +96,6 @@ pub(crate) fn to_mermaid(
     let rendered = append_steps(
         &graph.steps,
         &mut tracker,
-        graph_id,
         linkable_graphs,
         &mut lines,
         &mut counter,
@@ -118,7 +116,7 @@ pub(crate) fn to_mermaid(
     if let Some(outputs_node) = &outputs_node {
         lines.push(format!("{} --> {outputs_node}", rendered.tail));
         // Add explicit data edges for declared graph outputs.
-        for &output in graph.outputs.iter() {
+        for output in graph.outputs.iter() {
             if let Some(src) = tracker.owned.get(output) {
                 lines.push(format!(
                     r#"{src} -. "{}" .-> {outputs_node}"#,
@@ -146,9 +144,8 @@ struct RenderedSteps {
 }
 
 fn append_steps(
-    steps: &[GraphStep],
+    steps: &[GraphStepDto],
     tracker: &mut ArtifactTracker,
-    graph_id: Option<&str>,
     linkable_graphs: &HashSet<String>,
     lines: &mut Vec<String>,
     counter: &mut usize,
@@ -157,7 +154,7 @@ fn append_steps(
     let mut previous_tail: Option<String> = None;
 
     for step in steps {
-        let rendered = render_step(step, tracker, graph_id, linkable_graphs, lines, counter);
+        let rendered = render_step(step, tracker, linkable_graphs, lines, counter);
         if head.is_none() {
             head = Some(rendered.head.clone());
         }
@@ -174,15 +171,14 @@ fn append_steps(
 }
 
 fn render_step(
-    step: &GraphStep,
+    step: &GraphStepDto,
     tracker: &mut ArtifactTracker,
-    graph_id: Option<&str>,
     linkable_graphs: &HashSet<String>,
     lines: &mut Vec<String>,
     counter: &mut usize,
 ) -> RenderedSteps {
     match step {
-        GraphStep::Node {
+        GraphStepDto::Node {
             name,
             ctx,
             inputs,
@@ -190,9 +186,9 @@ fn render_step(
         } => {
             let node_id = next_id(counter);
             let ctx_label = match ctx {
-                graphium::CtxAccess::None => "",
-                graphium::CtxAccess::Ref => " [ctx:&]",
-                graphium::CtxAccess::Mut => " [ctx:&mut]",
+                CtxAccessDto::None => "",
+                CtxAccessDto::Ref => " [ctx:&]",
+                CtxAccessDto::Mut => " [ctx:&mut]",
             };
             let label = format!("{}{}", normalize_symbol(name), ctx_label);
             lines.push(format!(
@@ -200,29 +196,27 @@ fn render_step(
                 escape_label(&label)
             ));
             match ctx {
-                graphium::CtxAccess::Ref => {
+                CtxAccessDto::Ref => {
                     lines.push(format!("class {node_id} stepNodeCtxRef"));
                 }
-                graphium::CtxAccess::Mut => {
+                CtxAccessDto::Mut => {
                     lines.push(format!("class {node_id} stepNodeCtxMut"));
                 }
-                graphium::CtxAccess::None => {}
+                CtxAccessDto::None => {}
             }
-            if let Some(graph_id) = graph_id {
-                let node_slug = slugify(&normalize_symbol(name));
-                lines.push(format!(
-                    r#"click {node_id} "/node/{node_slug}?graph={graph_id}" "Open {}" _self"#,
-                    escape_label(&normalize_symbol(name))
-                ));
-                lines.push(format!(r#"style {node_id} cursor:pointer"#));
-            }
+            let node_slug = slugify(&normalize_symbol(name));
+            lines.push(format!(
+                r#"click {node_id} "/node/{node_slug}" "Open {}" _self"#,
+                escape_label(&normalize_symbol(name))
+            ));
+            lines.push(format!(r#"style {node_id} cursor:pointer"#));
             emit_artifact_edges(tracker, &node_id, *ctx, inputs, outputs, None, lines);
             RenderedSteps {
                 head: node_id.clone(),
                 tail: node_id,
             }
         }
-        GraphStep::Nested {
+        GraphStepDto::Nested {
             graph,
             ctx,
             inputs,
@@ -232,20 +226,20 @@ fn render_step(
             // even simple graphs hard to read.
             let node_id = next_id(counter);
             let ctx_label = match ctx {
-                graphium::CtxAccess::None => "",
-                graphium::CtxAccess::Ref => " [ctx:&]",
-                graphium::CtxAccess::Mut => " [ctx:&mut]",
+                CtxAccessDto::None => "",
+                CtxAccessDto::Ref => " [ctx:&]",
+                CtxAccessDto::Mut => " [ctx:&mut]",
             };
             lines.push(format!(
                 r#"{node_id}[["{}"]]:::stepGraph"#,
                 escape_label(&format!("{}{}", graph.name, ctx_label))
             ));
             emit_artifact_edges(tracker, &node_id, *ctx, inputs, outputs, None, lines);
-            let nested_id = slugify(graph.name);
+            let nested_id = slugify(&graph.name);
             if linkable_graphs.contains(&nested_id) {
                 lines.push(format!(
                     r#"click {node_id} "/graph/{nested_id}" "Open {}" _self"#,
-                    escape_label(graph.name)
+                    escape_label(&graph.name)
                 ));
                 lines.push(format!(r#"style {node_id} cursor:pointer"#));
             }
@@ -254,7 +248,7 @@ fn render_step(
                 tail: node_id,
             }
         }
-        GraphStep::Parallel {
+        GraphStepDto::Parallel {
             branches,
             inputs,
             outputs,
@@ -268,7 +262,7 @@ fn render_step(
             emit_artifact_edges(
                 tracker,
                 &fork,
-                graphium::CtxAccess::None,
+                CtxAccessDto::None,
                 inputs,
                 &[],
                 Some(&fanout),
@@ -283,7 +277,6 @@ fn render_step(
                 let rendered = append_steps(
                     branch,
                     &mut branch_tracker,
-                    graph_id,
                     linkable_graphs,
                     lines,
                     counter,
@@ -291,7 +284,7 @@ fn render_step(
                 lines.push(format!(r#"{fork} -->|b{}| {}"#, idx + 1, rendered.head));
                 lines.push(format!("{} --> {join}", rendered.tail));
 
-                for &output in outputs.iter() {
+                for output in outputs.iter() {
                     let (base, borrowed) = parse_artifact(output);
                     if borrowed {
                         continue;
@@ -304,7 +297,7 @@ fn render_step(
 
             // Join outputs are the union of branch exit artifacts.
             let mut borrowed_outputs: Vec<&str> = Vec::new();
-            for &output in outputs.iter() {
+            for output in outputs.iter() {
                 let (base, borrowed) = parse_artifact(output);
                 if borrowed {
                     borrowed_outputs.push(base);
@@ -319,7 +312,7 @@ fn render_step(
                 tail: join,
             }
         }
-        GraphStep::Route {
+        GraphStepDto::Route {
             on,
             cases,
             inputs,
@@ -338,7 +331,7 @@ fn render_step(
             emit_artifact_edges(
                 tracker,
                 &decision,
-                graphium::CtxAccess::None,
+                CtxAccessDto::None,
                 inputs,
                 &[],
                 Some(&fanout),
@@ -353,19 +346,18 @@ fn render_step(
                 let rendered = append_steps(
                     &case.steps,
                     &mut case_tracker,
-                    graph_id,
                     linkable_graphs,
                     lines,
                     counter,
                 );
                 lines.push(format!(
                     r#"{decision} -->|"{}"| {}"#,
-                    escape_label(case.label),
+                    escape_label(&case.label),
                     rendered.head
                 ));
                 lines.push(format!("{} --> {join}", rendered.tail));
 
-                for &output in outputs.iter() {
+                for output in outputs.iter() {
                     let (base, borrowed) = parse_artifact(output);
                     if borrowed {
                         continue;
@@ -377,7 +369,7 @@ fn render_step(
             }
 
             let mut borrowed_outputs: Vec<&str> = Vec::new();
-            for &output in outputs.iter() {
+            for output in outputs.iter() {
                 let (base, borrowed) = parse_artifact(output);
                 if borrowed {
                     borrowed_outputs.push(base);
@@ -392,7 +384,7 @@ fn render_step(
                 tail: join,
             }
         }
-        GraphStep::While {
+        GraphStepDto::While {
             condition,
             body,
             inputs,
@@ -409,7 +401,7 @@ fn render_step(
             emit_artifact_edges(
                 tracker,
                 &cond,
-                graphium::CtxAccess::None,
+                CtxAccessDto::None,
                 inputs,
                 &[],
                 None,
@@ -421,7 +413,6 @@ fn render_step(
                 let rendered = append_steps(
                     body,
                     &mut body_tracker,
-                    graph_id,
                     linkable_graphs,
                     lines,
                     counter,
@@ -432,7 +423,7 @@ fn render_step(
             lines.push(format!(r#"{cond} -->|"false"| {exit}"#));
 
             let mut borrowed_outputs: Vec<&str> = Vec::new();
-            for &output in outputs.iter() {
+            for output in outputs.iter() {
                 let (base, borrowed) = parse_artifact(output);
                 if borrowed {
                     borrowed_outputs.push(base);
@@ -447,7 +438,7 @@ fn render_step(
                 tail: exit,
             }
         }
-        GraphStep::Loop {
+        GraphStepDto::Loop {
             body,
             inputs,
             outputs,
@@ -461,7 +452,7 @@ fn render_step(
             emit_artifact_edges(
                 tracker,
                 &start,
-                graphium::CtxAccess::None,
+                CtxAccessDto::None,
                 inputs,
                 &[],
                 None,
@@ -473,7 +464,6 @@ fn render_step(
                 let rendered = append_steps(
                     body,
                     &mut body_tracker,
-                    graph_id,
                     linkable_graphs,
                     lines,
                     counter,
@@ -485,7 +475,7 @@ fn render_step(
             // The macro's `Break` is modeled as a step; leave the explicit break
             // node to visually indicate exits.
             let mut borrowed_outputs: Vec<&str> = Vec::new();
-            for &output in outputs.iter() {
+            for output in outputs.iter() {
                 let (base, borrowed) = parse_artifact(output);
                 if borrowed {
                     borrowed_outputs.push(base);
@@ -500,7 +490,7 @@ fn render_step(
                 tail: exit,
             }
         }
-        GraphStep::Break => {
+        GraphStepDto::Break => {
             let node_id = next_id(counter);
             lines.push(format!(r#"{node_id}(("break")):::control"#));
             RenderedSteps {
@@ -511,20 +501,20 @@ fn render_step(
     }
 }
 
-fn graph_uses_ctx(graph: &GraphDef) -> bool {
+fn graph_uses_ctx(graph: &GraphDefDto) -> bool {
     steps_use_ctx(&graph.steps)
 }
 
-fn steps_use_ctx(steps: &[GraphStep]) -> bool {
+fn steps_use_ctx(steps: &[GraphStepDto]) -> bool {
     for step in steps {
         match step {
-            GraphStep::Node {
+            GraphStepDto::Node {
                 inputs,
                 outputs,
                 ctx,
                 ..
             } => {
-                if *ctx != graphium::CtxAccess::None {
+                if *ctx != CtxAccessDto::None {
                     return true;
                 }
                 if inputs.iter().any(|v| v.starts_with('&'))
@@ -533,13 +523,13 @@ fn steps_use_ctx(steps: &[GraphStep]) -> bool {
                     return true;
                 }
             }
-            GraphStep::Nested {
+            GraphStepDto::Nested {
                 inputs,
                 outputs,
                 ctx,
                 ..
             } => {
-                if *ctx != graphium::CtxAccess::None {
+                if *ctx != CtxAccessDto::None {
                     return true;
                 }
                 if inputs.iter().any(|v| v.starts_with('&'))
@@ -548,28 +538,28 @@ fn steps_use_ctx(steps: &[GraphStep]) -> bool {
                     return true;
                 }
             }
-            GraphStep::Parallel { branches, .. } => {
+            GraphStepDto::Parallel { branches, .. } => {
                 if branches.iter().any(|b| steps_use_ctx(b)) {
                     return true;
                 }
             }
-            GraphStep::Route { cases, .. } => {
+            GraphStepDto::Route { cases, .. } => {
                 if cases.iter().any(|c| steps_use_ctx(&c.steps)) {
                     return true;
                 }
             }
-            GraphStep::While { body, .. } | GraphStep::Loop { body, .. } => {
+            GraphStepDto::While { body, .. } | GraphStepDto::Loop { body, .. } => {
                 if steps_use_ctx(body) {
                     return true;
                 }
             }
-            GraphStep::Break => {}
+            GraphStepDto::Break => {}
         }
     }
     false
 }
 
-fn route_label(on: &str, inputs: &[&'static str]) -> String {
+fn route_label(on: &str, inputs: &[String]) -> String {
     if inputs.len() == 1 {
         return format!("match {}", inputs[0]);
     }
@@ -585,17 +575,17 @@ fn route_label(on: &str, inputs: &[&'static str]) -> String {
 fn emit_artifact_edges(
     tracker: &mut ArtifactTracker,
     step_node: &str,
-    ctx_access: graphium::CtxAccess,
-    inputs: &[&'static str],
-    outputs: &[&'static str],
+    ctx_access: CtxAccessDto,
+    inputs: &[String],
+    outputs: &[String],
     owned_fanout: Option<&HashMap<String, usize>>,
     lines: &mut Vec<String>,
 ) {
     if let Some(ctx) = &tracker.ctx_node {
         let access_label = match ctx_access {
-            graphium::CtxAccess::None => None,
-            graphium::CtxAccess::Ref => Some("ctx access: &"),
-            graphium::CtxAccess::Mut => Some("ctx access: &mut"),
+            CtxAccessDto::None => None,
+            CtxAccessDto::Ref => Some("ctx access: &"),
+            CtxAccessDto::Mut => Some("ctx access: &mut"),
         };
         if let Some(label) = access_label {
             // Use an undirected edge so it doesn't look like values "flow" through ctx.
@@ -645,7 +635,7 @@ fn emit_artifact_edges(
         borrowed_inputs.sort();
         borrowed_inputs.dedup();
         if let Some(ctx) = &tracker.ctx_node {
-            let label = if ctx_access == graphium::CtxAccess::Mut {
+            let label = if ctx_access == CtxAccessDto::Mut {
                 format!("borrow (ctx:&mut): {}", borrowed_inputs.join(", "))
             } else {
                 format!("borrow: {}", borrowed_inputs.join(", "))
@@ -672,7 +662,7 @@ fn emit_artifact_edges(
     apply_borrowed_lifetimes(tracker, step_node, &borrowed_outputs, lines);
 }
 
-fn parallel_fanout(branches: &[Vec<GraphStep>]) -> HashMap<String, usize> {
+fn parallel_fanout(branches: &[Vec<GraphStepDto>]) -> HashMap<String, usize> {
     let mut counts: HashMap<String, usize> = HashMap::new();
     for branch in branches {
         let required = steps_owned_requirements(branch);
@@ -684,8 +674,8 @@ fn parallel_fanout(branches: &[Vec<GraphStep>]) -> HashMap<String, usize> {
 }
 
 fn route_selector_fanout(
-    cases: &[GraphCase],
-    selector_inputs: &[&'static str],
+    cases: &[GraphCaseDto],
+    selector_inputs: &[String],
 ) -> HashMap<String, usize> {
     let mut branch_required: HashSet<String> = HashSet::new();
     for case in cases {
@@ -693,7 +683,7 @@ fn route_selector_fanout(
     }
 
     let mut out: HashMap<String, usize> = HashMap::new();
-    for &input in selector_inputs {
+    for input in selector_inputs {
         let (base, borrowed) = parse_artifact(input);
         if borrowed {
             continue;
@@ -706,30 +696,30 @@ fn route_selector_fanout(
     out
 }
 
-fn steps_owned_requirements(steps: &[GraphStep]) -> HashSet<String> {
+fn steps_owned_requirements(steps: &[GraphStepDto]) -> HashSet<String> {
     let mut out = HashSet::new();
     collect_steps_owned_requirements(steps, &mut out);
     out
 }
 
-fn collect_steps_owned_requirements(steps: &[GraphStep], out: &mut HashSet<String>) {
+fn collect_steps_owned_requirements(steps: &[GraphStepDto], out: &mut HashSet<String>) {
     for step in steps {
         match step {
-            GraphStep::Node { inputs, .. } | GraphStep::Nested { inputs, .. } => {
-                for &input in inputs {
+            GraphStepDto::Node { inputs, .. } | GraphStepDto::Nested { inputs, .. } => {
+                for input in inputs {
                     let (base, borrowed) = parse_artifact(input);
                     if !borrowed {
                         out.insert(base.to_string());
                     }
                 }
             }
-            GraphStep::Parallel { branches, .. } => {
+            GraphStepDto::Parallel { branches, .. } => {
                 for branch in branches {
                     collect_steps_owned_requirements(branch, out);
                 }
             }
-            GraphStep::Route { inputs, cases, .. } => {
-                for &input in inputs {
+            GraphStepDto::Route { inputs, cases, .. } => {
+                for input in inputs {
                     let (base, borrowed) = parse_artifact(input);
                     if !borrowed {
                         out.insert(base.to_string());
@@ -739,8 +729,8 @@ fn collect_steps_owned_requirements(steps: &[GraphStep], out: &mut HashSet<Strin
                     collect_steps_owned_requirements(&case.steps, out);
                 }
             }
-            GraphStep::While { body, inputs, .. } | GraphStep::Loop { body, inputs, .. } => {
-                for &input in inputs {
+            GraphStepDto::While { body, inputs, .. } | GraphStepDto::Loop { body, inputs, .. } => {
+                for input in inputs {
                     let (base, borrowed) = parse_artifact(input);
                     if !borrowed {
                         out.insert(base.to_string());
@@ -748,7 +738,7 @@ fn collect_steps_owned_requirements(steps: &[GraphStep], out: &mut HashSet<Strin
                 }
                 collect_steps_owned_requirements(body, out);
             }
-            GraphStep::Break => {}
+            GraphStepDto::Break => {}
         }
     }
 }
