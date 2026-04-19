@@ -19,3 +19,6 @@
     Preprocessing(*X_train, *X_test) -> (X_train, X_test)
 
     Once "Preprocessing" node takes in X_train and X_test consumes them from ctx.
+- instead of exposing Graph::export() implement Serialize trait for Graph.
+- use rust syntax highlight for node details code widget
+- graphium-core instead of "export" should name feature "dto"
