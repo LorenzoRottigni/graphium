@@ -1,9 +1,8 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use graphium::export::{GraphDefDto, GraphStepDto};
 
 use crate::types::ConfiguredGraph;
-use crate::util::{normalize_symbol, slugify};
 
 #[derive(Clone)]
 pub(crate) struct UiNode {
@@ -12,18 +11,15 @@ pub(crate) struct UiNode {
 
 #[derive(Clone)]
 pub(crate) struct UiTest {
-    pub(crate) id: String,
-    pub(crate) name: String,
-    pub(crate) kind: graphium::test_registry::TestKind,
-    pub(crate) target: String,
+    pub(crate) dto: graphium::export::TestDto,
     pub(crate) run: fn() -> Result<(), String>,
 }
 
 impl UiTest {
     pub(crate) fn kind_label(&self) -> &'static str {
-        match self.kind {
-            graphium::test_registry::TestKind::Node => "Node",
-            graphium::test_registry::TestKind::Graph => "Graph",
+        match self.dto.kind {
+            graphium::export::TestKindDto::Node => "Node",
+            graphium::export::TestKindDto::Graph => "Graph",
         }
     }
 
@@ -86,29 +82,24 @@ pub(crate) fn build_state(prometheus_url: String, graphs: Vec<ConfiguredGraph>) 
         ordered.push(candidate);
     }
 
-    let tests_ordered: Vec<UiTest> = graphium::test_registry::registered_tests()
-        .into_iter()
+    let mut tests_ordered: Vec<UiTest> = ordered
+        .iter()
+        .flat_map(|g| g.tests.clone())
         .map(|test| UiTest {
-            id: format!(
-                "{}-{}-{}",
-                match test.kind {
-                    graphium::test_registry::TestKind::Node => "node",
-                    graphium::test_registry::TestKind::Graph => "graph",
-                },
-                slugify(test.target),
-                slugify(test.name)
-            ),
-            name: test.name.to_string(),
-            kind: test.kind,
-            target: test.target.to_string(),
+            dto: test.dto,
             run: test.run,
         })
         .collect();
+    tests_ordered.sort_by_key(|t| t.dto.name.to_string());
+
+    // Dedupe tests by id in case multiple root graphs reference the same subgraphs/nodes.
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    tests_ordered.retain(|t| seen.insert(t.dto.id.clone()));
 
     let tests_by_id = tests_ordered
         .iter()
         .cloned()
-        .map(|t| (t.id.clone(), t))
+        .map(|t| (t.dto.id.clone(), t))
         .collect::<HashMap<_, _>>();
 
     let nodes_by_id = bundle_nodes
@@ -125,12 +116,6 @@ pub(crate) fn build_state(prometheus_url: String, graphs: Vec<ConfiguredGraph>) 
         tests_by_id,
         nodes_by_id,
     }
-}
-
-pub(crate) fn collect_graph_node_symbols(graph: &GraphDefDto) -> HashSet<String> {
-    let mut symbols = HashSet::new();
-    collect_graph_node_symbols_from_steps(&graph.steps, &mut symbols);
-    symbols
 }
 
 pub(crate) fn collect_graph_node_names(graph: &GraphDefDto) -> Vec<String> {
@@ -160,33 +145,6 @@ fn collect_graph_node_names_from_steps(steps: &[GraphStepDto], out: &mut Vec<Str
             }
             GraphStepDto::While { body, .. } | GraphStepDto::Loop { body, .. } => {
                 collect_graph_node_names_from_steps(body, out);
-            }
-            GraphStepDto::Break => {}
-        }
-    }
-}
-
-fn collect_graph_node_symbols_from_steps(steps: &[GraphStepDto], out: &mut HashSet<String>) {
-    for step in steps {
-        match step {
-            GraphStepDto::Node { name, .. } => {
-                out.insert(normalize_symbol(name));
-            }
-            GraphStepDto::Nested { graph, .. } => {
-                collect_graph_node_symbols_from_steps(&graph.steps, out)
-            }
-            GraphStepDto::Parallel { branches, .. } => {
-                for branch in branches {
-                    collect_graph_node_symbols_from_steps(branch, out);
-                }
-            }
-            GraphStepDto::Route { cases, .. } => {
-                for case in cases {
-                    collect_graph_node_symbols_from_steps(&case.steps, out);
-                }
-            }
-            GraphStepDto::While { body, .. } | GraphStepDto::Loop { body, .. } => {
-                collect_graph_node_symbols_from_steps(body, out);
             }
             GraphStepDto::Break => {}
         }

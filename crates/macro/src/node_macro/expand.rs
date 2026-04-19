@@ -7,7 +7,7 @@
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::spanned::Spanned as _;
-use syn::{parse_macro_input, Ident, Type};
+use syn::{parse_macro_input, Ident, Path, Type};
 
 use crate::shared::ParamKind;
 
@@ -104,6 +104,7 @@ fn output_supported(return_ty: &Option<Type>, returns_result: bool) -> bool {
 /// - `__graphium_run` for sync nodes or `__graphium_run_async` for async nodes
 pub fn expand(input: TokenStream) -> TokenStream {
     let mut func = parse_macro_input!(input as syn::ItemFn);
+    let tests = extract_tests_from_attrs(&mut func.attrs);
     let metrics = super::metrics::extract_metrics_from_attrs(&mut func.attrs);
     let node_def = parse_node_def(&func, metrics);
 
@@ -504,6 +505,28 @@ pub fn expand(input: TokenStream) -> TokenStream {
 
             #sync_run
             #async_run
+
+            pub fn __graphium_test_runs() -> ::std::vec::Vec<::graphium::export::TestRun> {
+                #[cfg(feature = "serialize")]
+                {
+                    vec![
+                        #(
+                            ::graphium::export::TestRun {
+                                dto: ::graphium::export::TestDto::new(
+                                    ::graphium::export::TestKindDto::Node,
+                                    #tests::NAME,
+                                    stringify!(#struct_name),
+                                ),
+                                run: #tests::__graphium_ui_run,
+                            }
+                        ),*
+                    ]
+                }
+                #[cfg(not(feature = "serialize"))]
+                {
+                    Vec::new()
+                }
+            }
         }
 
         static #play_inputs_ident: &[::graphium::PlaygroundParam] = &[ #( #playground_inputs ),* ];
@@ -525,6 +548,24 @@ pub fn expand(input: TokenStream) -> TokenStream {
                         start_line: #start_line,
                         end_line: #end_line,
                     }),
+                    tests: {
+                        #[cfg(feature = "serialize")]
+                        {
+                            vec![
+                                #(
+                                    ::graphium::export::TestDto::new(
+                                        ::graphium::export::TestKindDto::Node,
+                                        #tests::NAME,
+                                        stringify!(#struct_name),
+                                    )
+                                ),*
+                            ]
+                        }
+                        #[cfg(not(feature = "serialize"))]
+                        {
+                            Vec::new()
+                        }
+                    },
                     ctx_access: ::graphium::export::CtxAccessDto::from(#ctx_access),
                     metrics_graph: module_path!().to_string(),
                     metrics_node: stringify!(#fn_name).to_string(),
@@ -548,4 +589,29 @@ pub fn expand(input: TokenStream) -> TokenStream {
     };
 
     TokenStream::from(expanded)
+}
+
+fn extract_tests_from_attrs(attrs: &mut Vec<syn::Attribute>) -> Vec<Path> {
+    let mut out = Vec::new();
+    let mut keep: Vec<syn::Attribute> = Vec::with_capacity(attrs.len());
+
+    for attr in attrs.drain(..) {
+        if attr.path().is_ident("tests") {
+            let list = attr
+                .parse_args_with(
+                    syn::punctuated::Punctuated::<Path, syn::Token![,]>::parse_terminated,
+                )
+                .unwrap_or_else(|_| {
+                    panic!(
+                        "`#[tests(...)]` expects a list of paths, e.g. `#[tests(MyTestMarker)]`"
+                    )
+                });
+            out.extend(list.into_iter());
+            continue;
+        }
+        keep.push(attr);
+    }
+
+    *attrs = keep;
+    out
 }

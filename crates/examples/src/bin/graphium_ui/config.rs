@@ -34,6 +34,7 @@ struct Context {
 }
 
 node! {
+    #[tests(GetNumberReturns42)]
     #[metrics("performance", "errors", "count", "success_rate", "fail_rate")]
     fn get_number() -> u32 {
         42
@@ -41,6 +42,7 @@ node! {
 }
 
 node! {
+    #[tests(DuplicateClonesValue)]
     #[metrics("performance", "count", "caller")]
     fn duplicate(value: u32) -> (u32, u32) {
         (value, value)
@@ -284,6 +286,7 @@ graph! {
 graph! {
     #[metadata(context = Context, outputs = (a_split: u32))]
     #[metrics("performance", "errors", "count", "caller", "success_rate", "fail_rate")]
+    #[tests(OwnedGraphReturnsNonZeroSplit)]
     OwnedGraph {
         GetNumber() -> (a_number) >>
         Duplicate(a_number) -> (left, right) >>
@@ -307,6 +310,7 @@ graph! {
 graph! {
     #[metadata(context = Context, outputs = (a_number: u32))]
     #[metrics("performance", "count", "success_rate")]
+    #[tests(BorrowedGraphKeepsOwnershipPath)]
     BorrowedGraph {
         GetNumber() -> (a_number) >>
         StoreNumber(a_number) -> (&a_number) >>
@@ -318,6 +322,7 @@ graph! {
 graph! {
     #[metadata(context = Context, outputs = (a_number: u32))]
     #[metrics("performance", "count", "success_rate")]
+    #[tests(ControlFlowGraphConvergesToSuccessPath)]
     ControlFlowGraph {
         InitAttempts() >>
         @while |ctx: &Context| ctx.attempts < 3 {
@@ -337,6 +342,7 @@ graph! {
 graph! {
     #[metadata(context = Context, outputs = (model: Model))]
     #[metrics("performance", "errors", "count", "caller", "success_rate", "fail_rate")]
+    #[tests(LinearRegressionGraphExportsDefaultModel)]
     LinearRegressionGraph {
         GetDataset() -> (&dataset) >>
         ParseInputFeatures(&dataset) -> (input_features) & ParseOutputFeatures(&dataset) -> (output_features) >>
@@ -370,7 +376,6 @@ pub fn config() -> GraphiumUiConfig {
 
 node_test! {
     #[test]
-    #[for_node(GetNumber)]
     fn get_number_returns_42() {
         let value = GetNumber::__graphium_run(&());
         assert_eq!(value, 42);
@@ -379,7 +384,6 @@ node_test! {
 
 node_test! {
     #[test]
-    #[for_node(Duplicate)]
     fn duplicate_clones_value() {
         let (left, right) = Duplicate::__graphium_run(&(), 7);
         assert_eq!((left, right), (7, 7));
@@ -388,7 +392,6 @@ node_test! {
 
 graph_test! {
     #[test]
-    #[for_graph(OwnedGraph)]
     fn owned_graph_returns_non_zero_split() {
         let mut ctx = Context::default();
         let out = OwnedGraph::__graphium_run(&mut ctx);
@@ -398,7 +401,6 @@ graph_test! {
 
 graph_test! {
     #[test]
-    #[for_graph(BorrowedGraph)]
     fn borrowed_graph_keeps_ownership_path() {
         let mut ctx = Context::default();
         let out = BorrowedGraph::__graphium_run(&mut ctx);
@@ -408,7 +410,6 @@ graph_test! {
 
 graph_test! {
     #[test]
-    #[for_graph(ControlFlowGraph)]
     fn control_flow_graph_converges_to_success_path() {
         let mut ctx = Context::default();
         let out = ControlFlowGraph::__graphium_run(&mut ctx);
@@ -418,7 +419,6 @@ graph_test! {
 
 graph_test! {
     #[test]
-    #[for_graph(LinearRegressionGraph)]
     fn linear_regression_graph_exports_default_model() {
         let mut ctx = Context::default();
         let out = LinearRegressionGraph::__graphium_run(&mut ctx);

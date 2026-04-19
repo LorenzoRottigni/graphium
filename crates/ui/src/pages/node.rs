@@ -5,7 +5,7 @@ use crate::http::AppHttpError;
 use crate::layout::{render_page, LayoutContext};
 use crate::metrics::{fetch_node_metrics, fmt_metric};
 use crate::state::{AppState, UiNode, UiTest};
-use crate::util::{escape_label, escape_pre, normalize_symbol};
+use crate::util::{escape_label, escape_pre};
 
 pub(crate) async fn node_page_html(
     state: Arc<AppState>,
@@ -22,8 +22,8 @@ pub(crate) async fn node_page_html(
         .tests_ordered
         .iter()
         .filter(|test| {
-            matches!(test.kind, graphium::test_registry::TestKind::Node)
-                && normalize_symbol(&test.target) == normalize_symbol(&node.dto.target)
+            matches!(test.dto.kind, graphium::export::TestKindDto::Node)
+                && test.dto.target_id == node.dto.id
         })
         .collect();
 
@@ -160,9 +160,9 @@ fn node_tests_widget(tests: &[&UiTest]) -> String {
   <span class="test-name">{}</span>
   <a class="test-run" href="/tests/run/{}">Run</a>
 </div>"#,
-                escape_label(&test.target),
-                escape_label(&test.name),
-                escape_label(&test.id)
+                escape_label(&test.dto.target),
+                escape_label(&test.dto.name),
+                escape_label(&test.dto.id)
             );
         }
     }

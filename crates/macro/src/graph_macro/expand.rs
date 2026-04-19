@@ -49,6 +49,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
         nodes,
         async_enabled,
         metrics,
+        tests,
     } = parse_macro_input!(input as GraphInput);
 
     let mut counter = 0usize;
@@ -130,6 +131,43 @@ pub fn expand(input: TokenStream) -> TokenStream {
         .iter()
         .map(|path| quote! { #path::__graphium_dto() })
         .collect();
+    let export_graph_tests: Vec<_> = tests
+        .iter()
+        .map(|test_path| {
+            quote! {
+                ::graphium::export::TestDto::new(
+                    ::graphium::export::TestKindDto::Graph,
+                    #test_path::NAME,
+                    stringify!(#name),
+                )
+            }
+        })
+        .collect();
+    let graph_test_runs: Vec<_> = tests
+        .iter()
+        .map(|test_path| {
+            quote! {
+                ::graphium::export::TestRun {
+                    dto: ::graphium::export::TestDto::new(
+                        ::graphium::export::TestKindDto::Graph,
+                        #test_path::NAME,
+                        stringify!(#name),
+                    ),
+                    run: #test_path::__graphium_ui_run,
+                }
+            }
+        })
+        .collect();
+    let subgraph_test_runs: Vec<_> = export_paths
+        .graph_paths
+        .iter()
+        .map(|path| quote! { out.extend(#path::__graphium_test_runs()); })
+        .collect();
+    let node_test_runs: Vec<_> = export_paths
+        .node_paths
+        .iter()
+        .map(|path| quote! { out.extend(#path::__graphium_test_runs()); })
+        .collect();
 
     let expanded = quote! {
         pub struct #name;
@@ -185,6 +223,16 @@ pub fn expand(input: TokenStream) -> TokenStream {
                     def: ::graphium::export::GraphDefDto::from_def(&def),
                     raw_schema: ::std::option::Option::Some(#raw_schema_lit.to_string()),
                     raw_span: #raw_span_tokens,
+                    tests: {
+                        #[cfg(feature = "serialize")]
+                        {
+                            vec![ #( #export_graph_tests ),* ]
+                        }
+                        #[cfg(not(feature = "serialize"))]
+                        {
+                            Vec::new()
+                        }
+                    },
                     nodes: vec![ #( #export_nodes ),* ],
                     subgraphs: vec![ #( #export_subgraphs ),* ],
                     playground: ::std::option::Option::Some(::graphium::export::PlaygroundDto {
@@ -194,6 +242,23 @@ pub fn expand(input: TokenStream) -> TokenStream {
                         ),
                     }),
                 }
+            }
+
+            pub fn __graphium_test_runs() -> ::std::vec::Vec<::graphium::export::TestRun> {
+                let mut out: ::std::vec::Vec<::graphium::export::TestRun> = ::std::vec::Vec::new();
+                #[cfg(feature = "serialize")]
+                {
+                    out.extend(vec![ #( #graph_test_runs ),* ]);
+                    #( #subgraph_test_runs )*
+                    #( #node_test_runs )*
+                }
+                out
+            }
+        }
+
+        impl ::graphium::GraphUiTests for #name {
+            fn graphium_ui_tests() -> ::std::vec::Vec<::graphium::export::TestRun> {
+                Self::__graphium_test_runs()
             }
         }
 

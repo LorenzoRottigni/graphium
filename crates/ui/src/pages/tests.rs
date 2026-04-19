@@ -19,9 +19,9 @@ pub(crate) fn tests_page_html(state: &AppState) -> String {
   <a class="run" href="/tests/run/{}">Run</a>
 </div>"#,
                 test.kind_label(),
-                escape_label(&test.name),
-                escape_label(&test.target),
-                escape_label(&test.id)
+                escape_label(&test.dto.name),
+                escape_label(&test.dto.target),
+                escape_label(&test.dto.id)
             );
         }
     }
@@ -56,7 +56,7 @@ pub(crate) fn run_test_page_html(
   <pre class="play-out">{message}</pre>
   <p><a href="/tests">Back to tests</a></p>
 </section>"#,
-        name = escape_label(&test.name),
+        name = escape_label(&test.dto.name),
         kind = escape_label(test.kind_label()),
         message = escape_label(&result.message),
         badge_color = badge_color,

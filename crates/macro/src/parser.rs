@@ -484,6 +484,7 @@ fn parse_graph_input_legacy(input: ParseStream) -> Result<GraphInput> {
     let mut nodes: Option<NodeExpr> = None;
     let mut async_enabled = false;
     let mut metrics = MetricsSpec::default();
+    let tests: Vec<Path> = Vec::new();
 
     while !input.is_empty() {
         if input.peek(Token![async]) {
@@ -557,6 +558,7 @@ fn parse_graph_input_legacy(input: ParseStream) -> Result<GraphInput> {
         nodes,
         async_enabled,
         metrics,
+        tests,
     })
 }
 
@@ -596,6 +598,7 @@ fn parse_graph_input_with_metadata(input: ParseStream) -> Result<GraphInput> {
     let mut async_enabled = false;
     let mut metrics = MetricsSpec::default();
     let mut metadata_seen = false;
+    let mut tests: Vec<Path> = Vec::new();
 
     while input.peek(Token![#]) {
         input.parse::<Token![#]>()?;
@@ -652,8 +655,15 @@ fn parse_graph_input_with_metadata(input: ParseStream) -> Result<GraphInput> {
             let metrics_content;
             syn::parenthesized!(metrics_content in bracket_content);
             metrics = parse_metrics_list(&metrics_content)?;
+        } else if attr_name == "tests" {
+            let tests_content;
+            syn::parenthesized!(tests_content in bracket_content);
+            let list = syn::punctuated::Punctuated::<Path, Token![,]>::parse_terminated(
+                &tests_content,
+            )?;
+            tests.extend(list.into_iter());
         } else {
-            return Err(bracket_content.error("expected `metadata` or `metrics`"));
+            return Err(bracket_content.error("expected `metadata`, `metrics`, or `tests`"));
         }
 
         if !bracket_content.is_empty() {
@@ -698,6 +708,7 @@ fn parse_graph_input_with_metadata(input: ParseStream) -> Result<GraphInput> {
         nodes,
         async_enabled,
         metrics,
+        tests,
     })
 }
 

@@ -6,7 +6,7 @@ use crate::http::AppHttpError;
 use crate::layout::{render_page, LayoutContext};
 use crate::mermaid::to_mermaid;
 use crate::metrics::{fetch_metrics, fmt_metric};
-use crate::state::{collect_graph_node_names, collect_graph_node_symbols, AppState, UiTest};
+use crate::state::{collect_graph_node_names, AppState, UiTest};
 use crate::types::ConfiguredGraph;
 use crate::util::{escape_label, escape_pre, normalize_symbol, slugify};
 
@@ -115,15 +115,18 @@ pub(crate) async fn render_graph_fragment(
     let fail = fmt_metric(metrics.fail);
     let p50 = fmt_metric(metrics.p50_seconds);
     let p95 = fmt_metric(metrics.p95_seconds);
-    let graph_name_key = normalize_symbol(&graph.export.def.name);
-    let node_symbols = collect_graph_node_symbols(&graph.export.def);
+    let node_names = collect_graph_node_names(&graph.export.def);
+    let node_ids: HashSet<String> = node_names
+        .iter()
+        .map(|name| slugify(&normalize_symbol(name)))
+        .collect();
 
     let graph_scoped_tests: Vec<&UiTest> = state
         .tests_ordered
         .iter()
         .filter(|test| {
-            matches!(test.kind, graphium::test_registry::TestKind::Graph)
-                && normalize_symbol(&test.target) == graph_name_key
+            matches!(test.dto.kind, graphium::export::TestKindDto::Graph)
+                && test.dto.target_id == graph.id
         })
         .collect();
 
@@ -131,8 +134,8 @@ pub(crate) async fn render_graph_fragment(
         .tests_ordered
         .iter()
         .filter(|test| {
-            matches!(test.kind, graphium::test_registry::TestKind::Node)
-                && node_symbols.contains(&normalize_symbol(&test.target))
+            matches!(test.dto.kind, graphium::export::TestKindDto::Node)
+                && node_ids.contains(&test.dto.target_id)
         })
         .collect();
 
@@ -265,9 +268,9 @@ fn tests_widget_html(title: &str, tests: &[&UiTest]) -> String {
   <span class="test-name">{}</span>
   <a class="test-run" href="/tests/run/{}">Run</a>
 </div>"#,
-                escape_label(&test.target),
-                escape_label(&test.name),
-                test.id
+                escape_label(&test.dto.target),
+                escape_label(&test.dto.name),
+                test.dto.id
             );
         }
     }

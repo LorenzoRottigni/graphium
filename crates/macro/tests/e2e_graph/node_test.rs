@@ -23,7 +23,6 @@ graph! {
 
 graph_test! {
     #[test]
-    #[for_graph(TestableGraph)]
     fn e2e_graph_test_supports_standard_test_items() {
         let mut ctx = graphium::Context::default();
         let out = TestableGraph::__graphium_run(&mut ctx);
@@ -33,8 +32,7 @@ graph_test! {
 
 graph_test! {
     #[test]
-    #[for_graph(TestableGraph)]
-    fn e2e_graph_test_supports_standard_test_items() {
+    fn e2e_graph_test_supports_standard_test_items_second() {
         let mut ctx = graphium::Context::default();
         let out = TestableGraph::__graphium_run(&mut ctx);
         assert!(out > 0);

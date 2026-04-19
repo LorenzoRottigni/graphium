@@ -71,6 +71,8 @@ pub struct GraphDto {
     pub raw_schema: Option<String>,
     /// Source span that can be used to render the original multiline schema.
     pub raw_span: Option<SourceSpanDto>,
+    /// Tests explicitly attached to this graph (UI/admin build only).
+    pub tests: Vec<TestDto>,
     /// Nodes referenced directly by this graph.
     pub nodes: Vec<NodeDto>,
     /// Nested graphs referenced directly by this graph.
@@ -140,11 +142,69 @@ pub struct NodeDto {
     pub target: String,
     pub label: String,
     pub source: Option<SourceSpanDto>,
+    /// Tests explicitly attached to this node (UI/admin build only).
+    pub tests: Vec<TestDto>,
     pub ctx_access: CtxAccessDto,
     pub metrics_graph: String,
     pub metrics_node: String,
     pub playground_supported: bool,
     pub playground_schema: PlaygroundSchemaDto,
+}
+
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TestKindDto {
+    #[default]
+    Node,
+    Graph,
+}
+
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TestDto {
+    pub id: String,
+    pub name: String,
+    pub kind: TestKindDto,
+    pub target: String,
+    pub target_id: String,
+}
+
+impl TestDto {
+    pub fn new(kind: TestKindDto, name: &'static str, target: &'static str) -> Self {
+        let kind_prefix = match kind {
+            TestKindDto::Node => "node",
+            TestKindDto::Graph => "graph",
+        };
+        let target_last = target.rsplit("::").next().unwrap_or(target);
+        let id = format!(
+            "{kind_prefix}-{}-{}",
+            slugify(target_last),
+            slugify(name)
+        );
+        Self {
+            id,
+            name: name.to_string(),
+            kind,
+            target: target.to_string(),
+            target_id: slugify(target_last),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct TestRun {
+    pub dto: TestDto,
+    pub run: fn() -> Result<(), String>,
+}
+
+pub fn panic_payload_to_string(payload: Box<dyn std::any::Any + Send>) -> String {
+    if let Some(msg) = payload.downcast_ref::<&'static str>() {
+        return (*msg).to_string();
+    }
+    if let Some(msg) = payload.downcast_ref::<String>() {
+        return msg.clone();
+    }
+    "panic while running test".to_string()
 }
 
 #[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
