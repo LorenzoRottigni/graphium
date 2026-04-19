@@ -2,7 +2,16 @@
 
 - allow event bus publish like:
     node! {
+        # custom event type
         #[publish = EventName]
+        async fn get_number() -> u32 {
+            7
+        }
+    }
+    or:
+    node! {
+        # another node! output
+        #[publish = EventNodeName]
         async fn get_number() -> u32 {
             7
         }
@@ -20,5 +29,5 @@
 
     Once "Preprocessing" node takes in X_train and X_test consumes them from ctx.
 - instead of exposing Graph::export() implement Serialize trait for Graph.
-- use rust syntax highlight for node details code widget
 - graphium-core instead of "export" should name feature "dto"
+- data buffers analysis

@@ -12,5 +12,5 @@ prometheus = "0.13"
 serde = { version = "1", features = ["derive"], optional = true }
 
 [features]
-# Enables serde (de)serialization derives for export DTOs.
-export = ["dep:serde"]
+# Enables serde (de)serialization derives for DTOs.
+serialize = ["dep:serde"]

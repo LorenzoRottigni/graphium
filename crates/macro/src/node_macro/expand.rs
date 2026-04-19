@@ -490,6 +490,12 @@ pub fn expand(input: TokenStream) -> TokenStream {
 
         pub struct #struct_name;
 
+        impl ::core::default::Default for #struct_name {
+            fn default() -> Self {
+                Self
+            }
+        }
+
         impl #struct_name {
             pub const NAME: &'static str = stringify!(#fn_name);
             pub const CTX_ACCESS: ::graphium::CtxAccess = #ctx_access;
@@ -498,17 +504,13 @@ pub fn expand(input: TokenStream) -> TokenStream {
 
             #sync_run
             #async_run
-
-            pub fn export() -> ::graphium::export::NodeDto {
-                <Self as ::graphium::export::NodeExport>::export()
-            }
         }
 
         static #play_inputs_ident: &[::graphium::PlaygroundParam] = &[ #( #playground_inputs ),* ];
         static #play_outputs_ident: &[::graphium::PlaygroundParam] = &[ #( #output_params ),* ];
 
-        impl ::graphium::export::NodeExport for #struct_name {
-            fn export() -> ::graphium::export::NodeDto {
+        impl #struct_name {
+            pub fn __graphium_dto() -> ::graphium::export::NodeDto {
                 let schema = ::graphium::PlaygroundSchema {
                     inputs: #play_inputs_ident,
                     outputs: #play_outputs_ident,
@@ -529,6 +531,17 @@ pub fn expand(input: TokenStream) -> TokenStream {
                     playground_supported: #playground_supported,
                     playground_schema: ::graphium::export::PlaygroundSchemaDto::from_schema(&schema),
                 }
+            }
+        }
+
+        #[cfg(feature = "serialize")]
+        impl ::graphium::serde::Serialize for #struct_name {
+            fn serialize<S>(&self, serializer: S) -> ::std::result::Result<S::Ok, S::Error>
+            where
+                S: ::graphium::serde::Serializer,
+            {
+                let dto = Self::__graphium_dto();
+                ::graphium::serde::Serialize::serialize(&dto, serializer)
             }
         }
 

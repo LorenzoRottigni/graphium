@@ -16,3 +16,8 @@ syn = { version = "2.0", features = ["full"] }
 [dev-dependencies]
 graphium = { version = "0.1.0", path = "../core" }
 futures = "0.3"
+
+[features]
+# This feature is intentionally mirrored by downstream crates that want
+# macro-generated graph/node types to implement serde `Serialize`.
+serialize = []

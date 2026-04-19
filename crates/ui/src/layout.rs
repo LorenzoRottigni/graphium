@@ -64,6 +64,27 @@ pub(crate) fn render_page(title: &str, ctx: LayoutContext, main_html: String) ->
         .map(|v| format!(r#" x-data="{v}""#))
         .unwrap_or_default();
     let extra_head = ctx.extra_head_html.unwrap_or_default();
+    let highlight_head = r#"
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/rust.min.js"></script>
+  <script>
+    window.__graphiumHighlight = () => {
+      try {
+        if (!window.hljs) return;
+        document.querySelectorAll('pre code').forEach((el) => {
+          window.hljs.highlightElement(el);
+        });
+      } catch (_) {}
+    };
+    document.addEventListener('DOMContentLoaded', function() {
+      if (window.__graphiumHighlight) window.__graphiumHighlight();
+    });
+    document.addEventListener('htmx:afterSwap', function() {
+      if (window.__graphiumHighlight) window.__graphiumHighlight();
+    });
+  </script>
+"#;
 
     format!(
         r#"<!doctype html>
@@ -75,6 +96,7 @@ pub(crate) fn render_page(title: &str, ctx: LayoutContext, main_html: String) ->
   <style>{css}</style>
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  {highlight_head}
   {extra_head}
 </head>
 <body{alpine}>
@@ -93,6 +115,7 @@ pub(crate) fn render_page(title: &str, ctx: LayoutContext, main_html: String) ->
         footer = footer,
         main_html = main_html,
         alpine = alpine,
+        highlight_head = highlight_head,
         extra_head = extra_head
     )
 }

@@ -226,7 +226,7 @@ fn raw_schema_widget_html(graph: &ConfiguredGraph) -> String {
     format!(
         r#"<article class="card">
   <h3 style="margin-top:0;">Raw schema</h3>
-  <pre class="play-out" style="white-space:pre; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">{schema}</pre>
+  <pre class="play-out"><code class="language-rust" style="white-space:pre;">{schema}</code></pre>
 </article>"#,
         schema = schema
     )

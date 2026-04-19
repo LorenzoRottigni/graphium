@@ -106,7 +106,7 @@ fn node_code_widget(node: &UiNode, snippet: &SourceSnippet) -> String {
         r#"<article class="card">
   <h3 style="margin-top:0;">Code</h3>
   {header}
-  <pre class="play-out" style="white-space:pre; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">{code}</pre>
+  <pre class="play-out"><code class="language-rust" style="white-space:pre;">{code}</code></pre>
 </article>"#,
         header = header,
         code = code

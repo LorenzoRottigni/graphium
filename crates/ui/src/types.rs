@@ -27,7 +27,7 @@ impl GraphiumUiConfig {
         }
     }
 
-    pub fn with_graph<G: graphium::GraphPlayground + graphium::export::GraphExport + 'static>(
+    pub fn with_graph<G: graphium::GraphPlayground + ::serde::Serialize + ::core::default::Default + 'static>(
         mut self,
     ) -> Self {
         self.graphs.push(graph::<G>());
@@ -88,9 +88,13 @@ impl ConfiguredGraph {
         }
     }
 
-    pub fn from_provider<G: graphium::GraphPlayground + graphium::export::GraphExport + 'static>(
+    pub fn from_provider<
+        G: graphium::GraphPlayground + ::serde::Serialize + ::core::default::Default + 'static,
+    >(
     ) -> Self {
-        let export = G::export();
+        let export: graphium::export::GraphDto =
+            ::serde_json::from_value(::serde_json::to_value(G::default()).expect("serialize graph"))
+                .expect("deserialize graph dto");
         let id = export.id.clone();
         Self {
             id,
@@ -105,7 +109,7 @@ impl ConfiguredGraph {
     }
 }
 
-pub fn graph<G: graphium::GraphPlayground + graphium::export::GraphExport + 'static>(
+pub fn graph<G: graphium::GraphPlayground + ::serde::Serialize + ::core::default::Default + 'static>(
 ) -> ConfiguredGraph {
     ConfiguredGraph::from_provider::<G>()
 }

@@ -123,16 +123,22 @@ pub fn expand(input: TokenStream) -> TokenStream {
     let export_nodes: Vec<_> = export_paths
         .node_paths
         .iter()
-        .map(|path| quote! { <#path as ::graphium::export::NodeExport>::export() })
+        .map(|path| quote! { #path::__graphium_dto() })
         .collect();
     let export_subgraphs: Vec<_> = export_paths
         .graph_paths
         .iter()
-        .map(|path| quote! { <#path as ::graphium::export::GraphExport>::export() })
+        .map(|path| quote! { #path::__graphium_dto() })
         .collect();
 
     let expanded = quote! {
         pub struct #name;
+
+        impl ::core::default::Default for #name {
+            fn default() -> Self {
+                Self
+            }
+        }
 
         impl #name {
             #metrics_defs
@@ -153,10 +159,6 @@ pub fn expand(input: TokenStream) -> TokenStream {
             pub fn graph_def() -> ::graphium::GraphDef {
                 #graph_def_tokens
             }
-
-            pub fn export() -> ::graphium::export::GraphDto {
-                <Self as ::graphium::export::GraphExport>::export()
-            }
         }
         #graph_impl
 
@@ -168,8 +170,8 @@ pub fn expand(input: TokenStream) -> TokenStream {
 
         #playground_impl
 
-        impl ::graphium::export::GraphExport for #name {
-            fn export() -> ::graphium::export::GraphDto {
+        impl #name {
+            pub fn __graphium_dto() -> ::graphium::export::GraphDto {
                 let def = Self::graph_def();
                 ::graphium::export::GraphDto {
                     id: ::graphium::export::slugify(def.name),
@@ -192,6 +194,17 @@ pub fn expand(input: TokenStream) -> TokenStream {
                         ),
                     }),
                 }
+            }
+        }
+
+        #[cfg(feature = "serialize")]
+        impl ::graphium::serde::Serialize for #name {
+            fn serialize<S>(&self, serializer: S) -> ::std::result::Result<S::Ok, S::Error>
+            where
+                S: ::graphium::serde::Serializer,
+            {
+                let dto = Self::__graphium_dto();
+                ::graphium::serde::Serialize::serialize(&dto, serializer)
             }
         }
     };

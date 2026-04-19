@@ -7,7 +7,7 @@ use crate::{CtxAccess, GraphCase, GraphDef, GraphStep, PlaygroundSchema};
 
 pub const EXPORT_SCHEMA_VERSION: u32 = 1;
 
-#[cfg_attr(feature = "export", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SourceSpanDto {
     pub file: String,
@@ -15,7 +15,7 @@ pub struct SourceSpanDto {
     pub end_line: u32,
 }
 
-#[cfg_attr(feature = "export", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct GraphiumBundleDto {
     pub schema_version: u32,
@@ -60,7 +60,7 @@ impl GraphiumBundleDto {
     }
 }
 
-#[cfg_attr(feature = "export", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct GraphDto {
     pub id: String,
@@ -78,7 +78,7 @@ pub struct GraphDto {
     pub playground: Option<PlaygroundDto>,
 }
 
-#[cfg_attr(feature = "export", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct GraphSchemaDto {
     pub context: String,
@@ -87,21 +87,21 @@ pub struct GraphSchemaDto {
     pub metrics: Vec<String>,
 }
 
-#[cfg_attr(feature = "export", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct IoParamDto {
     pub name: String,
     pub ty: String,
 }
 
-#[cfg_attr(feature = "export", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PlaygroundDto {
     pub supported: bool,
     pub schema: PlaygroundSchemaDto,
 }
 
-#[cfg_attr(feature = "export", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PlaygroundSchemaDto {
     pub inputs: Vec<IoParamDto>,
@@ -133,7 +133,7 @@ impl PlaygroundSchemaDto {
     }
 }
 
-#[cfg_attr(feature = "export", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct NodeDto {
     pub id: String,
@@ -147,7 +147,7 @@ pub struct NodeDto {
     pub playground_schema: PlaygroundSchemaDto,
 }
 
-#[cfg_attr(feature = "export", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum CtxAccessDto {
     #[default]
@@ -166,7 +166,7 @@ impl From<CtxAccess> for CtxAccessDto {
     }
 }
 
-#[cfg_attr(feature = "export", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct GraphDefDto {
     pub name: String,
@@ -186,7 +186,7 @@ impl GraphDefDto {
     }
 }
 
-#[cfg_attr(feature = "export", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct GraphCaseDto {
     pub label: String,
@@ -202,7 +202,7 @@ impl GraphCaseDto {
     }
 }
 
-#[cfg_attr(feature = "export", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GraphStepDto {
     Node {
@@ -323,14 +323,6 @@ impl GraphStepDto {
             GraphStep::Break => Self::Break,
         }
     }
-}
-
-pub trait GraphExport {
-    fn export() -> GraphDto;
-}
-
-pub trait NodeExport {
-    fn export() -> NodeDto;
 }
 
 pub fn slugify(value: &str) -> String {

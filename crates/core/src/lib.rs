@@ -7,6 +7,9 @@ pub mod test_registry;
 pub mod visualizer;
 pub mod export;
 
+#[cfg(feature = "serialize")]
+pub use serde;
+
 pub use inventory;
 pub use visualizer::{
     CtxAccess, GraphCase, GraphDef, GraphDefProvider, GraphPlayground, GraphStep, PlaygroundParam,
