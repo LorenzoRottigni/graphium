@@ -7,6 +7,7 @@ use crate::util::{escape_label, next_id, normalize_symbol, parse_artifact, slugi
 pub(crate) fn to_mermaid(
     graph: &GraphDef,
     context_label: Option<&str>,
+    graph_id: Option<&str>,
     linkable_graphs: &HashSet<String>,
 ) -> String {
     let mut lines = Vec::new();
@@ -96,6 +97,7 @@ pub(crate) fn to_mermaid(
     let rendered = append_steps(
         &graph.steps,
         &mut tracker,
+        graph_id,
         linkable_graphs,
         &mut lines,
         &mut counter,
@@ -146,6 +148,7 @@ struct RenderedSteps {
 fn append_steps(
     steps: &[GraphStep],
     tracker: &mut ArtifactTracker,
+    graph_id: Option<&str>,
     linkable_graphs: &HashSet<String>,
     lines: &mut Vec<String>,
     counter: &mut usize,
@@ -154,7 +157,7 @@ fn append_steps(
     let mut previous_tail: Option<String> = None;
 
     for step in steps {
-        let rendered = render_step(step, tracker, linkable_graphs, lines, counter);
+        let rendered = render_step(step, tracker, graph_id, linkable_graphs, lines, counter);
         if head.is_none() {
             head = Some(rendered.head.clone());
         }
@@ -173,6 +176,7 @@ fn append_steps(
 fn render_step(
     step: &GraphStep,
     tracker: &mut ArtifactTracker,
+    graph_id: Option<&str>,
     linkable_graphs: &HashSet<String>,
     lines: &mut Vec<String>,
     counter: &mut usize,
@@ -203,6 +207,14 @@ fn render_step(
                     lines.push(format!("class {node_id} stepNodeCtxMut"));
                 }
                 graphium::CtxAccess::None => {}
+            }
+            if let Some(graph_id) = graph_id {
+                let node_slug = slugify(&normalize_symbol(name));
+                lines.push(format!(
+                    r#"click {node_id} "/node/{node_slug}?graph={graph_id}" "Open {}" _self"#,
+                    escape_label(&normalize_symbol(name))
+                ));
+                lines.push(format!(r#"style {node_id} cursor:pointer"#));
             }
             emit_artifact_edges(tracker, &node_id, *ctx, inputs, outputs, None, lines);
             RenderedSteps {
@@ -268,8 +280,14 @@ fn render_step(
                     continue;
                 }
                 let mut branch_tracker = tracker.clone();
-                let rendered =
-                    append_steps(branch, &mut branch_tracker, linkable_graphs, lines, counter);
+                let rendered = append_steps(
+                    branch,
+                    &mut branch_tracker,
+                    graph_id,
+                    linkable_graphs,
+                    lines,
+                    counter,
+                );
                 lines.push(format!(r#"{fork} -->|b{}| {}"#, idx + 1, rendered.head));
                 lines.push(format!("{} --> {join}", rendered.tail));
 
@@ -335,6 +353,7 @@ fn render_step(
                 let rendered = append_steps(
                     &case.steps,
                     &mut case_tracker,
+                    graph_id,
                     linkable_graphs,
                     lines,
                     counter,
@@ -399,8 +418,14 @@ fn render_step(
 
             if !body.is_empty() {
                 let mut body_tracker = tracker.clone();
-                let rendered =
-                    append_steps(body, &mut body_tracker, linkable_graphs, lines, counter);
+                let rendered = append_steps(
+                    body,
+                    &mut body_tracker,
+                    graph_id,
+                    linkable_graphs,
+                    lines,
+                    counter,
+                );
                 lines.push(format!(r#"{cond} -->|"true"| {}"#, rendered.head));
                 lines.push(format!("{} --> {cond}", rendered.tail));
             }
@@ -445,8 +470,14 @@ fn render_step(
 
             if !body.is_empty() {
                 let mut body_tracker = tracker.clone();
-                let rendered =
-                    append_steps(body, &mut body_tracker, linkable_graphs, lines, counter);
+                let rendered = append_steps(
+                    body,
+                    &mut body_tracker,
+                    graph_id,
+                    linkable_graphs,
+                    lines,
+                    counter,
+                );
                 lines.push(format!("{start} --> {}", rendered.head));
                 lines.push(format!("{} --> {start}", rendered.tail));
             }

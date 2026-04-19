@@ -47,6 +47,55 @@ pub(crate) async fn fetch_metrics(state: &AppState, graph_name: &str) -> Metrics
     }
 }
 
+#[derive(Default)]
+pub(crate) struct NodeMetricsView {
+    pub(crate) count: Option<f64>,
+    pub(crate) errors: Option<f64>,
+    pub(crate) success: Option<f64>,
+    pub(crate) fail: Option<f64>,
+    pub(crate) p50_seconds: Option<f64>,
+    pub(crate) p95_seconds: Option<f64>,
+}
+
+pub(crate) async fn fetch_node_metrics(
+    state: &AppState,
+    graph_label: &str,
+    node_label: &str,
+) -> NodeMetricsView {
+    let g = graph_label.replace('"', "\\\"");
+    let n = node_label.replace('"', "\\\"");
+    let count_q = format!(r#"sum(graphium_node_count_total{{graph=\"{g}\",node=\"{n}\"}})"#);
+    let errors_q = format!(r#"sum(graphium_node_errors_total{{graph=\"{g}\",node=\"{n}\"}})"#);
+    let success_q = format!(r#"sum(graphium_node_success_total{{graph=\"{g}\",node=\"{n}\"}})"#);
+    let fail_q = format!(r#"sum(graphium_node_fail_total{{graph=\"{g}\",node=\"{n}\"}})"#);
+    let p50_q = format!(
+        r#"histogram_quantile(0.5, sum(rate(graphium_node_latency_seconds_bucket{{graph=\"{g}\",node=\"{n}\"}}[5m])) by (le))"#
+    );
+    let p95_q = format!(
+        r#"histogram_quantile(0.95, sum(rate(graphium_node_latency_seconds_bucket{{graph=\"{g}\",node=\"{n}\"}}[5m])) by (le))"#
+    );
+
+    let count = prometheus_query_scalar(&state.client, &state.prometheus_base_url, &count_q).await;
+    let errors =
+        prometheus_query_scalar(&state.client, &state.prometheus_base_url, &errors_q).await;
+    let success =
+        prometheus_query_scalar(&state.client, &state.prometheus_base_url, &success_q).await;
+    let fail = prometheus_query_scalar(&state.client, &state.prometheus_base_url, &fail_q).await;
+    let p50_seconds =
+        prometheus_query_scalar(&state.client, &state.prometheus_base_url, &p50_q).await;
+    let p95_seconds =
+        prometheus_query_scalar(&state.client, &state.prometheus_base_url, &p95_q).await;
+
+    NodeMetricsView {
+        count,
+        errors,
+        success,
+        fail,
+        p50_seconds,
+        p95_seconds,
+    }
+}
+
 pub(crate) fn fmt_metric(value: Option<f64>) -> String {
     match value {
         Some(v) => format!("{v:.4}"),

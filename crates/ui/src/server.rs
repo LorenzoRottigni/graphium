@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::Form;
@@ -9,7 +9,9 @@ use axum::Router;
 use serde::Deserialize;
 
 use crate::http::AppHttpError;
-use crate::pages::{graph as graph_pages, home as home_pages, tests as tests_pages};
+use crate::pages::{
+    graph as graph_pages, home as home_pages, node as node_pages, tests as tests_pages,
+};
 use crate::state::{build_state, AppState};
 use crate::types::{GraphiumUiConfig, UiError};
 
@@ -28,6 +30,8 @@ pub async fn serve(config: GraphiumUiConfig) -> Result<(), UiError> {
         .route("/graph/:id", get(graph_page))
         .route("/fragment/graph/:id", get(graph_fragment))
         .route("/graph/:id/playground/run", post(run_playground))
+        .route("/node/:id", get(node_page))
+        .route("/node/:id/playground/run", post(run_node_playground))
         .route("/tests", get(tests_page))
         .route("/tests/run/:id", get(run_test_page))
         .with_state(state);
@@ -123,6 +127,40 @@ async fn run_playground(
 
 async fn tests_page(State(state): State<Arc<AppState>>) -> Html<String> {
     Html(tests_pages::tests_page_html(&state))
+}
+
+async fn node_page(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(query): Query<node_pages::NodeQuery>,
+) -> Result<Html<String>, AppHttpError> {
+    Ok(Html(
+        node_pages::node_page_html(state, id, query, Default::default()).await?,
+    ))
+}
+
+async fn run_node_playground(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(query): Query<node_pages::NodeQuery>,
+    Form(values): Form<HashMap<String, String>>,
+) -> Result<Response, AppHttpError> {
+    let node = state
+        .nodes_by_id
+        .get(&id)
+        .ok_or_else(|| AppHttpError::not_found("node not registered"))?;
+
+    let result = (node.playground_run)(&values);
+    let widget = node_pages::NodePlaygroundView {
+        values,
+        result: Some(result),
+    };
+    Ok(Html(node_pages::playground_widget_html(
+        node,
+        query.graph.as_deref(),
+        &widget,
+    ))
+    .into_response())
 }
 
 async fn run_test_page(

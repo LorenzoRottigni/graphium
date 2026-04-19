@@ -14,6 +14,15 @@ pub(crate) struct LayoutContext {
 }
 
 impl LayoutContext {
+    pub(crate) fn dashboard() -> Self {
+        Self {
+            active: ActiveNav::Dashboard,
+            header_extra_html: None,
+            alpine_data: None,
+            extra_head_html: None,
+        }
+    }
+
     pub(crate) fn graphs(_state: &crate::state::AppState, selected_graph_id: &str) -> Self {
         Self {
             active: ActiveNav::Dashboard,

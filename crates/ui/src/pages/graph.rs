@@ -6,9 +6,9 @@ use crate::http::AppHttpError;
 use crate::layout::{render_page, LayoutContext};
 use crate::mermaid::to_mermaid;
 use crate::metrics::{fetch_metrics, fmt_metric};
-use crate::state::{collect_graph_node_symbols, AppState, UiTest};
+use crate::state::{collect_graph_node_names, collect_graph_node_symbols, AppState, UiTest};
 use crate::types::ConfiguredGraph;
-use crate::util::{escape_label, normalize_symbol};
+use crate::util::{escape_label, normalize_symbol, slugify};
 
 #[derive(Default, Clone)]
 pub(crate) struct PlaygroundView {
@@ -105,6 +105,7 @@ pub(crate) async fn render_graph_fragment(
     let mermaid = to_mermaid(
         &graph.def,
         graph.playground.map(|p| p.schema.context),
+        Some(&id),
         &linkable_graphs,
     );
     let metrics = fetch_metrics(&state, graph.def.name).await;
@@ -139,6 +140,7 @@ pub(crate) async fn render_graph_fragment(
     let graph_tests_widget = tests_widget_html("Graph Tests", &graph_scoped_tests);
     let node_tests_widget = tests_widget_html("Node Tests", &node_scoped_tests);
     let playground_widget = playground_widget_html(graph, &id, &playground_view);
+    let nodes_widget = nodes_widget_html(&graph.def, &id);
 
     Ok(format!(
         r#"<section class="card hero">
@@ -162,6 +164,7 @@ pub(crate) async fn render_graph_fragment(
     </div>
   </aside>
   <section class="side-stack">
+    {nodes_widget}
     {playground_widget}
     <section class="tests-stack">
       {graph_tests_widget}
@@ -177,10 +180,41 @@ pub(crate) async fn render_graph_fragment(
         fail = fail,
         p50 = p50,
         p95 = p95,
+        nodes_widget = nodes_widget,
         playground_widget = playground_widget,
         graph_tests_widget = graph_tests_widget,
         node_tests_widget = node_tests_widget,
     ))
+}
+
+fn nodes_widget_html(def: &graphium::GraphDef, graph_id: &str) -> String {
+    let node_names = collect_graph_node_names(def);
+    if node_names.is_empty() {
+        return r#"<article class="card"><h3>Nodes</h3><p class="muted" style="margin:.2rem 0;">No nodes.</p></article>"#.to_string();
+    }
+
+    let mut body = String::new();
+    for name in node_names {
+        let node_id = slugify(&normalize_symbol(&name));
+        let _ = writeln!(
+            body,
+            r#"<div class="test-item">
+  <span class="test-name" style="font-weight:700;">{}</span>
+  <a class="test-run" href="/node/{}?graph={}">Open</a>
+</div>"#,
+            escape_label(&normalize_symbol(&name)),
+            escape_label(&node_id),
+            escape_label(graph_id)
+        );
+    }
+
+    format!(
+        r#"<article class="card">
+  <h3 style="margin-top:0;">Nodes</h3>
+  {body}
+</article>"#,
+        body = body
+    )
 }
 
 fn tests_widget_html(title: &str, tests: &[&UiTest]) -> String {

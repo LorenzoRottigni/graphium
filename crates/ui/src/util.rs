@@ -23,7 +23,8 @@ pub(crate) fn slugify(name: &str) -> String {
 }
 
 pub(crate) fn normalize_symbol(value: &str) -> String {
-    value.rsplit("::").next().unwrap_or(value).to_string()
+    let cleaned = value.replace(' ', "").replace('\n', "");
+    cleaned.rsplit("::").next().unwrap_or(&cleaned).to_string()
 }
 
 pub(crate) fn escape_label(value: &str) -> String {
