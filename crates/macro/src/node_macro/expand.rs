@@ -411,14 +411,6 @@ pub fn expand(input: TokenStream) -> TokenStream {
                 println!("Running node: {}", Self::NAME);
                 #sync_body
             }
-
-            pub fn run_instance #ctx_generic(
-                &self,
-                ctx: #ctx_param,
-                #( #input_idents: #input_types ),*
-            ) #return_sig {
-                Self::__graphium_run(ctx #(, #input_idents )* )
-            }
         }
     };
 

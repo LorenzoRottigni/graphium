@@ -239,6 +239,19 @@ pub(crate) fn synthesize_ui_test_case(mut item_fn: ItemFn) -> syn::Result<UiTest
     }
     wrapper_call_args.extend(all_params.clone());
 
+    // If the first parameter is `graph: &T` / `node: &T`, inject a type alias (`type graph = T;`)
+    // so the test body can call `graph::__graphium_run(...)` without adding methods to `T`.
+    if let Some((ident, inner_ty, _is_mut)) = injected.as_ref() {
+        let mut stmts: Vec<syn::Stmt> = Vec::new();
+        let ignore_stmt: syn::Stmt = parse_quote! { let _ = #ident; };
+        let alias_stmt: syn::Stmt =
+            parse_quote! { #[allow(non_camel_case_types)] type #ident = #inner_ty; };
+        stmts.push(ignore_stmt);
+        stmts.push(alias_stmt);
+        stmts.extend(item_fn.block.stmts.clone());
+        item_fn.block.stmts = stmts;
+    }
+
     // Create a `case` function from the original item, removing #[test] and using a stable name.
     item_fn.sig.ident = case_ident.clone();
     item_fn.attrs = cfg.clone(); // only keep cfg/cfg_attr on the case so it stays in sync.

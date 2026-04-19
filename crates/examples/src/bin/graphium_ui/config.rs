@@ -394,7 +394,7 @@ graph_test! {
     #[test]
     fn owned_graph_returns_non_zero_split(graph: &OwnedGraph, threshold: u32) {
         let mut ctx = Context::default();
-        let out = graph.run_instance(&mut ctx);
+        let out = graph::__graphium_run(&mut ctx);
         assert!(out > threshold);
     }
 }
