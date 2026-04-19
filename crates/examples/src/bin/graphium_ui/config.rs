@@ -392,10 +392,10 @@ node_test! {
 
 graph_test! {
     #[test]
-    fn owned_graph_returns_non_zero_split() {
+    fn owned_graph_returns_non_zero_split(graph: &OwnedGraph, threshold: u32) {
         let mut ctx = Context::default();
-        let out = OwnedGraph::__graphium_run(&mut ctx);
-        assert!(out > 0);
+        let out = graph.run_instance(&mut ctx);
+        assert!(out > threshold);
     }
 }
 

@@ -38,3 +38,12 @@ graph_test! {
         assert!(out > 0);
     }
 }
+
+graph_test! {
+    #[test]
+    fn e2e_graph_test_supports_args(graph: &TestableGraph, threshold: u32) {
+        let mut ctx = graphium::Context::default();
+        let out = graph.run_instance(&mut ctx);
+        assert!(out > threshold);
+    }
+}

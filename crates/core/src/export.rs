@@ -4,6 +4,7 @@
 //! be stable, serde-serializable data structures.
 
 use crate::{CtxAccess, GraphCase, GraphDef, GraphStep, PlaygroundSchema};
+use std::collections::HashMap;
 
 pub const EXPORT_SCHEMA_VERSION: u32 = 1;
 
@@ -191,10 +192,30 @@ impl TestDto {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TestParamKind {
+    Text,
+    Number,
+    Bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TestParam {
+    pub name: String,
+    pub kind: TestParamKind,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TestSchema {
+    pub params: Vec<TestParam>,
+}
+
 #[derive(Clone)]
 pub struct TestRun {
     pub dto: TestDto,
-    pub run: fn() -> Result<(), String>,
+    pub schema: TestSchema,
+    pub default_values: HashMap<String, String>,
+    pub run: fn(&HashMap<String, String>) -> Result<(), String>,
 }
 
 pub fn panic_payload_to_string(payload: Box<dyn std::any::Any + Send>) -> String {

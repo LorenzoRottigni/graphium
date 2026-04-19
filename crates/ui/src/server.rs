@@ -32,7 +32,7 @@ pub async fn serve(config: GraphiumUiConfig) -> Result<(), UiError> {
         .route("/graph/:id/playground/run", post(run_playground))
         .route("/node/:id", get(node_page))
         .route("/tests", get(tests_page))
-        .route("/tests/run/:id", get(run_test_page))
+        .route("/tests/run/:id", get(run_test_page).post(run_test_execute))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(config.bind)
@@ -143,6 +143,38 @@ async fn run_test_page(
         .tests_by_id
         .get(&id)
         .ok_or_else(|| AppHttpError::not_found("test not configured"))?;
-    let result = test.run();
-    Ok(Html(tests_pages::run_test_page_html(&state, test, &result)))
+    if test.schema.params.is_empty() {
+        let result = test.run();
+        Ok(Html(tests_pages::run_test_page_html(
+            &state,
+            test,
+            &test.default_values,
+            Some(&result),
+        )))
+    } else {
+        Ok(Html(tests_pages::run_test_page_html(
+            &state,
+            test,
+            &test.default_values,
+            None,
+        )))
+    }
+}
+
+async fn run_test_execute(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Form(values): Form<HashMap<String, String>>,
+) -> Result<Html<String>, AppHttpError> {
+    let test = state
+        .tests_by_id
+        .get(&id)
+        .ok_or_else(|| AppHttpError::not_found("test not configured"))?;
+    let result = test.run_with(&values);
+    Ok(Html(tests_pages::run_test_page_html(
+        &state,
+        test,
+        &values,
+        Some(&result),
+    )))
 }

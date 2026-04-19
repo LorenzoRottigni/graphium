@@ -92,6 +92,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
         &context,
         async_enabled,
         &root_setup.run_params,
+        &root_setup.run_param_idents,
         &run_return_sig,
         &sync_graph_body,
     );
@@ -153,7 +154,9 @@ pub fn expand(input: TokenStream) -> TokenStream {
                         #test_path::NAME,
                         stringify!(#name),
                     ),
-                    run: #test_path::__graphium_ui_run,
+                    schema: #test_path::__graphium_ui_schema(),
+                    default_values: #test_path::__graphium_ui_default_values(),
+                    run: #test_path::__graphium_ui_run_with_args,
                 }
             }
         })
@@ -516,6 +519,7 @@ fn build_playground_impl(
 struct RootSetup {
     root_incoming: Payload,
     run_params: Vec<proc_macro2::TokenStream>,
+    run_param_idents: Vec<syn::Ident>,
     root_input_bindings: Vec<proc_macro2::TokenStream>,
 }
 
@@ -537,12 +541,14 @@ struct GeneratedExecution {
 fn build_root_setup(graph_inputs: &[(syn::Ident, syn::Type)], counter: &mut usize) -> RootSetup {
     let mut root_incoming = Payload::new();
     let mut run_params = Vec::with_capacity(graph_inputs.len());
+    let mut run_param_idents = Vec::with_capacity(graph_inputs.len());
     let mut root_input_bindings = Vec::with_capacity(graph_inputs.len());
 
     for (artifact, ty) in graph_inputs {
         let param_ident = fresh_ident(counter, "graph_in", &artifact.to_string());
         let payload_ident = fresh_ident(counter, "root_in", &artifact.to_string());
         root_incoming.insert_owned(artifact.to_string(), payload_ident.clone());
+        run_param_idents.push(param_ident.clone());
         run_params.push(quote! {
             #param_ident: #ty
         });
@@ -554,6 +560,7 @@ fn build_root_setup(graph_inputs: &[(syn::Ident, syn::Type)], counter: &mut usiz
     RootSetup {
         root_incoming,
         run_params,
+        run_param_idents,
         root_input_bindings,
     }
 }
@@ -819,6 +826,7 @@ fn build_sync_impl(
     context: &syn::Path,
     async_enabled: bool,
     run_params: &[proc_macro2::TokenStream],
+    run_param_idents: &[syn::Ident],
     run_return_sig: &proc_macro2::TokenStream,
     sync_graph_body: &proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
@@ -829,6 +837,14 @@ fn build_sync_impl(
     quote! {
         pub fn run(ctx: &mut #context) {
             <Self as ::graphium::Graph<#context>>::run(ctx);
+        }
+
+        pub fn run_instance(
+            &self,
+            ctx: &mut #context,
+            #( #run_params ),*
+        ) #run_return_sig {
+            Self::__graphium_run(ctx #(, #run_param_idents )* )
         }
 
         pub fn __graphium_run(

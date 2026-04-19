@@ -12,7 +12,9 @@ pub(crate) struct UiNode {
 #[derive(Clone)]
 pub(crate) struct UiTest {
     pub(crate) dto: graphium::export::TestDto,
-    pub(crate) run: fn() -> Result<(), String>,
+    pub(crate) schema: graphium::export::TestSchema,
+    pub(crate) default_values: HashMap<String, String>,
+    pub(crate) run: fn(&HashMap<String, String>) -> Result<(), String>,
 }
 
 impl UiTest {
@@ -24,7 +26,11 @@ impl UiTest {
     }
 
     pub(crate) fn run(&self) -> TestExecution {
-        match (self.run)() {
+        self.run_with(&self.default_values)
+    }
+
+    pub(crate) fn run_with(&self, values: &HashMap<String, String>) -> TestExecution {
+        match (self.run)(values) {
             Ok(()) => TestExecution {
                 passed: true,
                 message: "ok".to_string(),
@@ -87,6 +93,8 @@ pub(crate) fn build_state(prometheus_url: String, graphs: Vec<ConfiguredGraph>) 
         .flat_map(|g| g.tests.clone())
         .map(|test| UiTest {
             dto: test.dto,
+            schema: test.schema,
+            default_values: test.default_values,
             run: test.run,
         })
         .collect();
