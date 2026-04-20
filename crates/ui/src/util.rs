@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
 pub(crate) fn default_bind() -> SocketAddr {
-    "127.0.0.1:4000"
+    "127.0.0.1:4001"
         .parse()
         .expect("default graphium-ui bind must be a valid socket address")
 }

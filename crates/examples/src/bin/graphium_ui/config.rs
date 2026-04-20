@@ -358,9 +358,9 @@ graph! {
 pub fn config() -> GraphiumUiConfig {
     GraphiumUiConfig {
         bind: std::env::var("GRAPHIUM_UI_BIND")
-            .unwrap_or_else(|_| "127.0.0.1:4000".to_string())
+            .unwrap_or_else(|_| "127.0.0.1:4001".to_string())
             .parse()
-            .unwrap_or_else(|_| "127.0.0.1:4000".parse().expect("valid default bind")),
+            .unwrap_or_else(|_| "127.0.0.1:4001".parse().expect("valid default bind")),
         prometheus_url: std::env::var("GRAPHIUM_PROMETHEUS_URL")
             .unwrap_or_else(|_| "http://127.0.0.1:9090".to_string()),
         graphs: graphs![

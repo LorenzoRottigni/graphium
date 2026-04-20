@@ -1,6 +1,5 @@
-use std::sync::Arc;
-
 use axum::{routing::get, Router};
+use std::sync::Arc;
 
 use crate::{
     config::GraphiumUiConfig, error::UiError, pages::home::home, state::build::build_state,

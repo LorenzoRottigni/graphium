@@ -21,3 +21,7 @@ pub(crate) fn slugify(name: &str) -> String {
     }
     out.trim_matches('-').to_string()
 }
+
+pub(crate) fn escape_label(value: &str) -> String {
+    value.replace('"', "'").replace('\n', " ")
+}

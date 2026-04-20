@@ -5,7 +5,7 @@ use graphium_ui::GraphiumUiConfig;
 #[tokio::main]
 async fn main() {
     let bind: SocketAddr = std::env::var("GRAPHIUM_UI_BIND")
-        .unwrap_or_else(|_| "127.0.0.1:4000".to_string())
+        .unwrap_or_else(|_| "127.0.0.1:4001".to_string())
         .parse()
         .expect("valid GRAPHIUM_UI_BIND socket address");
     let prometheus = std::env::var("GRAPHIUM_PROMETHEUS_URL")
