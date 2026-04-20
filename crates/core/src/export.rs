@@ -177,11 +177,7 @@ impl TestDto {
             TestKindDto::Graph => "graph",
         };
         let target_last = target.rsplit("::").next().unwrap_or(target);
-        let id = format!(
-            "{kind_prefix}-{}-{}",
-            slugify(target_last),
-            slugify(name)
-        );
+        let id = format!("{kind_prefix}-{}-{}", slugify(target_last), slugify(name));
         Self {
             id,
             name: name.to_string(),

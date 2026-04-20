@@ -27,8 +27,7 @@ pub(crate) async fn node_page_html(
         })
         .collect();
 
-    let metrics =
-        fetch_node_metrics(&state, &node.dto.metrics_graph, &node.dto.metrics_node).await;
+    let metrics = fetch_node_metrics(&state, &node.dto.metrics_graph, &node.dto.metrics_node).await;
 
     let metrics_widget = node_metrics_widget(node, &metrics);
     let tests_widget = node_tests_widget(&tests);

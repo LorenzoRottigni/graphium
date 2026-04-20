@@ -274,13 +274,8 @@ fn render_step(
                     continue;
                 }
                 let mut branch_tracker = tracker.clone();
-                let rendered = append_steps(
-                    branch,
-                    &mut branch_tracker,
-                    linkable_graphs,
-                    lines,
-                    counter,
-                );
+                let rendered =
+                    append_steps(branch, &mut branch_tracker, linkable_graphs, lines, counter);
                 lines.push(format!(r#"{fork} -->|b{}| {}"#, idx + 1, rendered.head));
                 lines.push(format!("{} --> {join}", rendered.tail));
 
@@ -398,25 +393,12 @@ fn render_step(
             ));
             lines.push(format!(r#"{exit}(("exit")):::control"#));
 
-            emit_artifact_edges(
-                tracker,
-                &cond,
-                CtxAccessDto::None,
-                inputs,
-                &[],
-                None,
-                lines,
-            );
+            emit_artifact_edges(tracker, &cond, CtxAccessDto::None, inputs, &[], None, lines);
 
             if !body.is_empty() {
                 let mut body_tracker = tracker.clone();
-                let rendered = append_steps(
-                    body,
-                    &mut body_tracker,
-                    linkable_graphs,
-                    lines,
-                    counter,
-                );
+                let rendered =
+                    append_steps(body, &mut body_tracker, linkable_graphs, lines, counter);
                 lines.push(format!(r#"{cond} -->|"true"| {}"#, rendered.head));
                 lines.push(format!("{} --> {cond}", rendered.tail));
             }
@@ -461,13 +443,8 @@ fn render_step(
 
             if !body.is_empty() {
                 let mut body_tracker = tracker.clone();
-                let rendered = append_steps(
-                    body,
-                    &mut body_tracker,
-                    linkable_graphs,
-                    lines,
-                    counter,
-                );
+                let rendered =
+                    append_steps(body, &mut body_tracker, linkable_graphs, lines, counter);
                 lines.push(format!("{start} --> {}", rendered.head));
                 lines.push(format!("{} --> {start}", rendered.tail));
             }

@@ -38,8 +38,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
     };
 
     let raw_schema_string = input.to_string();
-    let raw_schema_lit =
-        syn::LitStr::new(&raw_schema_string, proc_macro2::Span::call_site());
+    let raw_schema_lit = syn::LitStr::new(&raw_schema_string, proc_macro2::Span::call_site());
 
     let GraphInput {
         name,
@@ -337,9 +336,12 @@ fn collect_export_paths_inner(
             let path = &call.path;
             if crate::shared::is_graph_run_path(path) {
                 let graph_path = super::single::graph_type_path(path);
-                graphs.entry(graph_path.to_token_stream().to_string()).or_insert(graph_path);
+                graphs
+                    .entry(graph_path.to_token_stream().to_string())
+                    .or_insert(graph_path);
             } else {
-                nodes.entry(path.to_token_stream().to_string())
+                nodes
+                    .entry(path.to_token_stream().to_string())
                     .or_insert_with(|| path.clone());
             }
         }

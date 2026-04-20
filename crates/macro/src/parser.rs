@@ -658,9 +658,8 @@ fn parse_graph_input_with_metadata(input: ParseStream) -> Result<GraphInput> {
         } else if attr_name == "tests" {
             let tests_content;
             syn::parenthesized!(tests_content in bracket_content);
-            let list = syn::punctuated::Punctuated::<Path, Token![,]>::parse_terminated(
-                &tests_content,
-            )?;
+            let list =
+                syn::punctuated::Punctuated::<Path, Token![,]>::parse_terminated(&tests_content)?;
             tests.extend(list.into_iter());
         } else {
             return Err(bracket_content.error("expected `metadata`, `metrics`, or `tests`"));

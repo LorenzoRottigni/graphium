@@ -53,7 +53,8 @@ pub(crate) fn extract_graphium_defaults(
 }
 
 pub(crate) fn cfg_attrs(attrs: &[Attribute]) -> Vec<Attribute> {
-    attrs.iter()
+    attrs
+        .iter()
         .cloned()
         .filter(|a| a.path().is_ident("cfg") || a.path().is_ident("cfg_attr"))
         .collect()
@@ -100,8 +101,8 @@ fn test_param_kind(ty: &Type) -> proc_macro2::TokenStream {
         .unwrap_or_default();
     match ident.as_str() {
         "bool" => quote! { ::graphium::export::TestParamKind::Bool },
-        "u8" | "u16" | "u32" | "u64" | "u128" | "usize" | "i8" | "i16" | "i32" | "i64"
-        | "i128" | "isize" | "f32" | "f64" => quote! { ::graphium::export::TestParamKind::Number },
+        "u8" | "u16" | "u32" | "u64" | "u128" | "usize" | "i8" | "i16" | "i32" | "i64" | "i128"
+        | "isize" | "f32" | "f64" => quote! { ::graphium::export::TestParamKind::Number },
         _ => quote! { ::graphium::export::TestParamKind::Text },
     }
 }
@@ -201,7 +202,12 @@ pub(crate) fn synthesize_ui_test_case(mut item_fn: ItemFn) -> syn::Result<UiTest
         marker_prelude.push(let_tokens.clone());
     }
 
-    for arg in item_fn.sig.inputs.iter().skip(if injected.is_some() { 1 } else { 0 }) {
+    for arg in item_fn
+        .sig
+        .inputs
+        .iter()
+        .skip(if injected.is_some() { 1 } else { 0 })
+    {
         let FnArg::Typed(pat_type) = arg else {
             return Err(syn::Error::new_spanned(
                 arg,
@@ -225,7 +231,11 @@ pub(crate) fn synthesize_ui_test_case(mut item_fn: ItemFn) -> syn::Result<UiTest
             .cloned()
             .unwrap_or_else(|| parse_quote! { ::core::default::Default::default() });
 
-        let maybe_mut = if is_mut { quote! { mut } } else { quote! {} };
+        let maybe_mut = if is_mut {
+            quote! { mut }
+        } else {
+            quote! {}
+        };
         wrapper_prelude.push(quote! {
             let #maybe_mut #ident: #ty = #default_expr;
         });
@@ -429,7 +439,9 @@ mod tests {
             #[test]
             fn owned_graph_returns_non_zero_split(threshold: u32) {}
         };
-        let bits = synthesize_ui_test_case(item).expect("generate case").marker_bits;
+        let bits = synthesize_ui_test_case(item)
+            .expect("generate case")
+            .marker_bits;
         assert_eq!(
             bits.marker_ident.to_string(),
             "OwnedGraphReturnsNonZeroSplit"

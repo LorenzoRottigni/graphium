@@ -104,11 +104,11 @@ impl ConfiguredGraph {
             + ::serde::Serialize
             + ::core::default::Default
             + 'static,
-    >(
-    ) -> Self {
-        let export: graphium::export::GraphDto =
-            ::serde_json::from_value(::serde_json::to_value(G::default()).expect("serialize graph"))
-                .expect("deserialize graph dto");
+    >() -> Self {
+        let export: graphium::export::GraphDto = ::serde_json::from_value(
+            ::serde_json::to_value(G::default()).expect("serialize graph"),
+        )
+        .expect("deserialize graph dto");
         let tests = <G as graphium::GraphUiTests>::graphium_ui_tests();
         let id = export.id.clone();
         Self {
@@ -131,8 +131,7 @@ pub fn graph<
         + ::serde::Serialize
         + ::core::default::Default
         + 'static,
->(
-) -> ConfiguredGraph {
+>() -> ConfiguredGraph {
     ConfiguredGraph::from_provider::<G>()
 }
 

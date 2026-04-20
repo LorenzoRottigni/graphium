@@ -604,9 +604,7 @@ fn extract_tests_from_attrs(attrs: &mut Vec<syn::Attribute>) -> Vec<Path> {
                     syn::punctuated::Punctuated::<Path, syn::Token![,]>::parse_terminated,
                 )
                 .unwrap_or_else(|_| {
-                    panic!(
-                        "`#[tests(...)]` expects a list of paths, e.g. `#[tests(MyTestMarker)]`"
-                    )
+                    panic!("`#[tests(...)]` expects a list of paths, e.g. `#[tests(MyTestMarker)]`")
                 });
             out.extend(list.into_iter());
             continue;

@@ -2,9 +2,9 @@
 //
 // `graph!` emits fully inlined orchestration code.
 
+pub mod export;
 pub mod metrics;
 pub mod visualizer;
-pub mod export;
 
 #[cfg(feature = "serialize")]
 pub use serde;

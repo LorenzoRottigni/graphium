@@ -252,7 +252,11 @@ fn read_source_span(span: Option<&graphium::export::SourceSpanDto>) -> Option<St
         }
         let _ = writeln!(out, "{line}");
     }
-    if out.is_empty() { None } else { Some(out) }
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
 }
 
 fn tests_widget_html(title: &str, tests: &[&UiTest]) -> String {

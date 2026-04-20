@@ -344,6 +344,7 @@ dependencies = [
  "graphium",
  "graphium-macro",
  "graphium-ui",
+ "graphium-ui-next",
  "tokio",
 ]
 
