@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 
 use super::state::{graph::ConfiguredGraph, node::UiNode, test::UiTest};
+use graphium::export::{GraphDefDto, GraphStepDto};
 
-pub mod build;
+pub(crate) mod build;
 pub mod graph;
-pub mod node;
-pub mod playground;
-pub mod test;
+pub(crate) mod node;
+pub(crate) mod playground;
+pub(crate) mod test;
 
 #[derive(Clone)]
 pub(crate) struct AppState {
@@ -32,4 +33,37 @@ pub(crate) struct AppState {
 
     /// Lookup table of nodes by id (used to render node pages / node-scoped views).
     pub(crate) nodes_by_id: HashMap<String, UiNode>,
+}
+
+pub(crate) fn collect_graph_node_names(graph: &GraphDefDto) -> Vec<String> {
+    let mut out = Vec::new();
+    collect_graph_node_names_from_steps(&graph.steps, &mut out);
+    out.sort();
+    out.dedup();
+    out
+}
+
+fn collect_graph_node_names_from_steps(steps: &[GraphStepDto], out: &mut Vec<String>) {
+    for step in steps {
+        match step {
+            GraphStepDto::Node { name, .. } => out.push(name.to_string()),
+            GraphStepDto::Nested { graph, .. } => {
+                collect_graph_node_names_from_steps(&graph.steps, out)
+            }
+            GraphStepDto::Parallel { branches, .. } => {
+                for branch in branches {
+                    collect_graph_node_names_from_steps(branch, out);
+                }
+            }
+            GraphStepDto::Route { cases, .. } => {
+                for case in cases {
+                    collect_graph_node_names_from_steps(&case.steps, out);
+                }
+            }
+            GraphStepDto::While { body, .. } | GraphStepDto::Loop { body, .. } => {
+                collect_graph_node_names_from_steps(body, out);
+            }
+            GraphStepDto::Break => {}
+        }
+    }
 }

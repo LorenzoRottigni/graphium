@@ -1,0 +1,152 @@
+<section class="border border-primary/30 rounded-md p-4 bg-darkest">
+    <h3 class="text-lg font-semibold mb-3">Graph structure</h3>
+    <div class="overflow-x-auto">
+        <pre class="mermaid">{{ mermaid|safe }}</pre>
+    </div>
+</section>
+
+<section class="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <aside class="border border-dark rounded-md p-4 bg-darkest">
+        <h3 class="text-lg font-semibold mb-2">Prometheus metrics</h3>
+        <p class="text-sm text-light mb-3">Source: {{ prometheus_base_url }}</p>
+        <div class="grid grid-cols-2 gap-3 text-sm">
+            <div class="border border-dark rounded-md p-3">
+                <div class="text-light">Executions</div>
+                <div class="font-semibold">{{ metrics.count }}</div>
+            </div>
+            <div class="border border-dark rounded-md p-3">
+                <div class="text-light">Errors</div>
+                <div class="font-semibold">{{ metrics.errors }}</div>
+            </div>
+            <div class="border border-dark rounded-md p-3">
+                <div class="text-light">Success</div>
+                <div class="font-semibold">{{ metrics.success }}</div>
+            </div>
+            <div class="border border-dark rounded-md p-3">
+                <div class="text-light">Fail</div>
+                <div class="font-semibold">{{ metrics.fail }}</div>
+            </div>
+            <div class="border border-dark rounded-md p-3">
+                <div class="text-light">P50 latency (s)</div>
+                <div class="font-semibold">{{ metrics.p50 }}</div>
+            </div>
+            <div class="border border-dark rounded-md p-3">
+                <div class="text-light">P95 latency (s)</div>
+                <div class="font-semibold">{{ metrics.p95 }}</div>
+            </div>
+        </div>
+    </aside>
+
+    <section class="lg:col-span-2 grid grid-cols-1 gap-4">
+        <section class="border border-dark rounded-md p-4 bg-darkest">
+            <h3 class="text-lg font-semibold mb-2">Nodes</h3>
+            {% if nodes.is_empty() %}
+            <p class="text-light text-sm">No nodes.</p>
+            {% else %}
+            <div class="flex flex-col gap-2">
+                {% for node in nodes %}
+                <div class="flex items-center justify-between border border-dark rounded-md px-3 py-2">
+                    <span class="font-semibold">{{ node.label }}</span>
+                    <a class="text-primary hover:underline" href="/node/{{ node.id }}">Open</a>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </section>
+
+        <section class="border border-dark rounded-md p-4 bg-darkest">
+            <h3 class="text-lg font-semibold mb-2">Raw schema</h3>
+            <pre class="overflow-x-auto bg-black/40 border border-dark rounded-md p-3"><code
+                    class="language-rust">{{ raw_schema }}</code></pre>
+        </section>
+
+        <section class="border border-dark rounded-md p-4 bg-darkest">
+            <h3 class="text-lg font-semibold mb-2">Playground</h3>
+            {% if playground.is_none() %}
+            <p class="text-light text-sm">Not available for this graph.</p>
+            {% else %}
+            {% let pg = playground.as_ref().unwrap() %}
+            <p class="text-sm text-light">
+                {% if !pg.supported %}Playground disabled for this graph.{% endif %}
+                Context: <code class="text-white">{{ pg.context }}</code> · {{ pg.outputs_label }}
+            </p>
+            {% if pg.has_bool_inputs %}
+            <p class="text-sm text-light mt-1">Tip: unchecked bool inputs are treated as false.</p>
+            {% endif %}
+
+            <form method="post" action="/graph/{{ graph_id }}/playground/run" hx-post="/graph/{{ graph_id }}/playground/run"
+                hx-target="#graph-content" hx-swap="innerHTML" hx-indicator="#loading" class="mt-3 flex flex-col gap-3">
+                {% for input in pg.inputs %}
+                <div class="border border-dark rounded-md p-3">
+                    <div class="text-sm">
+                        <strong>{{ input.name }}</strong> <span class="text-light">({{ input.ty }})</span>
+                    </div>
+                    <div class="mt-2">
+                        {% if input.is_bool %}
+                        <input type="hidden" name="{{ input.name }}" value="false" />
+                        <label class="inline-flex items-center gap-2 text-sm">
+                            <input type="checkbox" name="{{ input.name }}" value="true" {% if input.checked %}checked{% endif %} />
+                            <span class="text-light">true</span>
+                        </label>
+                        {% else %}
+                        <input class="w-full px-3 py-2 rounded-md bg-black/40 border border-dark text-white" type="text"
+                            name="{{ input.name }}" value="{{ input.value }}" />
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+                <button type="submit" {% if !pg.supported %}disabled{% endif %} class="px-4 py-2 rounded-md">Run</button>
+            </form>
+
+            {% if pg.result.is_some() %}
+            {% let res = pg.result.as_ref().unwrap() %}
+            <div class="mt-3">
+                <div class="text-sm font-semibold mb-1">{% if res.ok %}Result{% else %}Error{% endif %}</div>
+                <pre
+                    class="overflow-x-auto border rounded-md p-3 {% if res.ok %}border-dark bg-black/40{% else %}border-red-900 bg-red-950/40{% endif %}">{{ res.message }}</pre>
+            </div>
+            {% endif %}
+            {% endif %}
+        </section>
+
+        <section class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <section class="border border-dark rounded-md p-4 bg-darkest">
+                <h3 class="text-lg font-semibold mb-2">Graph Tests</h3>
+                {% if graph_tests.is_empty() %}
+                <p class="text-light text-sm">No tests linked.</p>
+                {% else %}
+                <div class="flex flex-col gap-2">
+                    {% for test in graph_tests %}
+                    <div class="flex items-center justify-between border border-dark rounded-md px-3 py-2">
+                        <div class="text-sm">
+                            <div class="text-light">{{ test.target }}</div>
+                            <div class="font-semibold">{{ test.name }}</div>
+                        </div>
+                        <a class="text-primary hover:underline" href="/tests/run/{{ test.id }}">Run</a>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </section>
+            <section class="border border-dark rounded-md p-4 bg-darkest">
+                <h3 class="text-lg font-semibold mb-2">Node Tests</h3>
+                {% if node_tests.is_empty() %}
+                <p class="text-light text-sm">No tests linked.</p>
+                {% else %}
+                <div class="flex flex-col gap-2">
+                    {% for test in node_tests %}
+                    <div class="flex items-center justify-between border border-dark rounded-md px-3 py-2">
+                        <div class="text-sm">
+                            <div class="text-light">{{ test.target }}</div>
+                            <div class="font-semibold">{{ test.name }}</div>
+                        </div>
+                        <a class="text-primary hover:underline" href="/tests/run/{{ test.id }}">Run</a>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </section>
+        </section>
+    </section>
+</section>
+

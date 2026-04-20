@@ -1,9 +1,18 @@
 pub mod config;
 pub mod error;
+mod http;
+mod mermaid;
+mod metrics;
 pub mod pages;
 pub mod server;
 pub mod state;
 pub mod util;
+
+pub use crate::config::GraphiumUiConfig;
+pub use crate::error::UiError;
+pub use crate::server::serve;
+pub use crate::state::graph::{graph, ConfiguredGraph};
+pub use crate::state::playground::Playground;
 
 /// Convenience macro to build a `Vec<ConfiguredGraph>` from a list of graph *provider types*.
 ///

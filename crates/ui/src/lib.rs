@@ -1,17 +1,5 @@
-mod http;
-mod layout;
-mod mermaid;
-mod metrics;
-mod pages;
-mod server;
-mod state;
-mod types;
-mod util;
-
-pub mod config;
-
-pub use crate::server::serve;
-pub use crate::types::{graph, ConfiguredGraph, GraphiumUiConfig, Playground, UiError};
+pub use graphium_ui_next::*;
+pub use graphium_ui_next::{config, server};
 
 /// Convenience macro to build a `Vec<ConfiguredGraph>` from a list of graph *provider types*.
 ///

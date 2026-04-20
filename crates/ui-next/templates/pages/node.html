@@ -1,0 +1,76 @@
+{% extends "layouts/shell.html" %}
+
+{% block content %}
+<section class="border border-dark rounded-md p-4 bg-darkest">
+    <h2 class="text-xl font-semibold">Node: <code>{{ label }}</code></h2>
+    <p class="text-sm text-light mt-1">Target: <code class="text-white">{{ target }}</code></p>
+    <p class="text-sm text-light mt-1">Context access: <code class="text-white">{{ ctx_access }}</code></p>
+</section>
+
+<section class="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <section class="grid grid-cols-1 gap-4">
+        <section class="border border-dark rounded-md p-4 bg-darkest">
+            <h3 class="text-lg font-semibold mb-2">Metrics</h3>
+            <p class="text-sm text-light mb-3">Labels: graph=<code class="text-white">{{ metrics_graph }}</code> ·
+                node=<code class="text-white">{{ metrics_node }}</code></p>
+            <div class="grid grid-cols-2 gap-3 text-sm">
+                <div class="border border-dark rounded-md p-3">
+                    <div class="text-light">Executions</div>
+                    <div class="font-semibold">{{ metrics.count }}</div>
+                </div>
+                <div class="border border-dark rounded-md p-3">
+                    <div class="text-light">Errors</div>
+                    <div class="font-semibold">{{ metrics.errors }}</div>
+                </div>
+                <div class="border border-dark rounded-md p-3">
+                    <div class="text-light">Success</div>
+                    <div class="font-semibold">{{ metrics.success }}</div>
+                </div>
+                <div class="border border-dark rounded-md p-3">
+                    <div class="text-light">Fail</div>
+                    <div class="font-semibold">{{ metrics.fail }}</div>
+                </div>
+                <div class="border border-dark rounded-md p-3">
+                    <div class="text-light">P50 latency (s)</div>
+                    <div class="font-semibold">{{ metrics.p50 }}</div>
+                </div>
+                <div class="border border-dark rounded-md p-3">
+                    <div class="text-light">P95 latency (s)</div>
+                    <div class="font-semibold">{{ metrics.p95 }}</div>
+                </div>
+            </div>
+        </section>
+
+        <section class="border border-dark rounded-md p-4 bg-darkest">
+            <h3 class="text-lg font-semibold mb-2">Tests</h3>
+            {% if tests.is_empty() %}
+            <p class="text-light text-sm">No tests linked.</p>
+            {% else %}
+            <div class="flex flex-col gap-2">
+                {% for test in tests %}
+                <div class="flex items-center justify-between border border-dark rounded-md px-3 py-2">
+                    <div class="text-sm">
+                        <div class="text-light">{{ test.target }}</div>
+                        <div class="font-semibold">{{ test.name }}</div>
+                    </div>
+                    <a class="text-primary hover:underline" href="/tests/run/{{ test.id }}">Run</a>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </section>
+    </section>
+
+    <section class="border border-dark rounded-md p-4 bg-darkest">
+        <h3 class="text-lg font-semibold mb-2">Code</h3>
+        {% if source_available %}
+        <p class="text-sm text-light mb-2">{{ source_file }} · lines {{ source_start }}–{{ source_end }}</p>
+        <pre class="overflow-x-auto bg-black/40 border border-dark rounded-md p-3"><code
+                class="language-rust">{{ source_text }}</code></pre>
+        {% else %}
+        <p class="text-sm text-light">Source not available.</p>
+        {% endif %}
+    </section>
+</section>
+{% endblock %}
+

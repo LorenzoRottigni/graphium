@@ -1,0 +1,43 @@
+{% extends "layouts/shell.html" %}
+
+{% block content %}
+<section class="border border-dark rounded-md p-4 bg-darkest max-w-2xl mx-auto">
+    <h2 class="text-xl font-semibold">{{ name }}</h2>
+
+    <div class="mt-2 flex items-center gap-2">
+        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold text-white"
+            style="background: {{ badge_color }};">{{ badge_label }}</span>
+        <span class="text-sm text-light">({{ kind }})</span>
+    </div>
+
+    {% if params.is_empty() %}
+    <p class="mt-4 text-sm text-light">No parameters.</p>
+    {% else %}
+    <h3 class="mt-6 text-lg font-semibold">Arguments</h3>
+    <form method="post" action="/tests/run/{{ id }}" class="mt-3 flex flex-col gap-3">
+        {% for param in params %}
+        <label class="flex flex-col gap-2 border border-dark rounded-md p-3">
+            <span class="text-sm font-semibold">{{ param.name }}</span>
+            {% if param.is_bool %}
+            <input type="hidden" name="{{ param.name }}" value="false" />
+            <span class="inline-flex items-center gap-2 text-sm">
+                <input type="checkbox" name="{{ param.name }}" value="true" {% if param.checked %}checked{% endif %} />
+                <span class="text-light">true</span>
+            </span>
+            {% else %}
+            <input class="px-3 py-2 rounded-md bg-black/40 border border-dark text-white" type="{{ param.input_type }}"
+                name="{{ param.name }}" value="{{ param.value }}" />
+            {% endif %}
+        </label>
+        {% endfor %}
+        <button class="mt-2 px-4 py-2 rounded-md" type="submit">Run</button>
+    </form>
+    {% endif %}
+
+    <h3 class="mt-6 text-lg font-semibold">Output</h3>
+    <pre class="mt-2 overflow-x-auto bg-black/40 border border-dark rounded-md p-3 text-sm">{{ message }}</pre>
+
+    <p class="mt-4"><a class="text-primary hover:underline" href="/tests">Back to tests</a></p>
+</section>
+{% endblock %}
+

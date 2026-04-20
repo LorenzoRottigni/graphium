@@ -12,7 +12,7 @@ pub struct HomeTemplate<'a> {
     pub graphs: &'a [ConfiguredGraph],
 }
 
-pub async fn home(State(state): State<Arc<AppState>>) -> Html<String> {
+pub(crate) async fn home(State(state): State<Arc<AppState>>) -> Html<String> {
     let template = HomeTemplate {
         title: "Graphium Home",
         graphs: &state.ordered,
