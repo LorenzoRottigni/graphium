@@ -6,6 +6,7 @@ use askama::Template;
 use crate::http::AppHttpError;
 use crate::metrics::{fetch_node_metrics, fmt_metric};
 use crate::state::AppState;
+use crate::util::normalize_symbol;
 
 #[derive(Clone)]
 pub(crate) struct MetricCards {
@@ -67,7 +68,7 @@ pub(crate) async fn node_page_html(
         })
         .map(|test| TestLink {
             id: test.dto.id.clone(),
-            name: test.dto.name.clone(),
+            name: normalize_symbol(&test.dto.name),
             target: test.dto.target.clone(),
         })
         .collect::<Vec<_>>();

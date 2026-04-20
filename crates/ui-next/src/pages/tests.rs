@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use askama::Template;
 
 use crate::state::{test::TestExecution, AppState};
+use crate::util::normalize_symbol;
 
 #[derive(Clone)]
 pub(crate) struct TestListItem {
@@ -28,7 +29,7 @@ pub(crate) fn tests_page_html(state: &AppState) -> String {
         .map(|t| TestListItem {
             id: t.dto.id.clone(),
             kind: t.kind_label().to_string(),
-            name: t.dto.name.clone(),
+            name: normalize_symbol(&t.dto.name),
             target: t.dto.target.clone(),
         })
         .collect();
@@ -111,7 +112,7 @@ pub(crate) fn run_test_page_html(
         title: "Run Test | Graphium UI",
         active: "tests",
         id: test.dto.id.clone(),
-        name: test.dto.name.clone(),
+        name: normalize_symbol(&test.dto.name),
         kind: test.kind_label().to_string(),
         badge_color,
         badge_label,

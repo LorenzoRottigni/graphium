@@ -145,7 +145,7 @@ pub(crate) async fn render_graph_fragment(
         })
         .map(|test| TestLink {
             id: test.dto.id.clone(),
-            name: test.dto.name.clone(),
+            name: normalize_symbol(&test.dto.name),
             target: test.dto.target.clone(),
         })
         .collect::<Vec<_>>();
@@ -160,7 +160,7 @@ pub(crate) async fn render_graph_fragment(
         })
         .map(|test| TestLink {
             id: test.dto.id.clone(),
-            name: test.dto.name.clone(),
+            name: normalize_symbol(&test.dto.name),
             target: test.dto.target.clone(),
         })
         .collect::<Vec<_>>();
