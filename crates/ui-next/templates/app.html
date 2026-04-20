@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+
+    <title>{% block title %}Graphium App{% endblock %}</title>
+
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- Highlight.js -->
+    <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/rust.min.js"></script>
+    <script>
+        window.__graphiumHighlight = () => {
+            try {
+                if (!window.hljs) return;
+                document.querySelectorAll('pre code').forEach((el) => {
+                    window.hljs.highlightElement(el);
+                });
+            } catch (_) { }
+        };
+        document.addEventListener('DOMContentLoaded', function () {
+            if (window.__graphiumHighlight) window.__graphiumHighlight();
+        });
+        document.addEventListener('htmx:afterSwap', function () {
+            if (window.__graphiumHighlight) window.__graphiumHighlight();
+        });
+    </script>
+
+    {% block head %}{% endblock %}
+</head>
+
+<body>
+    {% block body %}{% endblock %}
+</body>
+
+</html>

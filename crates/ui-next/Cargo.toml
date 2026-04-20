@@ -1,0 +1,19 @@
+[package]
+name = "graphium-ui-next"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+doctest = false
+
+[dependencies]
+axum = "0.7"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+graphium = { version = "0.1.0", path = "../core", features = ["serialize"] }
+askama = "0.15.6"
+
+[package.metadata.askama]
+template_dir = "src/templatessss"
