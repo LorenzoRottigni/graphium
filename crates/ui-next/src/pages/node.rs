@@ -52,12 +52,14 @@ pub(crate) async fn node_page_html(
     node_id: String,
 ) -> Result<String, AppHttpError> {
     let node = state
-        .nodes_by_id
+        .nodes
+        .by_id
         .get(&node_id)
         .ok_or_else(|| AppHttpError::not_found("node not registered"))?;
 
     let tests = state
-        .tests_ordered
+        .tests
+        .ordered
         .iter()
         .filter(|test| {
             matches!(test.dto.kind, graphium::export::TestKindDto::Node)
@@ -169,4 +171,3 @@ fn read_source_snippet(span: Option<&graphium::export::SourceSpanDto>) -> Source
         text: out,
     }
 }
-

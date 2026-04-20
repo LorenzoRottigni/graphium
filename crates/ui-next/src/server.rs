@@ -50,6 +50,7 @@ async fn home(State(state): State<Arc<AppState>>) -> Html<String> {
 
 async fn dashboard(State(state): State<Arc<AppState>>) -> Html<String> {
     let default_id = state
+        .graphs
         .ordered
         .first()
         .map(|g| g.id.clone())
@@ -97,6 +98,7 @@ async fn run_playground(
     Form(values): Form<HashMap<String, String>>,
 ) -> Result<Response, AppHttpError> {
     let graph = state
+        .graphs
         .by_id
         .get(&id)
         .ok_or_else(|| AppHttpError::not_found("graph not configured"))?;
@@ -141,7 +143,8 @@ async fn run_test_page(
     Path(id): Path<String>,
 ) -> Result<Html<String>, AppHttpError> {
     let test = state
-        .tests_by_id
+        .tests
+        .by_id
         .get(&id)
         .ok_or_else(|| AppHttpError::not_found("test not configured"))?;
     if test.schema.params.is_empty() {
@@ -166,7 +169,8 @@ async fn run_test_execute(
     Form(values): Form<HashMap<String, String>>,
 ) -> Result<Html<String>, AppHttpError> {
     let test = state
-        .tests_by_id
+        .tests
+        .by_id
         .get(&id)
         .ok_or_else(|| AppHttpError::not_found("test not configured"))?;
     let result = test.run_with(&values);
@@ -176,4 +180,3 @@ async fn run_test_execute(
         Some(&result),
     )))
 }
-

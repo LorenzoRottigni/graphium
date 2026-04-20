@@ -1,10 +1,9 @@
-use std::collections::HashMap;
-
-use super::state::{graph::ConfiguredGraph, node::UiNode, test::UiTest};
+use super::state::{graph::UiGraph, index::UiIndex, node::UiNode, test::UiTest};
 use graphium::export::{GraphDefDto, GraphStepDto};
 
 pub(crate) mod build;
 pub mod graph;
+pub(crate) mod index;
 pub(crate) mod node;
 pub(crate) mod playground;
 pub(crate) mod test;
@@ -19,20 +18,10 @@ pub(crate) struct AppState {
 
     /// Ordered list of graphs used for UI iteration (dropdowns) and default selection.
     /// Starts from configured root graphs, then appends any discovered subgraphs.
-    pub(crate) ordered: Vec<ConfiguredGraph>,
+    pub(crate) graphs: UiIndex<UiGraph>,
 
-    /// Lookup table of graphs by id (canonical “find graph by id” store for routes like `/graph/:id`).
-    pub(crate) by_id: HashMap<String, ConfiguredGraph>,
-
-    /// Ordered list of all UI tests (used to render the tests page consistently).
-    /// Typically sorted by test name and deduped by test id.
-    pub(crate) tests_ordered: Vec<UiTest>,
-
-    /// Lookup table of tests by id (used to run a specific test via `/tests/run/:id`).
-    pub(crate) tests_by_id: HashMap<String, UiTest>,
-
-    /// Lookup table of nodes by id (used to render node pages / node-scoped views).
-    pub(crate) nodes_by_id: HashMap<String, UiNode>,
+    pub(crate) tests: UiIndex<UiTest>,
+    pub(crate) nodes: UiIndex<UiNode>,
 }
 
 pub(crate) fn collect_graph_node_names(graph: &GraphDefDto) -> Vec<String> {

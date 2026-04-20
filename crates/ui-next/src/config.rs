@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
 use crate::{
-    state::graph::{graph, ConfiguredGraph},
+    state::graph::{graph, UiGraph},
     util::default_bind,
 };
 
@@ -9,7 +9,7 @@ use crate::{
 pub struct GraphiumUiConfig {
     pub bind: SocketAddr,
     pub prometheus_url: String,
-    pub graphs: Vec<ConfiguredGraph>,
+    pub graphs: Vec<UiGraph>,
 }
 
 impl GraphiumUiConfig {
@@ -21,7 +21,7 @@ impl GraphiumUiConfig {
         }
     }
 
-    pub fn from_graphs(prometheus_url: impl Into<String>, graphs: Vec<ConfiguredGraph>) -> Self {
+    pub fn from_graphs(prometheus_url: impl Into<String>, graphs: Vec<UiGraph>) -> Self {
         Self {
             bind: default_bind(),
             prometheus_url: prometheus_url.into(),
@@ -42,7 +42,7 @@ impl GraphiumUiConfig {
         self
     }
 
-    pub fn with_graphs(mut self, graphs: Vec<ConfiguredGraph>) -> Self {
+    pub fn with_graphs(mut self, graphs: Vec<UiGraph>) -> Self {
         self.graphs = graphs;
         self
     }
@@ -60,7 +60,7 @@ impl Default for GraphiumUiConfig {
 
 pub fn graphium_ui_config(
     prometheus_url: impl Into<String>,
-    graphs: Vec<ConfiguredGraph>,
+    graphs: Vec<UiGraph>,
 ) -> GraphiumUiConfig {
     GraphiumUiConfig::from_graphs(prometheus_url, graphs)
 }

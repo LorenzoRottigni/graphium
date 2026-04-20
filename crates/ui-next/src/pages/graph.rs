@@ -6,7 +6,7 @@ use askama::Template;
 use crate::http::AppHttpError;
 use crate::mermaid::to_mermaid;
 use crate::metrics::{fetch_metrics, fmt_metric};
-use crate::state::{collect_graph_node_names, graph::ConfiguredGraph, AppState};
+use crate::state::{collect_graph_node_names, graph::UiGraph, AppState};
 use crate::util::{normalize_symbol, slugify};
 
 #[derive(Default, Clone)]
@@ -20,7 +20,7 @@ pub(crate) struct PlaygroundView {
 pub(crate) struct DashboardTemplate<'a> {
     pub(crate) title: &'a str,
     pub(crate) active: &'a str,
-    pub(crate) graphs: &'a [ConfiguredGraph],
+    pub(crate) graphs: &'a [UiGraph],
     pub(crate) selected_id: &'a str,
 }
 
@@ -28,7 +28,7 @@ pub(crate) fn dashboard_page_html(state: &AppState, selected_id: &str) -> String
     DashboardTemplate {
         title: "Dashboard | Graphium UI",
         active: "dashboard",
-        graphs: &state.ordered,
+        graphs: &state.graphs.ordered,
         selected_id,
     }
     .render()
@@ -103,11 +103,12 @@ pub(crate) async fn render_graph_fragment(
     playground_view: PlaygroundView,
 ) -> Result<String, AppHttpError> {
     let graph = state
+        .graphs
         .by_id
         .get(&id)
         .ok_or_else(|| AppHttpError::not_found("graph not configured"))?;
 
-    let linkable_graphs: HashSet<String> = state.by_id.keys().cloned().collect();
+    let linkable_graphs: HashSet<String> = state.graphs.by_id.keys().cloned().collect();
     let mermaid = to_mermaid(
         &graph.export.def,
         graph.playground.map(|p| p.schema.context),
@@ -135,7 +136,8 @@ pub(crate) async fn render_graph_fragment(
     let node_ids: HashSet<String> = nodes.iter().map(|n| n.id.clone()).collect();
 
     let graph_tests = state
-        .tests_ordered
+        .tests
+        .ordered
         .iter()
         .filter(|test| {
             matches!(test.dto.kind, graphium::export::TestKindDto::Graph)
@@ -149,7 +151,8 @@ pub(crate) async fn render_graph_fragment(
         .collect::<Vec<_>>();
 
     let node_tests = state
-        .tests_ordered
+        .tests
+        .ordered
         .iter()
         .filter(|test| {
             matches!(test.dto.kind, graphium::export::TestKindDto::Node)
@@ -256,4 +259,3 @@ fn read_source_span(span: Option<&graphium::export::SourceSpanDto>) -> Option<St
     }
     if out.is_empty() { None } else { Some(out) }
 }
-

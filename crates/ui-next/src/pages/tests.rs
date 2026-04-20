@@ -22,7 +22,8 @@ pub(crate) struct TestsTemplate {
 
 pub(crate) fn tests_page_html(state: &AppState) -> String {
     let tests = state
-        .tests_ordered
+        .tests
+        .ordered
         .iter()
         .map(|t| TestListItem {
             id: t.dto.id.clone(),

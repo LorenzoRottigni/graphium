@@ -1,19 +1,18 @@
-use std::collections::HashMap;
+use crate::state::{
+    graph::UiGraph,
+    index::UiIndex,
+    node::UiNode,
+    test::UiTest,
+    AppState,
+};
 
-use crate::state::{graph::ConfiguredGraph, node::UiNode, test::UiTest, AppState};
-
-pub(crate) fn build_state(prometheus_url: String, graphs: Vec<ConfiguredGraph>) -> AppState {
-    let mut ordered = graphs;
-    let mut by_id = ordered
-        .iter()
-        .cloned()
-        .map(|g| (g.id.clone(), g))
-        .collect::<HashMap<_, _>>();
+pub(crate) fn build_state(prometheus_url: String, graphs: Vec<UiGraph>) -> AppState {
+    let mut graphs = UiIndex::from_ordered(graphs, |g| &g.id);
 
     // Expand the configured root graphs into a fixed set of graphs/nodes
     // exported at build time by `graph!` / `node!`.
     let root_exports: Vec<graphium::export::GraphDto> =
-        ordered.iter().map(|g| g.export.clone()).collect();
+        graphs.ordered.iter().map(|g| g.export.clone()).collect();
     let bundle = graphium::export::GraphiumBundleDto::from_graph_roots(&root_exports);
     let graphium::export::GraphiumBundleDto {
         graphs: bundle_graphs,
@@ -22,15 +21,15 @@ pub(crate) fn build_state(prometheus_url: String, graphs: Vec<ConfiguredGraph>) 
     } = bundle;
 
     for export in bundle_graphs {
-        if by_id.contains_key(&export.id) {
+        if graphs.by_id.contains_key(&export.id) {
             continue;
         }
-        let candidate = ConfiguredGraph::from_export(export);
-        by_id.insert(candidate.id.clone(), candidate.clone());
-        ordered.push(candidate);
+        let candidate = UiGraph::from_export(export);
+        graphs.insert(candidate.id.clone(), candidate);
     }
 
-    let mut tests_ordered: Vec<UiTest> = ordered
+    let mut tests_ordered: Vec<UiTest> = graphs
+        .ordered
         .iter()
         .flat_map(|g| g.tests.clone())
         .map(|test| UiTest {
@@ -46,24 +45,18 @@ pub(crate) fn build_state(prometheus_url: String, graphs: Vec<ConfiguredGraph>) 
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     tests_ordered.retain(|t| seen.insert(t.dto.id.clone()));
 
-    let tests_by_id = tests_ordered
-        .iter()
-        .cloned()
-        .map(|t| (t.dto.id.clone(), t))
-        .collect::<HashMap<_, _>>();
-
-    let nodes_by_id = bundle_nodes
+    let mut nodes_ordered = bundle_nodes
         .into_iter()
-        .map(|dto| (dto.id.clone(), UiNode { dto }))
-        .collect::<HashMap<_, _>>();
+        .map(|dto| UiNode { dto })
+        .collect::<Vec<_>>();
+    nodes_ordered.sort_by_key(|n| n.dto.label.to_string());
+    let nodes = UiIndex::from_ordered(nodes_ordered, |n| &n.dto.id);
 
     AppState {
         prometheus_base_url: prometheus_url,
         client: reqwest::Client::new(),
-        ordered,
-        by_id,
-        tests_ordered,
-        tests_by_id,
-        nodes_by_id,
+        graphs,
+        tests: UiIndex::from_ordered(tests_ordered, |t| &t.dto.id),
+        nodes,
     }
 }

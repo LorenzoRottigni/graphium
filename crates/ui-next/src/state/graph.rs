@@ -3,7 +3,7 @@ use crate::util::slugify;
 use super::playground::Playground;
 
 #[derive(Clone)]
-pub struct ConfiguredGraph {
+pub struct UiGraph {
     pub id: String,
     pub name: String,
     pub export: graphium::export::GraphDto,
@@ -11,7 +11,7 @@ pub struct ConfiguredGraph {
     pub tests: Vec<graphium::export::TestRun>,
 }
 
-impl ConfiguredGraph {
+impl UiGraph {
     pub fn from_export(export: graphium::export::GraphDto) -> Self {
         Self {
             id: export.id.clone(),
@@ -77,6 +77,8 @@ pub fn graph<
         + ::serde::Serialize
         + ::core::default::Default
         + 'static,
->() -> ConfiguredGraph {
-    ConfiguredGraph::from_provider::<G>()
+>() -> UiGraph {
+    UiGraph::from_provider::<G>()
 }
+
+pub type ConfiguredGraph = UiGraph;
