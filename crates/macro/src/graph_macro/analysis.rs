@@ -9,8 +9,8 @@ use std::collections::BTreeSet;
 use crate::shared::{ExprShape, NodeCall, NodeExpr, UsageMap};
 
 use super::{
-    SelectorParam, collect_parallel_entry_usage, loop_exit_outputs, route_exit_outputs,
-    selector_params_for_on_expr,
+    collect_parallel_entry_usage, loop_exit_outputs, route_exit_outputs,
+    selector_params_for_on_expr, SelectorParam,
 };
 
 /// Computes the entry requirements and possible exit artifacts of a graph

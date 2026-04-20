@@ -1,0 +1,13 @@
+button {
+    background-color: #f97316;
+    color: #121214;
+}
+
+#loading {
+    display: none;
+}
+
+#loading.htmx-request {
+    display: inline-flex;
+}
+

@@ -1,11 +1,12 @@
 //! Code generation for `graph_test!` and `node_test!` procedural macros.
 //!
-//! These macros expand test suites with support for runtime-discoverable UI tests
-//! through the `#[for_graph(...)]` and `#[for_node(...)]` attributes.
+//! These macros expand test suites and (when `feature="serialize"` is enabled in
+//! the destination crate) generate marker types that can be referenced by
+//! `graph!` / `node!` via `#[tests(...)]`.
 
 mod graph;
 mod node;
-mod registry;
+mod util;
 
 pub use graph::expand as graph_expand;
 pub use node::expand as node_expand;

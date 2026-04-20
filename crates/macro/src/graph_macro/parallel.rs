@@ -10,7 +10,7 @@ use crate::shared::{ExprShape, GeneratedExpr, NodeExpr, Payload, UsageMap};
 use super::{
     analyze_expr, assign_outputs_to_slots, capture_outputs, collect_parallel_borrowed,
     collect_parallel_outputs, contains_break, get_node_expr, prepare_move_payload,
-    prepare_output_slots, prepare_parallel_payload, required_artifacts, required_borrowed,
+    prepare_output_slots, prepare_parallel_payload, required_artifacts,
 };
 
 /// Counts how many sibling branches require each artifact at the entry of a
@@ -52,11 +52,8 @@ pub(super) fn get_sequence_nodes_expr(
     for next in iter {
         let shape = analyze_expr(next);
         let required = required_artifacts(&shape);
-        let (mut next_payload, transfer_tokens) =
+        let (next_payload, transfer_tokens) =
             prepare_move_payload(&current.outputs, &required, "payload", counter);
-        for artifact in required_borrowed(&shape) {
-            next_payload.insert_borrowed(artifact);
-        }
 
         let next_generated = get_node_expr(next, &next_payload, counter, in_loop, async_mode);
         let current_tokens = current.tokens;
@@ -93,6 +90,13 @@ pub(super) fn get_parallel_nodes_expr(
     }
 
     let shapes: Vec<ExprShape> = nodes.iter().map(analyze_expr).collect();
+    let uses_borrowed = !incoming.borrowed.is_empty()
+        || shapes
+            .iter()
+            .any(|shape| !shape.entry_borrowed.is_empty() || !shape.exit_borrowed.is_empty());
+    if uses_borrowed {
+        return get_parallel_nodes_expr_sequential(nodes, incoming, counter, in_loop, async_mode);
+    }
     let mut remaining = collect_parallel_entry_usage(&shapes);
 
     let exit_outputs = collect_parallel_outputs(&shapes);

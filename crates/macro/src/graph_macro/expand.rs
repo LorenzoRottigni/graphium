@@ -4,10 +4,10 @@
 //! the lower-level graph-expression helpers.
 
 use proc_macro::TokenStream;
-use quote::quote;
+use quote::{quote, ToTokens as _};
 use syn::parse_macro_input;
 
-use crate::shared::{GeneratedExpr, GraphInput, MetricsSpec, Payload, fresh_ident};
+use crate::shared::{fresh_ident, GeneratedExpr, GraphInput, MetricsSpec, NodeExpr, Payload};
 
 use super::{get_node_expr, graph_definition_tokens};
 
@@ -21,6 +21,25 @@ use super::{get_node_expr, graph_definition_tokens};
 /// providing `graph!(Demo, Ctx => A >> B)` expands into a `Demo` type with
 /// generated runner methods and graph-definition helpers.
 pub fn expand(input: TokenStream) -> TokenStream {
+    let raw_span = input_span(&input);
+    let raw_span_tokens = match raw_span {
+        Some((start, end)) => {
+            let start_line = start;
+            let end_line = end;
+            quote! {
+                ::std::option::Option::Some(::graphium::export::SourceSpanDto {
+                    file: file!().to_string(),
+                    start_line: #start_line,
+                    end_line: #end_line,
+                })
+            }
+        }
+        None => quote! { ::std::option::Option::None },
+    };
+
+    let raw_schema_string = input.to_string();
+    let raw_schema_lit = syn::LitStr::new(&raw_schema_string, proc_macro2::Span::call_site());
+
     let GraphInput {
         name,
         context,
@@ -29,6 +48,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
         nodes,
         async_enabled,
         metrics,
+        tests,
     } = parse_macro_input!(input as GraphInput);
 
     let mut counter = 0usize;
@@ -54,7 +74,14 @@ pub fn expand(input: TokenStream) -> TokenStream {
     );
     let trait_run_body = build_trait_run_body(&name, &graph_inputs, &graph_outputs, false);
     let async_trait_run_body = build_trait_run_body(&name, &graph_inputs, &graph_outputs, true);
-    let graph_def_tokens = graph_definition_tokens(&name, &nodes);
+    let graph_def_tokens = graph_definition_tokens(&name, &graph_inputs, &graph_outputs, &nodes);
+    let playground_impl = build_playground_impl(
+        &name,
+        &context,
+        &graph_inputs,
+        &graph_outputs,
+        async_enabled,
+    );
     let metrics_enabled = metrics.enabled();
     let metrics_config_tokens = metric_config_tokens(metrics);
     let sync_graph_body = wrap_sync_graph_body(&run_body, metrics);
@@ -69,9 +96,88 @@ pub fn expand(input: TokenStream) -> TokenStream {
     );
     let graph_impl = build_graph_impl(&name, &context, async_enabled, &trait_run_body);
     let async_run_params = &root_setup.run_params;
+    let export_inputs: Vec<_> = graph_inputs
+        .iter()
+        .map(|(ident, ty)| {
+            quote! {
+                ::graphium::export::IoParamDto {
+                    name: stringify!(#ident).to_string(),
+                    ty: stringify!(#ty).to_string(),
+                }
+            }
+        })
+        .collect();
+    let export_outputs: Vec<_> = graph_outputs
+        .iter()
+        .map(|(ident, ty)| {
+            quote! {
+                ::graphium::export::IoParamDto {
+                    name: stringify!(#ident).to_string(),
+                    ty: stringify!(#ty).to_string(),
+                }
+            }
+        })
+        .collect();
+    let export_metrics = metric_names_tokens(metrics);
+    let export_paths = collect_export_paths(&nodes);
+    let export_nodes: Vec<_> = export_paths
+        .node_paths
+        .iter()
+        .map(|path| quote! { #path::__graphium_dto() })
+        .collect();
+    let export_subgraphs: Vec<_> = export_paths
+        .graph_paths
+        .iter()
+        .map(|path| quote! { #path::__graphium_dto() })
+        .collect();
+    let export_graph_tests: Vec<_> = tests
+        .iter()
+        .map(|test_path| {
+            quote! {
+                ::graphium::export::TestDto::new(
+                    ::graphium::export::TestKindDto::Graph,
+                    #test_path::NAME,
+                    stringify!(#name),
+                )
+            }
+        })
+        .collect();
+    let graph_test_runs: Vec<_> = tests
+        .iter()
+        .map(|test_path| {
+            quote! {
+                ::graphium::export::TestRun {
+                    dto: ::graphium::export::TestDto::new(
+                        ::graphium::export::TestKindDto::Graph,
+                        #test_path::NAME,
+                        stringify!(#name),
+                    ),
+                    schema: #test_path::__graphium_ui_schema(),
+                    default_values: #test_path::__graphium_ui_default_values(),
+                    run: #test_path::__graphium_ui_run_with_args,
+                }
+            }
+        })
+        .collect();
+    let subgraph_test_runs: Vec<_> = export_paths
+        .graph_paths
+        .iter()
+        .map(|path| quote! { out.extend(#path::__graphium_test_runs()); })
+        .collect();
+    let node_test_runs: Vec<_> = export_paths
+        .node_paths
+        .iter()
+        .map(|path| quote! { out.extend(#path::__graphium_test_runs()); })
+        .collect();
 
     let expanded = quote! {
         pub struct #name;
+
+        impl ::core::default::Default for #name {
+            fn default() -> Self {
+                Self
+            }
+        }
 
         impl #name {
             #metrics_defs
@@ -100,9 +206,314 @@ pub fn expand(input: TokenStream) -> TokenStream {
                 Self::graph_def()
             }
         }
+
+        #playground_impl
+
+        impl #name {
+            pub fn __graphium_dto() -> ::graphium::export::GraphDto {
+                let def = Self::graph_def();
+                ::graphium::export::GraphDto {
+                    id: ::graphium::export::slugify(def.name),
+                    name: def.name.to_string(),
+                    schema: ::std::option::Option::Some(::graphium::export::GraphSchemaDto {
+                        context: stringify!(#context).to_string(),
+                        inputs: vec![ #( #export_inputs ),* ],
+                        outputs: vec![ #( #export_outputs ),* ],
+                        metrics: vec![ #( #export_metrics ),* ],
+                    }),
+                    def: ::graphium::export::GraphDefDto::from_def(&def),
+                    raw_schema: ::std::option::Option::Some(#raw_schema_lit.to_string()),
+                    raw_span: #raw_span_tokens,
+                    tests: {
+                        #[cfg(feature = "serialize")]
+                        {
+                            vec![ #( #export_graph_tests ),* ]
+                        }
+                        #[cfg(not(feature = "serialize"))]
+                        {
+                            Vec::new()
+                        }
+                    },
+                    nodes: vec![ #( #export_nodes ),* ],
+                    subgraphs: vec![ #( #export_subgraphs ),* ],
+                    playground: ::std::option::Option::Some(::graphium::export::PlaygroundDto {
+                        supported: <Self as ::graphium::GraphPlayground>::PLAYGROUND_SUPPORTED,
+                        schema: ::graphium::export::PlaygroundSchemaDto::from_schema(
+                            &<Self as ::graphium::GraphPlayground>::playground_schema(),
+                        ),
+                    }),
+                }
+            }
+
+            pub fn __graphium_test_runs() -> ::std::vec::Vec<::graphium::export::TestRun> {
+                let mut out: ::std::vec::Vec<::graphium::export::TestRun> = ::std::vec::Vec::new();
+                #[cfg(feature = "serialize")]
+                {
+                    out.extend(vec![ #( #graph_test_runs ),* ]);
+                    #( #subgraph_test_runs )*
+                    #( #node_test_runs )*
+                }
+                out
+            }
+        }
+
+        impl ::graphium::GraphUiTests for #name {
+            fn graphium_ui_tests() -> ::std::vec::Vec<::graphium::export::TestRun> {
+                Self::__graphium_test_runs()
+            }
+        }
+
+        #[cfg(feature = "serialize")]
+        impl ::graphium::serde::Serialize for #name {
+            fn serialize<S>(&self, serializer: S) -> ::std::result::Result<S::Ok, S::Error>
+            where
+                S: ::graphium::serde::Serializer,
+            {
+                let dto = Self::__graphium_dto();
+                ::graphium::serde::Serialize::serialize(&dto, serializer)
+            }
+        }
     };
 
     TokenStream::from(expanded)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PlaygroundParseKind {
+    String,
+    Bool,
+    FromStr,
+}
+
+fn metric_names_tokens(spec: MetricsSpec) -> Vec<proc_macro2::TokenStream> {
+    let mut out = Vec::new();
+    if spec.performance {
+        out.push(quote! { "performance".to_string() });
+    }
+    if spec.errors {
+        out.push(quote! { "errors".to_string() });
+    }
+    if spec.count {
+        out.push(quote! { "count".to_string() });
+    }
+    if spec.caller {
+        out.push(quote! { "caller".to_string() });
+    }
+    if spec.success_rate {
+        out.push(quote! { "success_rate".to_string() });
+    }
+    if spec.fail_rate {
+        out.push(quote! { "fail_rate".to_string() });
+    }
+    out
+}
+
+struct ExportPaths {
+    node_paths: Vec<syn::Path>,
+    graph_paths: Vec<syn::Path>,
+}
+
+fn collect_export_paths(expr: &NodeExpr) -> ExportPaths {
+    use std::collections::BTreeMap;
+
+    let mut nodes = BTreeMap::<String, syn::Path>::new();
+    let mut graphs = BTreeMap::<String, syn::Path>::new();
+    collect_export_paths_inner(expr, &mut nodes, &mut graphs);
+
+    ExportPaths {
+        node_paths: nodes.into_values().collect(),
+        graph_paths: graphs.into_values().collect(),
+    }
+}
+
+fn collect_export_paths_inner(
+    expr: &NodeExpr,
+    nodes: &mut std::collections::BTreeMap<String, syn::Path>,
+    graphs: &mut std::collections::BTreeMap<String, syn::Path>,
+) {
+    match expr {
+        NodeExpr::Single(call) => {
+            let path = &call.path;
+            if crate::shared::is_graph_run_path(path) {
+                let graph_path = super::single::graph_type_path(path);
+                graphs
+                    .entry(graph_path.to_token_stream().to_string())
+                    .or_insert(graph_path);
+            } else {
+                nodes
+                    .entry(path.to_token_stream().to_string())
+                    .or_insert_with(|| path.clone());
+            }
+        }
+        NodeExpr::Sequence(items) | NodeExpr::Parallel(items) => {
+            for item in items {
+                collect_export_paths_inner(item, nodes, graphs);
+            }
+        }
+        NodeExpr::Route(route) => {
+            for (_label, item) in &route.routes {
+                collect_export_paths_inner(item, nodes, graphs);
+            }
+        }
+        NodeExpr::While(while_expr) => {
+            collect_export_paths_inner(while_expr.body.as_ref(), nodes, graphs);
+        }
+        NodeExpr::Loop(loop_expr) => {
+            collect_export_paths_inner(loop_expr.body.as_ref(), nodes, graphs);
+        }
+        NodeExpr::Break => {}
+    }
+}
+
+fn input_span(input: &proc_macro::TokenStream) -> Option<(u32, u32)> {
+    let mut it = input.clone().into_iter();
+    let first = it.next()?;
+    let mut start = first.span().start().line() as u32;
+    let mut end = first.span().end().line() as u32;
+    for token in it {
+        let span = token.span();
+        start = start.min(span.start().line() as u32);
+        end = end.max(span.end().line() as u32);
+    }
+    Some((start, end))
+}
+
+fn playground_parse_kind(ty: &syn::Type) -> Option<PlaygroundParseKind> {
+    let syn::Type::Path(type_path) = ty else {
+        return None;
+    };
+    if type_path.qself.is_some() {
+        return None;
+    }
+    let last = type_path.path.segments.last()?.ident.to_string();
+    match last.as_str() {
+        "String" => Some(PlaygroundParseKind::String),
+        "bool" => Some(PlaygroundParseKind::Bool),
+        "i8" | "i16" | "i32" | "i64" | "i128" | "isize" | "u8" | "u16" | "u32" | "u64" | "u128"
+        | "usize" | "f32" | "f64" => Some(PlaygroundParseKind::FromStr),
+        _ => None,
+    }
+}
+
+fn build_playground_impl(
+    name: &syn::Ident,
+    context: &syn::Path,
+    graph_inputs: &[(syn::Ident, syn::Type)],
+    graph_outputs: &[(syn::Ident, syn::Type)],
+    async_enabled: bool,
+) -> proc_macro2::TokenStream {
+    let input_params: Vec<_> = graph_inputs
+        .iter()
+        .map(|(ident, ty)| {
+            quote! {
+                ::graphium::PlaygroundParam { name: stringify!(#ident), ty: stringify!(#ty) }
+            }
+        })
+        .collect();
+    let output_params: Vec<_> = graph_outputs
+        .iter()
+        .map(|(ident, ty)| {
+            quote! {
+                ::graphium::PlaygroundParam { name: stringify!(#ident), ty: stringify!(#ty) }
+            }
+        })
+        .collect();
+
+    // Playground is purely a UI convenience: it uses the graph's declared IO
+    // schema to build a form and runs the graph with a fresh `Ctx::default()`.
+    let supported = !async_enabled
+        && graph_inputs
+            .iter()
+            .all(|(_, ty)| playground_parse_kind(ty).is_some());
+
+    let run_body = if supported {
+        let mut parse_bindings = Vec::new();
+        let mut args = Vec::new();
+        for (ident, ty) in graph_inputs {
+            let key = ident.to_string();
+            let raw_ident = syn::Ident::new(
+                &format!("__graphium_ui_raw_{key}"),
+                proc_macro2::Span::call_site(),
+            );
+            let var_ident = syn::Ident::new(
+                &format!("__graphium_ui_{key}"),
+                proc_macro2::Span::call_site(),
+            );
+            let kind = playground_parse_kind(ty).unwrap();
+            let parse_expr = match kind {
+                PlaygroundParseKind::String => quote! { #raw_ident.to_string() },
+                PlaygroundParseKind::Bool => quote! {{
+                    match #raw_ident.trim().to_ascii_lowercase().as_str() {
+                        "true" | "1" | "yes" | "on" => true,
+                        "false" | "0" | "no" | "off" => false,
+                        other => return ::std::result::Result::Err(format!("invalid input `{}`: expected bool, got `{}`", #key, other)),
+                    }
+                }},
+                PlaygroundParseKind::FromStr => quote! {{
+                    #raw_ident
+                        .trim()
+                        .parse::<#ty>()
+                        .map_err(|e| format!("invalid input `{}`: {}", #key, e))?
+                }},
+            };
+            let raw_binding = match kind {
+                PlaygroundParseKind::Bool => quote! {
+                    let #raw_ident = form.get(#key).map(|v| v.as_str()).unwrap_or("false");
+                },
+                _ => quote! {
+                    let #raw_ident = form
+                        .get(#key)
+                        .map(|v| v.as_str())
+                        .ok_or_else(|| format!("missing input `{}`", #key))?;
+                },
+            };
+            parse_bindings.push(quote! {
+                #raw_binding
+                let #var_ident: #ty = #parse_expr;
+            });
+            args.push(quote! { #var_ident });
+        }
+
+        let output_format = if graph_outputs.is_empty() {
+            quote! { ::std::result::Result::Ok("ok".to_string()) }
+        } else {
+            quote! { ::std::result::Result::Ok(format!("{:?}", result)) }
+        };
+
+        quote! {{
+            let mut ctx: #context = ::core::default::Default::default();
+            #( #parse_bindings )*
+            let result = #name::__graphium_run(&mut ctx, #( #args ),* );
+            #output_format
+        }}
+    } else {
+        quote! {{
+            let _ = form;
+            ::std::result::Result::Err("playground execution is not supported for this graph (requires a sync graph and supported input types)".to_string())
+        }}
+    };
+
+    quote! {
+        impl ::graphium::GraphPlayground for #name {
+            const PLAYGROUND_SUPPORTED: bool = #supported;
+
+            fn playground_schema() -> ::graphium::PlaygroundSchema {
+                static INPUTS: &[::graphium::PlaygroundParam] = &[ #( #input_params ),* ];
+                static OUTPUTS: &[::graphium::PlaygroundParam] = &[ #( #output_params ),* ];
+                ::graphium::PlaygroundSchema {
+                    inputs: INPUTS,
+                    outputs: OUTPUTS,
+                    context: stringify!(#context),
+                }
+            }
+
+            fn playground_run(
+                form: &::std::collections::HashMap<String, String>,
+            ) -> ::std::result::Result<String, String> {
+                #run_body
+            }
+        }
+    }
 }
 
 /// Root-level bindings needed before the graph body can run.

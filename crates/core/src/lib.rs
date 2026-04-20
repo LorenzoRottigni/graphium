@@ -2,12 +2,17 @@
 //
 // `graph!` emits fully inlined orchestration code.
 
+pub mod export;
 pub mod metrics;
-pub mod test_registry;
 pub mod visualizer;
 
-pub use inventory;
-pub use visualizer::{GraphCase, GraphDef, GraphDefProvider, GraphStep, Visualizer};
+#[cfg(feature = "serialize")]
+pub use serde;
+
+pub use visualizer::{
+    CtxAccess, GraphCase, GraphDef, GraphDefProvider, GraphPlayground, GraphStep, PlaygroundParam,
+    PlaygroundSchema, Visualizer,
+};
 
 pub trait Artifact: Clone + 'static {}
 
@@ -19,6 +24,12 @@ impl<T> Artifact for T where T: Clone + 'static {}
 pub trait Graph<Ctx> {
     /// Runs the graph with mutable context.
     fn run(ctx: &mut Ctx);
+}
+
+/// Trait implemented by macro-generated graphs to expose UI/admin test runners
+/// without any runtime registry/discovery.
+pub trait GraphUiTests {
+    fn graphium_ui_tests() -> Vec<export::TestRun>;
 }
 
 /// Clones or copies an artifact when one hop needs to fan out to more than one

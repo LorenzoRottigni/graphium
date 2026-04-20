@@ -4,7 +4,7 @@ use graphium_macro::{graph, node};
 fn e2e_graph_macro_wires_ctx() {
     #[derive(Default)]
     pub struct Context {
-        pub number: u32
+        pub number: u32,
     }
 
     let mut ctx = Context::default();

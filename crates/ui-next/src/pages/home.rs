@@ -1,0 +1,22 @@
+use std::sync::Arc;
+
+use askama::Template;
+use axum::{extract::State, response::Html};
+
+use crate::state::{graph::UiGraph, AppState};
+
+#[derive(Template)]
+#[template(path = "pages/home.html")]
+pub struct HomeTemplate<'a> {
+    pub title: &'a str,
+    pub graphs: &'a [UiGraph],
+}
+
+pub(crate) async fn home(State(state): State<Arc<AppState>>) -> Html<String> {
+    let template = HomeTemplate {
+        title: "Graphium Home",
+        graphs: &state.graphs.ordered,
+    };
+
+    Html(template.render().unwrap())
+}

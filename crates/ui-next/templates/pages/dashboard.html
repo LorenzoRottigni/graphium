@@ -1,0 +1,49 @@
+{% extends "layouts/shell.html" %}
+
+{% block head %}
+<script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    window.__graphiumMermaid = mermaid;
+    mermaid.initialize({
+        startOnLoad: false,
+        theme: 'dark',
+        securityLevel: 'loose',
+        flowchart: { useMaxWidth: false }
+    });
+    window.__graphiumRenderMermaid = () => {
+        try {
+            if (window.__graphiumMermaid?.run) {
+                window.__graphiumMermaid.run({ querySelector: '.mermaid' });
+            } else if (window.__graphiumMermaid?.init) {
+                window.__graphiumMermaid.init(undefined, document.querySelectorAll('.mermaid'));
+            }
+        } catch (_) { }
+    };
+    window.__graphiumRenderMermaid();
+</script>
+<script>
+    document.addEventListener('htmx:afterSwap', function () {
+        if (window.__graphiumRenderMermaid) window.__graphiumRenderMermaid();
+    });
+</script>
+{% endblock %}
+
+{% block header_right %}
+<div x-data="{ graphId: '{{ selected_id }}' }">
+    <form method="get" action="/graph/{{ selected_id }}" @submit.prevent>
+        <select id="graph-id" x-model="graphId" x-bind:hx-get="'/fragment/graph/' + encodeURIComponent(graphId)"
+            hx-trigger="change" hx-target="#graph-content" hx-swap="innerHTML" hx-indicator="#loading"
+            class="px-3 py-2 rounded-md bg-darkest border border-dark text-white">
+            {% for graph in graphs %}
+            <option value="{{ graph.id }}" {% if graph.id==selected_id %}selected{% endif %}>{{ graph.name }}</option>
+            {% endfor %}
+        </select>
+    </form>
+</div>
+{% endblock %}
+
+{% block content %}
+<section id="graph-content" hx-get="/fragment/graph/{{ selected_id }}" hx-trigger="load" hx-swap="innerHTML"
+    hx-indicator="#loading"></section>
+{% endblock %}
+

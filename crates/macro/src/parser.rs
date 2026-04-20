@@ -1,12 +1,13 @@
 use proc_macro2::TokenTree;
 use syn::parse::discouraged::Speculative;
+use syn::parse_quote;
 use syn::{
-    Expr, Ident, Path, Result, Token, Type,
     parse::{Parse, ParseStream},
+    Expr, Ident, Path, Result, Token, Type,
 };
 
 use crate::shared::{
-    GraphInput, LoopExpr, MetricsSpec, NodeCall, NodeExpr, RouteExpr, WhileExpr, parse_metric_name,
+    parse_metric_name, GraphInput, LoopExpr, MetricsSpec, NodeCall, NodeExpr, RouteExpr, WhileExpr,
 };
 
 // Parsing module for the graph DSL.
@@ -151,9 +152,20 @@ impl Parse for NodeCall {
 
         let (outputs, output_borrows) = if input.peek(Token![->]) {
             input.parse::<Token![->]>()?;
-            let content;
-            syn::parenthesized!(content in input);
-            parse_ident_list(&content)?
+            if input.peek(syn::token::Paren) {
+                let content;
+                syn::parenthesized!(content in input);
+                parse_ident_list(&content)?
+            } else {
+                let is_borrowed = if input.peek(Token![&]) {
+                    input.parse::<Token![&]>()?;
+                    true
+                } else {
+                    false
+                };
+                let ident: Ident = input.parse()?;
+                (vec![ident], vec![is_borrowed])
+            }
         } else {
             (Vec::new(), Vec::new())
         };
@@ -472,6 +484,7 @@ fn parse_graph_input_legacy(input: ParseStream) -> Result<GraphInput> {
     let mut nodes: Option<NodeExpr> = None;
     let mut async_enabled = false;
     let mut metrics = MetricsSpec::default();
+    let tests: Vec<Path> = Vec::new();
 
     while !input.is_empty() {
         if input.peek(Token![async]) {
@@ -524,15 +537,56 @@ fn parse_graph_input_legacy(input: ParseStream) -> Result<GraphInput> {
         input.parse::<Token![,]>().ok();
     }
 
+    let nodes = nodes.ok_or_else(|| input.error("missing `schema`"))?;
+    let context = match context {
+        Some(ctx) => ctx,
+        None => {
+            if node_expr_uses_borrowed_artifacts(&nodes) {
+                return Err(input.error(
+                    "missing `context`; graphs that borrow artifacts (e.g. `(&x)` or `-> (&x)`) must declare a context type that stores borrowed artifacts as fields",
+                ));
+            }
+            parse_quote!(::graphium::Context)
+        }
+    };
+
     Ok(GraphInput {
         name: name.ok_or_else(|| input.error("missing `name`"))?,
-        context: context.ok_or_else(|| input.error("missing `context`"))?,
+        context,
         inputs: graph_inputs,
         outputs: graph_outputs,
-        nodes: nodes.ok_or_else(|| input.error("missing `schema`"))?,
+        nodes,
         async_enabled,
         metrics,
+        tests,
     })
+}
+
+fn node_expr_uses_borrowed_artifacts(node: &NodeExpr) -> bool {
+    match node {
+        NodeExpr::Single(call) => {
+            call.input_borrows.iter().any(|b| *b) || call.output_borrows.iter().any(|b| *b)
+        }
+        NodeExpr::Sequence(nodes) | NodeExpr::Parallel(nodes) => {
+            nodes.iter().any(node_expr_uses_borrowed_artifacts)
+        }
+        NodeExpr::Route(route) => {
+            route.output_borrows.iter().any(|b| *b)
+                || route
+                    .routes
+                    .iter()
+                    .any(|(_, node)| node_expr_uses_borrowed_artifacts(node))
+        }
+        NodeExpr::While(while_expr) => {
+            while_expr.output_borrows.iter().any(|b| *b)
+                || node_expr_uses_borrowed_artifacts(&while_expr.body)
+        }
+        NodeExpr::Loop(loop_expr) => {
+            loop_expr.output_borrows.iter().any(|b| *b)
+                || node_expr_uses_borrowed_artifacts(&loop_expr.body)
+        }
+        NodeExpr::Break => false,
+    }
 }
 
 /// Parses the ergonomic metadata style:
@@ -544,6 +598,7 @@ fn parse_graph_input_with_metadata(input: ParseStream) -> Result<GraphInput> {
     let mut async_enabled = false;
     let mut metrics = MetricsSpec::default();
     let mut metadata_seen = false;
+    let mut tests: Vec<Path> = Vec::new();
 
     while input.peek(Token![#]) {
         input.parse::<Token![#]>()?;
@@ -600,8 +655,14 @@ fn parse_graph_input_with_metadata(input: ParseStream) -> Result<GraphInput> {
             let metrics_content;
             syn::parenthesized!(metrics_content in bracket_content);
             metrics = parse_metrics_list(&metrics_content)?;
+        } else if attr_name == "tests" {
+            let tests_content;
+            syn::parenthesized!(tests_content in bracket_content);
+            let list =
+                syn::punctuated::Punctuated::<Path, Token![,]>::parse_terminated(&tests_content)?;
+            tests.extend(list.into_iter());
         } else {
-            return Err(bracket_content.error("expected `metadata` or `metrics`"));
+            return Err(bracket_content.error("expected `metadata`, `metrics`, or `tests`"));
         }
 
         if !bracket_content.is_empty() {
@@ -626,14 +687,27 @@ fn parse_graph_input_with_metadata(input: ParseStream) -> Result<GraphInput> {
         return Err(input.error("unexpected tokens after graph definition"));
     }
 
+    let context = match context {
+        Some(ctx) => ctx,
+        None => {
+            if node_expr_uses_borrowed_artifacts(&nodes) {
+                return Err(input.error(
+                    "missing `context`; graphs that borrow artifacts (e.g. `(&x)` or `-> (&x)`) must declare a context type that stores borrowed artifacts as fields",
+                ));
+            }
+            parse_quote!(::graphium::Context)
+        }
+    };
+
     Ok(GraphInput {
         name,
-        context: context.ok_or_else(|| input.error("missing `context`"))?,
+        context,
         inputs: graph_inputs,
         outputs: graph_outputs,
         nodes,
         async_enabled,
         metrics,
+        tests,
     })
 }
 

@@ -5,9 +5,9 @@
 
 use quote::quote;
 
-use crate::shared::{ExprShape, Payload, UsageMap, fresh_ident};
+use crate::shared::{fresh_ident, ExprShape, Payload, UsageMap};
 
-use super::{required_artifacts, required_borrowed};
+use super::required_artifacts;
 
 /// Builds a fresh hop payload by moving the requested artifacts out of the
 /// current expression outputs.
@@ -51,6 +51,7 @@ pub(super) fn prepare_parallel_payload(
     counter: &mut usize,
 ) -> (Payload, Vec<proc_macro2::TokenStream>) {
     let mut payload = Payload::new();
+    payload.borrowed = incoming.borrowed.clone();
     let mut bindings = Vec::new();
 
     for artifact in required_artifacts(shape) {
@@ -78,10 +79,6 @@ pub(super) fn prepare_parallel_payload(
         }
 
         *remaining_children -= 1;
-    }
-
-    for artifact in required_borrowed(shape) {
-        payload.insert_borrowed(artifact);
     }
 
     (payload, bindings)
@@ -167,6 +164,7 @@ mod tests {
             "value".into(),
             Ident::new("slot", proc_macro2::Span::call_site()),
         );
+        incoming.insert_borrowed("borrowed".into());
         let shape = ExprShape {
             entry_usage: [("value".into(), 1)].into_iter().collect(),
             entry_borrowed: ["borrowed".into()].into_iter().collect(),

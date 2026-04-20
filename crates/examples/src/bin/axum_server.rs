@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use axum::{Router, response::IntoResponse, routing::get};
+use axum::{response::IntoResponse, routing::get, Router};
 use graphium_macro::{graph, node};
 
 #[derive(Clone)]

@@ -77,8 +77,14 @@ pub(super) fn get_while_node_expr(
         });
         iter_payload.insert_owned(artifact.clone(), iter_var.clone());
     }
+    iter_payload.borrowed = incoming.borrowed.clone();
+    iter_payload
+        .borrowed
+        .extend(body_shape.exit_borrowed.iter().cloned());
     for artifact in &required_borrowed {
-        iter_payload.insert_borrowed(artifact.clone());
+        if !iter_payload.has_borrowed(artifact) {
+            panic!("missing borrowed artifact `{artifact}` for @while body");
+        }
     }
 
     let body_generated =
@@ -156,8 +162,14 @@ pub(super) fn get_loop_node_expr(
         });
         iter_payload.insert_owned(artifact.clone(), iter_var.clone());
     }
+    iter_payload.borrowed = incoming.borrowed.clone();
+    iter_payload
+        .borrowed
+        .extend(body_shape.exit_borrowed.iter().cloned());
     for artifact in &required_borrowed {
-        iter_payload.insert_borrowed(artifact.clone());
+        if !iter_payload.has_borrowed(artifact) {
+            panic!("missing borrowed artifact `{artifact}` for @loop body");
+        }
     }
 
     let body_generated =

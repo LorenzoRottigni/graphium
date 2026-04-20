@@ -7,5 +7,9 @@ edition = "2024"
 name = "graphium"
 
 [dependencies]
-inventory = "0.3"
 prometheus = "0.13"
+serde = { version = "1", features = ["derive"], optional = true }
+
+[features]
+# Enables serde (de)serialization derives for DTOs.
+serialize = ["dep:serde"]

@@ -1,6 +1,8 @@
 #[derive(Clone, Debug)]
 pub struct GraphDef {
     pub name: &'static str,
+    pub inputs: Vec<&'static str>,
+    pub outputs: Vec<&'static str>,
     pub steps: Vec<GraphStep>,
 }
 
@@ -10,37 +12,79 @@ pub struct GraphCase {
     pub steps: Vec<GraphStep>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CtxAccess {
+    None,
+    Ref,
+    Mut,
+}
+
 #[derive(Clone, Debug)]
 pub enum GraphStep {
     Node {
         name: &'static str,
+        ctx: CtxAccess,
         inputs: Vec<&'static str>,
         outputs: Vec<&'static str>,
     },
     Nested {
         graph: Box<GraphDef>,
+        ctx: CtxAccess,
         inputs: Vec<&'static str>,
         outputs: Vec<&'static str>,
     },
     Parallel {
         branches: Vec<Vec<GraphStep>>,
+        inputs: Vec<&'static str>,
+        outputs: Vec<&'static str>,
     },
     Route {
         on: &'static str,
         cases: Vec<GraphCase>,
+        inputs: Vec<&'static str>,
+        outputs: Vec<&'static str>,
     },
     While {
         condition: &'static str,
         body: Vec<GraphStep>,
+        inputs: Vec<&'static str>,
+        outputs: Vec<&'static str>,
     },
     Loop {
         body: Vec<GraphStep>,
+        inputs: Vec<&'static str>,
+        outputs: Vec<&'static str>,
     },
     Break,
 }
 
 pub trait GraphDefProvider {
     fn graph_def() -> GraphDef;
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct PlaygroundParam {
+    pub name: &'static str,
+    pub ty: &'static str,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct PlaygroundSchema {
+    pub inputs: &'static [PlaygroundParam],
+    pub outputs: &'static [PlaygroundParam],
+    pub context: &'static str,
+}
+
+/// Optional UI integration for executing a graph from a web form.
+///
+/// This is primarily intended for local/dev tooling (Graphium UI).
+pub trait GraphPlayground: GraphDefProvider {
+    /// Whether this graph can be executed by the generic UI playground runner.
+    const PLAYGROUND_SUPPORTED: bool;
+
+    fn playground_schema() -> PlaygroundSchema;
+
+    fn playground_run(form: &std::collections::HashMap<String, String>) -> Result<String, String>;
 }
 
 pub struct Visualizer;
@@ -68,13 +112,27 @@ impl Visualizer {
             match step {
                 GraphStep::Node {
                     name,
+                    ctx,
                     inputs,
                     outputs,
                 } => {
-                    println!("{}{}{}{}", prefix, branch, name, format_io(inputs, outputs));
+                    let ctx_label = match ctx {
+                        CtxAccess::None => "",
+                        CtxAccess::Ref => " (ctx: &)",
+                        CtxAccess::Mut => " (ctx: &mut)",
+                    };
+                    println!(
+                        "{}{}{}{}{}",
+                        prefix,
+                        branch,
+                        name,
+                        ctx_label,
+                        format_io(inputs, outputs)
+                    );
                 }
                 GraphStep::Nested {
                     graph,
+                    ctx: _,
                     inputs,
                     outputs,
                 } => {
@@ -92,7 +150,7 @@ impl Visualizer {
                     };
                     self.print_steps(&graph.steps, &next_prefix);
                 }
-                GraphStep::Parallel { branches } => {
+                GraphStep::Parallel { branches, .. } => {
                     println!("{}{}@parallel", prefix, branch);
                     let next_prefix = if is_last {
                         format!("{}  ", prefix)
@@ -111,7 +169,7 @@ impl Visualizer {
                         self.print_steps(branch_steps, &branch_prefix);
                     }
                 }
-                GraphStep::Route { on, cases } => {
+                GraphStep::Route { on, cases, .. } => {
                     println!("{}{}@match {}", prefix, branch, on);
                     let next_prefix = if is_last {
                         format!("{}  ", prefix)
@@ -130,7 +188,9 @@ impl Visualizer {
                         self.print_steps(&case.steps, &case_prefix);
                     }
                 }
-                GraphStep::While { condition, body } => {
+                GraphStep::While {
+                    condition, body, ..
+                } => {
                     println!("{}{}@while {}", prefix, branch, condition);
                     let next_prefix = if is_last {
                         format!("{}  ", prefix)
@@ -139,7 +199,7 @@ impl Visualizer {
                     };
                     self.print_steps(body, &next_prefix);
                 }
-                GraphStep::Loop { body } => {
+                GraphStep::Loop { body, .. } => {
                     println!("{}{}@loop", prefix, branch);
                     let next_prefix = if is_last {
                         format!("{}  ", prefix)

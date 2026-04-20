@@ -1,18 +1,15 @@
-
 use futures::executor::block_on;
-use graphium_macro::{graph, node};
 use graphium;
+use graphium_macro::{graph, node};
 
 #[test]
 fn e2e_graph_async_with_sync_nodes() {
     #[derive(Default)]
     struct Context {
-        pub number: u32
+        pub number: u32,
     }
 
     let mut ctx = Context::default();
-
-    
 
     node! {
         fn set_ctx(ctx: &mut Context) {

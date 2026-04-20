@@ -78,6 +78,7 @@ pub struct GraphInput {
     pub nodes: NodeExpr,
     pub async_enabled: bool,
     pub metrics: MetricsSpec,
+    pub tests: Vec<Path>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
