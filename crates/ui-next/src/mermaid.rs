@@ -15,7 +15,7 @@ pub(crate) fn to_mermaid(
     // Tune layout a bit so linear graphs read cleanly and complex graphs don't
     // feel as cramped by default.
     lines.push(
-        r#"%%{init: {"flowchart": {"curve":"basis","nodeSpacing":50,"rankSpacing":70}} }%%"#
+        r#"%%{init: {"flowchart": {"curve":"basis","nodeSpacing":56,"rankSpacing":80}} }%%"#
             .to_string(),
     );
     // Prefer a horizontal layout so execution reads left-to-right; the UI wraps
@@ -23,24 +23,21 @@ pub(crate) fn to_mermaid(
     lines.push("flowchart LR".to_string());
 
     lines.push(
-        "classDef graphRoot fill:#0b1f3a,stroke:#0b1f3a,color:#ffffff,stroke-width:2px".to_string(),
+        "classDef graphRoot fill:#121214,stroke:#f97316,color:#ffffff,stroke-width:3px".to_string(),
     );
     lines
-        .push("classDef io fill:#fff7ed,stroke:#f97316,color:#7c2d12,stroke-width:2px".to_string());
+        .push("classDef io fill:#1a1410,stroke:#f97316,color:#ffedd5,stroke-width:2px".to_string());
     lines.push(
-        "classDef ctx fill:#eef2ff,stroke:#4f46e5,color:#1e1b4b,stroke-width:2px".to_string(),
+        "classDef ctx fill:#13112b,stroke:#6366f1,color:#e0e7ff,stroke-width:2px".to_string(),
     );
     lines.push(
-        "classDef stepNode fill:#ecfeff,stroke:#06b6d4,color:#083344,stroke-width:2px".to_string(),
+        "classDef stepNode fill:#121214,stroke:#06b6d4,color:#ecfeff,stroke-width:2px".to_string(),
     );
-    lines.push("classDef stepNodeCtxRef stroke:#4f46e5,stroke-width:3px".to_string());
-    lines.push("classDef stepNodeCtxMut stroke:#dc2626,stroke-width:3px".to_string());
+    lines.push("classDef stepNodeCtxRef stroke:#6366f1,stroke-width:4px".to_string());
+    lines.push("classDef stepNodeCtxMut stroke:#ef4444,stroke-width:4px".to_string());
+    lines.push("classDef stepGraph fill:#0b0b0c,stroke:#94a3b8,color:#e2e8f0,stroke-width:2px,stroke-dasharray: 6 4".to_string());
     lines.push(
-        "classDef stepGraph fill:#f1f5f9,stroke:#334155,color:#0f172a,stroke-width:2px,stroke-dasharray: 5 5"
-            .to_string(),
-    );
-    lines.push(
-        "classDef control fill:#fafafa,stroke:#64748b,color:#0f172a,stroke-width:2px".to_string(),
+        "classDef control fill:#0b0b0c,stroke:#9ca3af,color:#ffffff,stroke-width:2px".to_string(),
     );
 
     let root = next_id(&mut counter);

@@ -60,6 +60,43 @@
             .htmx-request#loading {
                 @apply block;
             }
+
+            /* Mermaid flowcharts (Graph structure) */
+            pre.mermaid {
+                @apply text-white;
+            }
+            .mermaid svg {
+                background-color: rgba(18, 18, 20, 0.6); /* darkest @ 60% */
+                border: 1px solid #2a2a2f;
+                border-radius: 0.5rem;
+            }
+            .mermaid svg .edgePath path {
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+            .mermaid svg .edgeLabel {
+                color: #e5e7eb;
+            }
+            .mermaid svg .edgeLabel rect {
+                fill: rgba(11, 11, 12, 0.85);
+            }
+            .mermaid svg .node rect,
+            .mermaid svg .node polygon {
+                transition: stroke 150ms ease, filter 150ms ease;
+            }
+            .mermaid svg .node:hover rect,
+            .mermaid svg .node:hover polygon {
+                stroke: #f97316;
+            }
+            .mermaid svg g.node.graphRoot {
+                filter: drop-shadow(0px 0px 8px rgba(249, 115, 22, 0.25));
+            }
+            .mermaid svg g.node.stepNodeCtxRef {
+                filter: drop-shadow(0px 0px 8px rgba(99, 102, 241, 0.35));
+            }
+            .mermaid svg g.node.stepNodeCtxMut {
+                filter: drop-shadow(0px 0px 8px rgba(239, 68, 68, 0.35));
+            }
         }
     </style>
 
