@@ -1,5 +1,5 @@
 use graphium_macro::{graph, graph_test, node, node_test};
-use graphium_ui_next::{config::GraphiumUiConfig, graphs};
+use graphium_ui::{config::GraphiumUiConfig, graphs};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Status {

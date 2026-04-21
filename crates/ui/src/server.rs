@@ -45,7 +45,7 @@ pub async fn serve(config: GraphiumUiConfig) -> Result<(), UiError> {
         .route("/tests", get(tests_page))
         .route("/tests/run/:id", get(run_test_page).post(run_test_execute))
         .with_state(state)
-        .nest_service("/assets", ServeDir::new("./crates/ui-next/assets"));
+        .nest_service("/assets", ServeDir::new("./crates/ui/assets"));
 
     let listener = tokio::net::TcpListener::bind(config.bind)
         .await

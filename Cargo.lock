@@ -343,7 +343,7 @@ dependencies = [
  "axum",
  "graphium",
  "graphium-macro",
- "graphium-ui-next",
+ "graphium-ui",
  "tokio",
 ]
 
@@ -359,7 +359,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "graphium-ui-next"
+name = "graphium-ui"
 version = "0.1.0"
 dependencies = [
  "askama",

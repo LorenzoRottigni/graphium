@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 pub(crate) fn default_bind() -> SocketAddr {
     "127.0.0.1:4000"
         .parse()
-        .expect("default graphium-ui-next bind must be a valid socket address")
+        .expect("default graphium-ui bind must be a valid socket address")
 }
 
 pub(crate) fn slugify(name: &str) -> String {

@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use graphium_ui_next::config::GraphiumUiConfig;
+use graphium_ui::config::GraphiumUiConfig;
 
 #[tokio::main]
 async fn main() {
@@ -16,8 +16,8 @@ async fn main() {
         prometheus_url: prometheus,
         ..Default::default()
     };
-    if let Err(err) = graphium_ui_next::server::serve(config).await {
-        eprintln!("graphium-ui-next failed: {err}");
+    if let Err(err) = graphium_ui::server::serve(config).await {
+        eprintln!("graphium-ui failed: {err}");
         std::process::exit(1);
     }
 }

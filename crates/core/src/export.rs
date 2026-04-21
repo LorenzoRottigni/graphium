@@ -1,6 +1,6 @@
 //! Export DTOs for Graphium graphs and nodes.
 //!
-//! These types are intended for tooling (e.g. graphium-ui-next) and are designed to
+//! These types are intended for tooling (e.g. graphium-ui) and are designed to
 //! be stable, serde-serializable data structures.
 
 use crate::{CtxAccess, GraphCase, GraphDef, GraphStep, PlaygroundSchema};

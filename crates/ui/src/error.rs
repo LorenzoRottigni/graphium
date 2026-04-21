@@ -7,8 +7,8 @@ pub enum UiError {
 impl std::fmt::Display for UiError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            UiError::EmptyGraphs => write!(f, "graphium-ui-next config requires at least one graph"),
-            UiError::Bind(err) => write!(f, "failed to bind graphium-ui-next server: {err}"),
+            UiError::EmptyGraphs => write!(f, "graphium-ui config requires at least one graph"),
+            UiError::Bind(err) => write!(f, "failed to bind graphium-ui server: {err}"),
         }
     }
 }
