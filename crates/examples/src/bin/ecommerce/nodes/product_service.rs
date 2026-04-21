@@ -1,3 +1,4 @@
+use axum::Json;
 use graphium_macro::node;
 
 node! {
@@ -22,7 +23,7 @@ node! {
     pub async fn product_create(
         ctx: &crate::context::Context,
         new_product: &crate::models::NewProduct,
-    ) -> Result<crate::models::Product, String> {
+    ) -> crate::models::Product {
         let created = sqlx::query_as::<_, crate::models::Product>(
             r#"
             INSERT INTO products (name, price_cents)
@@ -34,8 +35,8 @@ node! {
         .bind(&new_product.price)
         .fetch_one(&ctx.pool)
         .await
-        .map_err(|e| format!("create product failed: {e}"))?;
-        Ok(created)
+        .map_err(|e| format!("create product failed: {e}"));
+        created.unwrap()
     }
 }
 
@@ -128,7 +129,7 @@ node! {
     pub async fn check_product_does_not_exist(
         ctx: &crate::context::Context,
         product_input: &crate::models::NewProduct,  
-    ) -> Result<(), String> {
+    ) {
         let existing = sqlx::query_as::<_, crate::models::Product>(
             r#"
             SELECT id, name, price_cents
@@ -139,11 +140,10 @@ node! {
         .bind(&product_input.name)
         .fetch_optional(&ctx.pool)
         .await
-        .map_err(|e| format!("check product existence failed: {e}"))?;
-        if existing.is_some() {
+        .map_err(|e| format!("check product existence failed: {e}"));
+        if existing.is_ok() {
             panic!("product with the same name already exists");
         }
-        Ok(())
     }
 }
 
@@ -162,13 +162,20 @@ node! {
 node! {
     pub async fn validate_product_input_data(
         product_input: &crate::models::NewProduct,
-    ) -> Result<(), String> {
+    ) {
         if product_input.name.trim().is_empty() {
             panic!("product name cannot be empty");
         }
         if product_input.price <= 0 {
             panic!("price must be greater than zero");
         }
-        Ok(())
+    }
+}
+
+node! {
+    pub async fn serialize_product(
+        product: crate::models::Product,
+    ) -> Json<crate::models::Product> {
+        Json(product)
     }
 }

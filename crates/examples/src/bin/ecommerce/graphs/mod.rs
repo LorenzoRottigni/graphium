@@ -1,3 +1,4 @@
+use axum::Json;
 use graphium_macro::{graph};
 use crate::context::Context;
 use crate::models::{Product};
@@ -8,13 +9,14 @@ graph! {
         context = Context,
         async = true,
         inputs = (name: String, price: String),
-        outputs = (product: Result<Product, String>)
+        outputs = (product_dto: Json<Product>)
     )]
     CreateProductGraph {
         GetProductInput(name, price) -> &product_input >>
         ValidateProductInputData(&product_input) &
         CheckProductDoesNotExist(&product_input) >>
-        ProductCreate(&product_input) -> product
+        ProductCreate(&product_input) -> product >>
+        SerializeProduct(product) -> product_dto
     }
 }
 
