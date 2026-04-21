@@ -2,45 +2,54 @@ use std::collections::HashMap;
 
 use askama::Template;
 
-use crate::state::{test::TestExecution, AppState};
+use crate::server::ListQuery;
+use crate::state::{test::{TestExecution, UiTest}, AppState};
 use crate::util::normalize_symbol;
-
-#[derive(Clone)]
-pub(crate) struct TestListItem {
-    pub(crate) id: String,
-    pub(crate) kind: String,
-    pub(crate) name: String,
-    pub(crate) target: String,
-}
 
 #[derive(Template)]
 #[template(path = "pages/tests.html")]
 pub(crate) struct TestsTemplate {
     pub(crate) title: &'static str,
     pub(crate) active: &'static str,
-    pub(crate) tests: Vec<TestListItem>,
+    pub(crate) tests: Vec<UiTest>,
+    pub(crate) current_page: usize,
+    pub(crate) total_pages: usize,
+    pub(crate) sort: String,
+    pub(crate) search: String,
 }
 
-pub(crate) fn tests_page_html(state: &AppState) -> String {
-    let tests = state
-        .tests
-        .ordered
-        .iter()
-        .map(|t| TestListItem {
-            id: t.dto.id.clone(),
-            kind: t.kind_label().to_string(),
-            name: normalize_symbol(&t.dto.name),
-            target: t.dto.target.clone(),
-        })
-        .collect();
+pub(crate) fn tests_page_html(state: &AppState, query: ListQuery) -> String {
+    let mut tests: Vec<UiTest> = state.tests.ordered.clone();
+
+    if let Some(ref s) = query.search {
+        tests.retain(|t| t.dto.name.to_lowercase().contains(&s.to_lowercase()));
+    }
+
+    tests.sort_by_key(|t| t.dto.name.clone());
+
+    if query.sort.as_deref() == Some("desc") {
+        tests.reverse();
+    }
+
+    let page_size = 20;
+    let page = query.page.unwrap_or(1).max(1);
+    let total = tests.len();
+    let start = (page - 1) * page_size;
+    let end = (start + page_size).min(total);
+    let tests = tests[start..end].to_vec();
+    let total_pages = (total + page_size - 1) / page_size;
 
     TestsTemplate {
         title: "Tests | Graphium UI",
         active: "tests",
         tests,
+        current_page: page,
+        total_pages,
+        sort: query.sort.unwrap_or("asc".to_string()),
+        search: query.search.unwrap_or("".to_string()),
     }
     .render()
-    .expect("render tests template")
+    .expect("render tests")
 }
 
 #[derive(Clone)]

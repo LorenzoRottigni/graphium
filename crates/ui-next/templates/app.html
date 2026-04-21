@@ -43,11 +43,22 @@
             .widget {
                 @apply border-4 border-double border-primary/50 rounded-md p-4 text-white gap-4 flex flex-col rounded-md shadow-md;
             }
+            .scrollbar-primary::-webkit-scrollbar {
+                @apply h-2;
+            }
+
+            .scrollbar-primary::-webkit-scrollbar-track {
+                @apply bg-dark;
+            }
+
+            .scrollbar-primary::-webkit-scrollbar-thumb {
+                @apply bg-primary rounded-full;
+            }
             #loading {
-                display: none;
+                @apply hidden;
             }
             .htmx-request#loading {
-                display: block;
+                @apply block;
             }
         }
     </style>
@@ -77,7 +88,7 @@
     {% block head %}{% endblock %}
 </head>
 
-<body class="bg-[radial-gradient(1200px_600px_at_50%_0%,rgba(249,115,22,0.14),transparent_55%)] bg-black">
+<body class="bg-black">
     {% block body %}{% endblock %}
 </body>
 

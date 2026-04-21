@@ -3,7 +3,7 @@
 {% block title %}{{ title }}{% endblock %}
 
 {% block body %}
-<div class="container mx-auto flex flex-col items-center justify-around text-center py-20 gap-6 min-h-screen">
+<div class="container mx-auto flex flex-col items-center justify-around text-center py-20 gap-6 min-h-screen bg-[radial-gradient(1200px_600px_at_50%_0%,rgba(249,115,22,0.14),transparent_55%)]">
     <img src="https://s3.rottigni.tech/public/github/graphium_logo.png" alt="graphium" width="250px" />
     <h1 class="text-4xl text-white font-bold">Graphium UI</h1>
     <p class="text-base text-light">Visualize your <strong>Graphium</strong> graphs, inspect Prometheus metrics, and run
@@ -25,7 +25,9 @@
             <button type="submit" class="ml-4">Start dashboard</button>
         </form>
         <div class="mt-3 text-sm text-light flex items-center justify-center gap-2">
-            <a class="hover:underline" href="/dashboard">Dashboard</a>
+            <a class="hover:underline" href="/graphs">Graphs</a>
+            <span>·</span>
+            <a class="hover:underline" href="/nodes">Nodes</a>
             <span>·</span>
             <a class="hover:underline" href="/tests">Tests</a>
         </div>
