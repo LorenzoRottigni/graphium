@@ -1,7 +1,7 @@
 
 # GRAPHIUM
 
-<img src="https://s3.rottigni.tech/public/github/graphium_logo.png" alt="graphium" width="250px" />
+<img src="https://s3.rottigni.tech/public/github/graphium/graphium_logo.png" alt="graphium" width="250px" height="250px" />
 
 A Rust framework for defining observable DAG-based computation workflows through declarative procedural macros.
 
@@ -36,9 +36,18 @@ graph! {
 
 ### Result
 
-- Orchestrates the execution of a linear regression model training workflow.
-- Visualizes the graph shape in the provided UI.
-- Visualizes graph and node metrics in the provided UI.
+- Visual representation of the graph workflow and its artifacts propagation:
+
+<img src="https://s3.rottigni.tech/public/github/graphium/graphium_graph_hero.png" alt="graphium" width="800px" />
+
+- Manually execute the graph, visualize graph configured metrics and its raw provided schema:
+
+<img src="https://s3.rottigni.tech/public/github/graphium/graphium_graph_body.png" alt="graphium" width="800px" />
+
+- Inspect graph's nodes in depth, run graph and nodes tests created using graph_test!{} and node_test!{} macros:
+
+<img src="https://s3.rottigni.tech/public/github/graphium/graphium_graph_footer.png" alt="graphium" width="800px" />
+
 
 ### What else you can do?
 
