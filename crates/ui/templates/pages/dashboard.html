@@ -12,6 +12,20 @@
     });
     window.__graphiumRenderMermaid = () => {
         try {
+            // Pre-parse to surface a useful error in the console (Mermaid otherwise
+            // often just shows "Syntax error in text" in the diagram box).
+            document.querySelectorAll('pre.mermaid').forEach((el) => {
+                const text = el.textContent ?? '';
+                try {
+                    const res = window.__graphiumMermaid?.parse?.(text);
+                    if (res && typeof res.then === 'function') {
+                        res.catch((err) => console.error('Mermaid parse failed:', err, text));
+                    }
+                } catch (err) {
+                    console.error('Mermaid parse failed:', err, text);
+                }
+            });
+
             if (window.__graphiumMermaid?.run) {
                 window.__graphiumMermaid.run({ querySelector: '.mermaid' });
             } else if (window.__graphiumMermaid?.init) {
@@ -29,7 +43,7 @@
 {% endblock %}
 
 {% block header_right %}
-<div x-data="{ graphId: '{{ selected_id }}' }">
+<div x-data="{ graphId: '{{ selected_id }}' }" class="flex items-center gap-2">
     <form method="get" action="/graph/{{ selected_id }}" @submit.prevent>
         <select id="graph-id" x-model="graphId" x-bind:hx-get="'/fragment/graph/' + encodeURIComponent(graphId)"
             hx-trigger="change" hx-target="#graph-content" hx-swap="innerHTML" hx-indicator="#loading"
@@ -39,6 +53,11 @@
             {% endfor %}
         </select>
     </form>
+    <a 
+        :href="'/graph/' + encodeURIComponent(graphId)" 
+        class="block bg-primary text-darkest px-4 py-2 rounded-md font-bold text-white hover:bg-primary/80 transition-colors">
+        Load Graph
+    </a>
 </div>
 {% endblock %}
 
@@ -46,4 +65,3 @@
 <section id="graph-content" hx-get="/fragment/graph/{{ selected_id }}" hx-trigger="load" hx-swap="innerHTML"
     hx-indicator="#loading"></section>
 {% endblock %}
-

@@ -1,4 +1,6 @@
-pub(crate) mod graph;
-pub(crate) mod home;
-pub(crate) mod node;
-pub(crate) mod tests;
+pub mod home;
+pub mod graph;
+pub mod graphs;
+pub mod node;
+pub mod nodes;
+pub mod tests;

@@ -1,178 +1,109 @@
 use std::fmt::Write as _;
 use std::sync::Arc;
 
+use askama::Template;
+
 use crate::http::AppHttpError;
-use crate::layout::{render_page, LayoutContext};
 use crate::metrics::{fetch_node_metrics, fmt_metric};
-use crate::state::{AppState, UiNode, UiTest};
-use crate::util::{escape_label, escape_pre};
+use crate::state::AppState;
+use crate::util::normalize_symbol;
+
+#[derive(Clone)]
+pub(crate) struct MetricCards {
+    pub(crate) count: String,
+    pub(crate) errors: String,
+    pub(crate) success: String,
+    pub(crate) fail: String,
+    pub(crate) p50: String,
+    pub(crate) p95: String,
+}
+
+#[derive(Clone)]
+pub(crate) struct TestLink {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) target: String,
+}
+
+#[derive(Template)]
+#[template(path = "pages/node.html")]
+pub(crate) struct NodeTemplate {
+    pub(crate) title: String,
+    pub(crate) active: &'static str,
+
+    pub(crate) label: String,
+    pub(crate) target: String,
+    pub(crate) ctx_access: String,
+
+    pub(crate) metrics_graph: String,
+    pub(crate) metrics_node: String,
+    pub(crate) metrics: MetricCards,
+
+    pub(crate) tests: Vec<TestLink>,
+
+    pub(crate) source_available: bool,
+    pub(crate) source_file: String,
+    pub(crate) source_start: u32,
+    pub(crate) source_end: u32,
+    pub(crate) source_text: String,
+}
 
 pub(crate) async fn node_page_html(
     state: Arc<AppState>,
     node_id: String,
 ) -> Result<String, AppHttpError> {
     let node = state
-        .nodes_by_id
+        .nodes
+        .by_id
         .get(&node_id)
         .ok_or_else(|| AppHttpError::not_found("node not registered"))?;
 
-    let source = read_source_snippet(node);
-
-    let tests: Vec<&UiTest> = state
-        .tests_ordered
+    let tests = state
+        .tests
+        .ordered
         .iter()
         .filter(|test| {
             matches!(test.dto.kind, graphium::export::TestKindDto::Node)
                 && test.dto.target_id == node.dto.id
         })
-        .collect();
+        .map(|test| TestLink {
+            id: test.dto.id.clone(),
+            name: normalize_symbol(&test.dto.name),
+            target: test.dto.target.clone(),
+        })
+        .collect::<Vec<_>>();
 
-    let metrics = fetch_node_metrics(&state, &node.dto.metrics_graph, &node.dto.metrics_node).await;
-
-    let metrics_widget = node_metrics_widget(node, &metrics);
-    let tests_widget = node_tests_widget(&tests);
-    let code_widget = node_code_widget(node, &source);
-
-    let main = format!(
-        r#"<section class="card">
-  <h2 style="margin-top:0;">Node: <code>{label}</code></h2>
-  <p class="muted" style="margin-top:.2rem;">Target: <code>{target}</code></p>
-  <p class="muted" style="margin-top:.2rem;">Context access: <code>{ctx_access}</code></p>
-</section>
-
-<section class="below">
-  <section class="side-stack">
-    {metrics_widget}
-    {tests_widget}
-  </section>
-  <section class="side-stack">
-    {code_widget}
-  </section>
-</section>"#,
-        label = escape_label(&node.dto.label),
-        target = escape_label(&node.dto.target),
-        ctx_access = escape_label(ctx_access_label(node.dto.ctx_access)),
-        metrics_widget = metrics_widget,
-        tests_widget = tests_widget,
-        code_widget = code_widget
-    );
-
-    Ok(render_page(
-        &format!("Node: {} | Graphium UI", node.dto.label),
-        LayoutContext::dashboard(),
-        main,
-    ))
-}
-
-fn node_code_widget(node: &UiNode, snippet: &SourceSnippet) -> String {
-    let header = if snippet.available {
-        let file = node
-            .dto
-            .source
-            .as_ref()
-            .map(|s| s.file.as_str())
-            .unwrap_or("unknown");
-        let start = node.dto.source.as_ref().map(|s| s.start_line).unwrap_or(0);
-        let end = node.dto.source.as_ref().map(|s| s.end_line).unwrap_or(0);
-        format!(
-            r#"<p class="muted" style="margin:.2rem 0;">{file} · lines {start}–{end}</p>"#,
-            file = escape_label(file),
-            start = start,
-            end = end
-        )
-    } else {
-        let extra = node.dto.source.as_ref().map(|s| {
-            format!(
-                r#" <span style="opacity:.75;">({file}:{start}-{end})</span>"#,
-                file = escape_label(&s.file),
-                start = s.start_line,
-                end = s.end_line
-            )
-        });
-        format!(
-            r#"<p class="muted" style="margin:.2rem 0;">Source not available.{}</p>"#,
-            extra.unwrap_or_default()
-        )
+    let metrics_view =
+        fetch_node_metrics(&state, &node.dto.metrics_graph, &node.dto.metrics_node).await;
+    let metrics = MetricCards {
+        count: fmt_metric(metrics_view.count),
+        errors: fmt_metric(metrics_view.errors),
+        success: fmt_metric(metrics_view.success),
+        fail: fmt_metric(metrics_view.fail),
+        p50: fmt_metric(metrics_view.p50_seconds),
+        p95: fmt_metric(metrics_view.p95_seconds),
     };
 
-    let code = if snippet.available {
-        escape_pre(&snippet.text)
-    } else {
-        "".to_string()
-    };
+    let snippet = read_source_snippet(node.dto.source.as_ref());
 
-    format!(
-        r#"<article class="card">
-  <h3 style="margin-top:0;">Code</h3>
-  {header}
-  <pre class="play-out"><code class="language-rust" style="white-space:pre;">{code}</code></pre>
-</article>"#,
-        header = header,
-        code = code
-    )
-}
-
-fn node_metrics_widget(node: &UiNode, metrics: &crate::metrics::NodeMetricsView) -> String {
-    let count = fmt_metric(metrics.count);
-    let errors = fmt_metric(metrics.errors);
-    let success = fmt_metric(metrics.success);
-    let fail = fmt_metric(metrics.fail);
-    let p50 = fmt_metric(metrics.p50_seconds);
-    let p95 = fmt_metric(metrics.p95_seconds);
-
-    format!(
-        r#"<article class="card">
-  <h3 style="margin-top:0;">Metrics</h3>
-  <p class="muted" style="margin-top:0;">
-    Labels: graph=<code>{g}</code> · node=<code>{n}</code>
-  </p>
-  <div class="metrics">
-    <div class="metric"><div class="k">Executions</div><div class="v">{count}</div></div>
-    <div class="metric"><div class="k">Errors</div><div class="v">{errors}</div></div>
-    <div class="metric"><div class="k">Success</div><div class="v">{success}</div></div>
-    <div class="metric"><div class="k">Fail</div><div class="v">{fail}</div></div>
-    <div class="metric"><div class="k">P50 latency (s)</div><div class="v">{p50}</div></div>
-    <div class="metric"><div class="k">P95 latency (s)</div><div class="v">{p95}</div></div>
-  </div>
-</article>"#,
-        g = escape_label(&node.dto.metrics_graph),
-        n = escape_label(&node.dto.metrics_node),
-        count = count,
-        errors = errors,
-        success = success,
-        fail = fail,
-        p50 = p50,
-        p95 = p95
-    )
-}
-
-fn node_tests_widget(tests: &[&UiTest]) -> String {
-    let mut body = String::new();
-    if tests.is_empty() {
-        body.push_str("<p class=\"muted\" style=\"margin:.2rem 0;\">No tests linked.</p>");
-    } else {
-        for test in tests {
-            let _ = writeln!(
-                body,
-                r#"<div class="test-item">
-  <span class="test-target">{}</span>
-  <span class="test-name">{}</span>
-  <a class="test-run" href="/tests/run/{}">Run</a>
-</div>"#,
-                escape_label(&test.dto.target),
-                escape_label(&test.dto.name),
-                escape_label(&test.dto.id)
-            );
-        }
+    Ok(NodeTemplate {
+        title: format!("Node: {} | Graphium UI", node.dto.label),
+        active: "dashboard",
+        label: node.dto.label.clone(),
+        target: node.dto.target.clone(),
+        ctx_access: ctx_access_label(node.dto.ctx_access).to_string(),
+        metrics_graph: node.dto.metrics_graph.clone(),
+        metrics_node: node.dto.metrics_node.clone(),
+        metrics,
+        tests,
+        source_available: snippet.available,
+        source_file: snippet.file,
+        source_start: snippet.start_line,
+        source_end: snippet.end_line,
+        source_text: snippet.text,
     }
-
-    format!(
-        r#"<article class="card">
-  <h3 style="margin-top:0;">Tests</h3>
-  {body}
-</article>"#,
-        body = body
-    )
+    .render()
+    .expect("render node template"))
 }
 
 fn ctx_access_label(access: graphium::export::CtxAccessDto) -> &'static str {
@@ -185,19 +116,28 @@ fn ctx_access_label(access: graphium::export::CtxAccessDto) -> &'static str {
 
 struct SourceSnippet {
     available: bool,
+    file: String,
+    start_line: u32,
+    end_line: u32,
     text: String,
 }
 
-fn read_source_snippet(node: &UiNode) -> SourceSnippet {
-    let Some(span) = node.dto.source.as_ref() else {
+fn read_source_snippet(span: Option<&graphium::export::SourceSpanDto>) -> SourceSnippet {
+    let Some(span) = span else {
         return SourceSnippet {
             available: false,
+            file: String::new(),
+            start_line: 0,
+            end_line: 0,
             text: String::new(),
         };
     };
     if span.start_line == 0 || span.end_line == 0 || span.end_line < span.start_line {
         return SourceSnippet {
             available: false,
+            file: span.file.clone(),
+            start_line: span.start_line,
+            end_line: span.end_line,
             text: String::new(),
         };
     }
@@ -205,6 +145,9 @@ fn read_source_snippet(node: &UiNode) -> SourceSnippet {
     let Ok(src) = std::fs::read_to_string(&span.file) else {
         return SourceSnippet {
             available: false,
+            file: span.file.clone(),
+            start_line: span.start_line,
+            end_line: span.end_line,
             text: String::new(),
         };
     };
@@ -223,6 +166,9 @@ fn read_source_snippet(node: &UiNode) -> SourceSnippet {
 
     SourceSnippet {
         available: !out.is_empty(),
+        file: span.file.clone(),
+        start_line: span.start_line,
+        end_line: span.end_line,
         text: out,
     }
 }

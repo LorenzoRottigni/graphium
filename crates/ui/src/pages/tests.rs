@@ -1,144 +1,133 @@
-use std::fmt::Write as _;
+use std::collections::HashMap;
 
-use crate::layout::{render_page, LayoutContext};
-use crate::state::{AppState, TestExecution, UiTest};
-use crate::util::escape_label;
+use askama::Template;
 
-pub(crate) fn tests_page_html(state: &AppState) -> String {
-    let mut cards = String::new();
-    if state.tests_ordered.is_empty() {
-        cards.push_str("<p class=\"muted\">No tests registered.</p>");
-    } else {
-        for test in &state.tests_ordered {
-            let _ = writeln!(
-                cards,
-                r#"<div class="test-card">
-  <div class="kind">{}</div>
-  <div class="name">{}</div>
-  <div class="target">{}</div>
-  <a class="run" href="/tests/run/{}">Run</a>
-</div>"#,
-                test.kind_label(),
-                escape_label(&test.dto.name),
-                escape_label(&test.dto.target),
-                escape_label(&test.dto.id)
-            );
-        }
+use crate::server::ListQuery;
+use crate::state::{test::{TestExecution, UiTest}, AppState};
+use crate::util::normalize_symbol;
+
+#[derive(Template)]
+#[template(path = "pages/tests.html")]
+pub(crate) struct TestsTemplate {
+    pub(crate) title: &'static str,
+    pub(crate) active: &'static str,
+    pub(crate) tests: Vec<UiTest>,
+    pub(crate) current_page: usize,
+    pub(crate) total_pages: usize,
+    pub(crate) sort: String,
+    pub(crate) search: String,
+}
+
+pub(crate) fn tests_page_html(state: &AppState, query: ListQuery) -> String {
+    let mut tests: Vec<UiTest> = state.tests.ordered.clone();
+
+    if let Some(ref s) = query.search {
+        tests.retain(|t| t.dto.name.to_lowercase().contains(&s.to_lowercase()));
     }
 
-    let main = format!(
-        r#"<section class="card">
-  <h2 style="margin-top:0;">Tests</h2>
-  <section style="display:grid; grid-template-columns: 1fr; gap:.8rem;">
-    {cards}
-  </section>
-</section>"#,
-        cards = cards
-    );
+    tests.sort_by_key(|t| t.dto.name.clone());
 
-    render_page("Tests | Graphium UI", LayoutContext::tests(state), main)
+    if query.sort.as_deref() == Some("desc") {
+        tests.reverse();
+    }
+
+    let page_size = 20;
+    let page = query.page.unwrap_or(1).max(1);
+    let total = tests.len();
+    let start = (page - 1) * page_size;
+    let end = (start + page_size).min(total);
+    let tests = tests[start..end].to_vec();
+    let total_pages = (total + page_size - 1) / page_size;
+
+    TestsTemplate {
+        title: "Tests | Graphium UI",
+        active: "tests",
+        tests,
+        current_page: page,
+        total_pages,
+        sort: query.sort.unwrap_or("asc".to_string()),
+        search: query.search.unwrap_or("".to_string()),
+    }
+    .render()
+    .expect("render tests")
+}
+
+#[derive(Clone)]
+pub(crate) struct ParamView {
+    pub(crate) name: String,
+    pub(crate) is_bool: bool,
+    pub(crate) checked: bool,
+    pub(crate) input_type: String,
+    pub(crate) value: String,
+}
+
+#[derive(Template)]
+#[template(path = "pages/run_test.html")]
+pub(crate) struct RunTestTemplate {
+    pub(crate) title: &'static str,
+    pub(crate) active: &'static str,
+
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) kind: String,
+
+    pub(crate) badge_color: String,
+    pub(crate) badge_label: String,
+    pub(crate) params: Vec<ParamView>,
+    pub(crate) message: String,
 }
 
 pub(crate) fn run_test_page_html(
-    state: &AppState,
-    test: &UiTest,
-    values: &std::collections::HashMap<String, String>,
+    test: &crate::state::test::UiTest,
+    values: &HashMap<String, String>,
     result: Option<&TestExecution>,
 ) -> String {
     let badge_color = result
         .map(|r| if r.passed { "#1f9d55" } else { "#d64545" })
-        .unwrap_or("#7a7a7a");
+        .unwrap_or("#7a7a7a")
+        .to_string();
     let badge_label = result
         .map(|r| if r.passed { "PASS" } else { "FAIL" })
-        .unwrap_or("READY");
+        .unwrap_or("READY")
+        .to_string();
 
-    let mut args_form = String::new();
-    if !test.schema.params.is_empty() {
-        let mut fields = String::new();
-        for param in &test.schema.params {
-            let name = escape_label(&param.name);
+    let params = test
+        .schema
+        .params
+        .iter()
+        .map(|param| {
             let raw_value = values.get(&param.name).cloned().unwrap_or_default();
-            let value = escape_label(&raw_value);
-            match param.kind {
-                graphium::export::TestParamKind::Bool => {
-                    let checked = if raw_value == "true" || raw_value == "1" {
-                        "checked"
-                    } else {
-                        ""
-                    };
-                    let _ = writeln!(
-                        fields,
-                        r#"<label class="play-row" style="gap:.8rem;">
-  <span style="min-width:160px;">{name}</span>
-  <input type="hidden" name="{name_attr}" value="false" />
-  <input type="checkbox" name="{name_attr}" value="true" {checked} />
-</label>"#,
-                        name = name,
-                        name_attr = escape_label(&param.name),
-                        checked = checked
-                    );
-                }
-                graphium::export::TestParamKind::Number => {
-                    let _ = writeln!(
-                        fields,
-                        r#"<label class="play-row">
-  <span style="min-width:160px;">{name}</span>
-  <input class="play-in" type="number" name="{name_attr}" value="{value}" />
-</label>"#,
-                        name = name,
-                        name_attr = escape_label(&param.name),
-                        value = value
-                    );
-                }
-                graphium::export::TestParamKind::Text => {
-                    let _ = writeln!(
-                        fields,
-                        r#"<label class="play-row">
-  <span style="min-width:160px;">{name}</span>
-  <input class="play-in" type="text" name="{name_attr}" value="{value}" />
-</label>"#,
-                        name = name,
-                        name_attr = escape_label(&param.name),
-                        value = value
-                    );
-                }
+            let checked = raw_value == "true" || raw_value == "1";
+            let (is_bool, input_type) = match param.kind {
+                graphium::export::TestParamKind::Bool => (true, "checkbox".to_string()),
+                graphium::export::TestParamKind::Number => (false, "number".to_string()),
+                graphium::export::TestParamKind::Text => (false, "text".to_string()),
+            };
+            ParamView {
+                name: param.name.clone(),
+                is_bool,
+                checked,
+                input_type,
+                value: raw_value,
             }
-        }
+        })
+        .collect::<Vec<_>>();
 
-        args_form = format!(
-            r#"<h3 style="margin-top:1.2rem;">Arguments</h3>
-<form method="post" action="/tests/run/{id}">
-  <section class="play-grid" style="margin-top:.5rem;">
-    {fields}
-  </section>
-  <button class="btn" style="margin-top:.9rem;">Run</button>
-</form>"#,
-            id = escape_label(&test.dto.id),
-            fields = fields
-        );
+    let message = result
+        .map(|r| r.message.clone())
+        .unwrap_or_else(|| "fill arguments and run".to_string());
+
+    RunTestTemplate {
+        title: "Run Test | Graphium UI",
+        active: "tests",
+        id: test.dto.id.clone(),
+        name: normalize_symbol(&test.dto.name),
+        kind: test.kind_label().to_string(),
+        badge_color,
+        badge_label,
+        params,
+        message,
     }
-
-    let main = format!(
-        r#"<section class="card" style="max-width:760px; margin:0 auto;">
-  <h2 style="margin-top:0;">{name}</h2>
-  <p><span style="display:inline-block; padding:.3rem .55rem; border-radius: 999px; color:white; font-size:.82rem; font-weight:700; background:{badge_color};">{badge_label}</span>
-     <small class="muted">({kind})</small></p>
-  {args_form}
-  <h3>Output</h3>
-  <pre class="play-out">{message}</pre>
-  <p><a href="/tests">Back to tests</a></p>
-</section>"#,
-        name = escape_label(&test.dto.name),
-        kind = escape_label(test.kind_label()),
-        message = escape_label(
-            &result
-                .map(|r| r.message.clone())
-                .unwrap_or_else(|| "fill arguments and run".to_string()),
-        ),
-        badge_color = badge_color,
-        badge_label = badge_label,
-        args_form = args_form
-    );
-
-    render_page("Run Test | Graphium UI", LayoutContext::tests(state), main)
+    .render()
+    .expect("render run test template")
 }

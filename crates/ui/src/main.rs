@@ -1,11 +1,11 @@
 use std::net::SocketAddr;
 
-use graphium_ui::GraphiumUiConfig;
+use graphium_ui::config::GraphiumUiConfig;
 
 #[tokio::main]
 async fn main() {
     let bind: SocketAddr = std::env::var("GRAPHIUM_UI_BIND")
-        .unwrap_or_else(|_| "127.0.0.1:4001".to_string())
+        .unwrap_or_else(|_| "127.0.0.1:4000".to_string())
         .parse()
         .expect("valid GRAPHIUM_UI_BIND socket address");
     let prometheus = std::env::var("GRAPHIUM_PROMETHEUS_URL")
@@ -16,7 +16,7 @@ async fn main() {
         prometheus_url: prometheus,
         ..Default::default()
     };
-    if let Err(err) = graphium_ui::serve(config).await {
+    if let Err(err) = graphium_ui::server::serve(config).await {
         eprintln!("graphium-ui failed: {err}");
         std::process::exit(1);
     }

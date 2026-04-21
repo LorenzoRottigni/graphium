@@ -1,0 +1,78 @@
+{% extends "app.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block body %}
+<div class="min-h-screen bg-black text-white relative overflow-hidden">
+    <!-- ambient background (clean but punchy) -->
+    <div class="absolute inset-0 pointer-events-none">
+        <div
+            class="absolute -top-32 left-1/2 -translate-x-1/2 h-[520px] w-[900px] rounded-full blur-3xl opacity-70 bg-[radial-gradient(closest-side,rgba(249,115,22,0.18),transparent)]">
+        </div>
+        <div
+            class="absolute inset-0 opacity-[0.08] bg-[linear-gradient(to_right,#2a2a2f_1px,transparent_1px),linear-gradient(to_bottom,#2a2a2f_1px,transparent_1px)] bg-[size:64px_64px]">
+        </div>
+    </div>
+
+    <div class="container mx-auto max-w-3xl px-4 py-20 relative">
+        <div class="flex flex-col items-center text-center gap-5">
+            <img src="https://s3.rottigni.tech/public/github/graphium_logo.png" alt="graphium" width="240px"
+                class="drop-shadow-[0_0_28px_rgba(249,115,22,0.18)]" />
+
+            <div class="inline-flex items-center gap-2 rounded-full border border-dark bg-darkest/60 px-4 py-2 text-xs text-light mt-20">
+                <span class="h-2 w-2 rounded-full bg-primary"></span>
+                Graphs · Metrics · Tests
+            </div>
+
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-8">
+                <span class="bg-clip-text text-transparent bg-gradient-to-r from-white via-white to-primary/90">Graphium</span>
+                <span class="text-white"> UI</span>
+            </h1>
+
+            <p class="text-sm sm:text-base text-light max-w-2xl leading-relaxed mt-8">
+                Visualize your <strong class="text-white">Graphium</strong> graphs, inspect Prometheus metrics, and run
+                playgrounds/tests from a single dashboard.
+            </p>
+
+            <section
+                class="mt-20 w-full rounded-2xl border border-dark bg-darkest/60 backdrop-blur p-6 shadow-xl shadow-black/30">
+                <div class="flex items-start justify-between gap-4 text-left">
+                    <div>
+                        <h2 class="text-xl font-bold">Open a dashboard</h2>
+                        <p class="mt-1 text-sm text-light">Pick a graph and jump into structure + metrics view.</p>
+                    </div>
+                    <a href="/dashboard"
+                        class="hidden sm:inline text-sm font-semibold text-light hover:text-white transition-colors">Dashboard
+                        →</a>
+                </div>
+
+                <form method="get" action="/select" class="mt-5 flex flex-col sm:flex-row gap-3">
+                    <select name="id" aria-label="Select graph" required class="w-full sm:flex-1">
+                        {% if graphs.is_empty() %}
+                        <option value="" disabled selected>No graphs configured</option>
+                        {% else %}
+                        {% for graph in graphs %}
+                        <option value="{{ graph.id }}">{{ graph.name }}</option>
+                        {% endfor %}
+                        {% endif %}
+                    </select>
+                    <button type="submit" class="w-full sm:w-auto px-6 py-2.5">Start</button>
+                </form>
+
+                <div class="mt-5 text-sm text-light flex flex-wrap items-center justify-center gap-x-3 gap-y-2">
+                    <a class="hover:text-white transition-colors" href="/graphs">Graphs</a>
+                    <span class="opacity-60">·</span>
+                    <a class="hover:text-white transition-colors" href="/nodes">Nodes</a>
+                    <span class="opacity-60">·</span>
+                    <a class="hover:text-white transition-colors" href="/tests">Tests</a>
+                </div>
+            </section>
+
+            <p class="text-base text-light mt-32">Coded with 
+                <span class="text-xl text-primary">&hearts;</span> by 
+                <a href="https://portfolio.rottigni.tech" class="text-white font-bold hover:underline" target="_blank">Lorenzo Rottigni</a>
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}

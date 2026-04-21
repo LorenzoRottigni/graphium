@@ -6,6 +6,8 @@ pub(crate) struct UiTest {
     pub(crate) schema: graphium::export::TestSchema,
     pub(crate) default_values: HashMap<String, String>,
     pub(crate) run: fn(&HashMap<String, String>) -> Result<(), String>,
+    pub(crate) graph_name: String,
+    pub(crate) graph_id: String,
 }
 
 impl UiTest {
