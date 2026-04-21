@@ -17,7 +17,7 @@ async fn main() {
         ..Default::default()
     };
     if let Err(err) = graphium_ui_next::server::serve(config).await {
-        eprintln!("graphium-ui failed: {err}");
+        eprintln!("graphium-ui-next failed: {err}");
         std::process::exit(1);
     }
 }
