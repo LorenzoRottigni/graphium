@@ -29,7 +29,7 @@
 {% endblock %}
 
 {% block header_right %}
-<div x-data="{ graphId: '{{ selected_id }}' }">
+<div x-data="{ graphId: '{{ selected_id }}' }" class="flex items-center gap-2">
     <form method="get" action="/graph/{{ selected_id }}" @submit.prevent>
         <select id="graph-id" x-model="graphId" x-bind:hx-get="'/fragment/graph/' + encodeURIComponent(graphId)"
             hx-trigger="change" hx-target="#graph-content" hx-swap="innerHTML" hx-indicator="#loading"
@@ -39,6 +39,11 @@
             {% endfor %}
         </select>
     </form>
+    <a 
+        :href="'/graph/' + encodeURIComponent(graphId)" 
+        class="block bg-primary text-darkest px-4 py-2 rounded-md font-bold text-white hover:bg-primary/80 transition-colors">
+        Load Graph
+    </a>
 </div>
 {% endblock %}
 

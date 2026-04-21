@@ -43,6 +43,12 @@
             .widget {
                 @apply border-4 border-double border-primary/50 rounded-md p-4 text-white gap-4 flex flex-col rounded-md shadow-md;
             }
+            #loading {
+                display: none;
+            }
+            .htmx-request#loading {
+                display: block;
+            }
         }
     </style>
 
