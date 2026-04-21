@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use quote::{format_ident, quote};
-use syn::{parse_quote, Attribute, Expr, FnArg, Ident, ItemFn, Pat, PatIdent, ReturnType, Type};
+use syn::{Attribute, Expr, FnArg, Ident, ItemFn, Pat, PatIdent, ReturnType, Type, parse_quote};
 
 use crate::shared::pascal_case;
 

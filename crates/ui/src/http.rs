@@ -21,4 +21,3 @@ impl IntoResponse for AppHttpError {
         (self.code, self.message).into_response()
     }
 }
-

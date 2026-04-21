@@ -2,12 +2,12 @@ use proc_macro2::TokenTree;
 use syn::parse::discouraged::Speculative;
 use syn::parse_quote;
 use syn::{
-    parse::{Parse, ParseStream},
     Expr, Ident, Path, Result, Token, Type,
+    parse::{Parse, ParseStream},
 };
 
 use crate::shared::{
-    parse_metric_name, GraphInput, LoopExpr, MetricsSpec, NodeCall, NodeExpr, RouteExpr, WhileExpr,
+    GraphInput, LoopExpr, MetricsSpec, NodeCall, NodeExpr, RouteExpr, WhileExpr, parse_metric_name,
 };
 
 // Parsing module for the graph DSL.

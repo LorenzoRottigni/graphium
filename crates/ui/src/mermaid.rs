@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use graphium::export::{CtxAccessDto, GraphCaseDto, GraphDefDto, GraphStepDto};
 
 use crate::util::{
-    escape_label, next_id, normalize_symbol, parse_artifact, slugify, ArtifactAccess,
+    ArtifactAccess, escape_label, next_id, normalize_symbol, parse_artifact, slugify,
 };
 
 pub(crate) fn to_mermaid(
@@ -497,8 +497,12 @@ fn steps_use_ctx(steps: &[GraphStepDto]) -> bool {
                 if *ctx != CtxAccessDto::None {
                     return true;
                 }
-                if inputs.iter().any(|v| v.starts_with('&') || v.starts_with('*'))
-                    || outputs.iter().any(|v| v.starts_with('&') || v.starts_with('*'))
+                if inputs
+                    .iter()
+                    .any(|v| v.starts_with('&') || v.starts_with('*'))
+                    || outputs
+                        .iter()
+                        .any(|v| v.starts_with('&') || v.starts_with('*'))
                 {
                     return true;
                 }
@@ -512,8 +516,12 @@ fn steps_use_ctx(steps: &[GraphStepDto]) -> bool {
                 if *ctx != CtxAccessDto::None {
                     return true;
                 }
-                if inputs.iter().any(|v| v.starts_with('&') || v.starts_with('*'))
-                    || outputs.iter().any(|v| v.starts_with('&') || v.starts_with('*'))
+                if inputs
+                    .iter()
+                    .any(|v| v.starts_with('&') || v.starts_with('*'))
+                    || outputs
+                        .iter()
+                        .any(|v| v.starts_with('&') || v.starts_with('*'))
                 {
                     return true;
                 }

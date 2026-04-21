@@ -3,7 +3,7 @@ use std::sync::Arc;
 use askama::Template;
 use axum::{extract::State, response::Html};
 
-use crate::state::{graph::UiGraph, AppState};
+use crate::state::{AppState, graph::UiGraph};
 
 #[derive(Template)]
 #[template(path = "pages/home.html")]

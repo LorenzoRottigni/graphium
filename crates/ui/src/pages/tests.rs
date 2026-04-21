@@ -3,7 +3,10 @@ use std::collections::HashMap;
 use askama::Template;
 
 use crate::server::ListQuery;
-use crate::state::{test::{TestExecution, UiTest}, AppState};
+use crate::state::{
+    AppState,
+    test::{TestExecution, UiTest},
+};
 use crate::util::normalize_symbol;
 
 #[derive(Template)]

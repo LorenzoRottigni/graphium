@@ -7,7 +7,7 @@
 use quote::format_ident;
 use syn::{FnArg, ItemFn, Pat, ReturnType, Type};
 
-use crate::shared::{pascal_case, MetricsSpec, NodeDef, ParamKind};
+use crate::shared::{MetricsSpec, NodeDef, ParamKind, pascal_case};
 
 /// Extracts the compile-time metadata the graph macro needs from a node
 /// function signature.

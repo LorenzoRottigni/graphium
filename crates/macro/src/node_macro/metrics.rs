@@ -8,7 +8,7 @@ use quote::quote;
 use syn::punctuated::Punctuated;
 use syn::{Attribute, LitStr, Token};
 
-use crate::shared::{parse_metric_name, MetricsSpec};
+use crate::shared::{MetricsSpec, parse_metric_name};
 
 /// Extracts `#[metrics(...)]` attributes from a node function's attribute list.
 ///

@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use quote::quote;
 
 use crate::shared::{
-    fresh_ident, is_graph_run_path, ArtifactInputKind, GeneratedExpr, NodeCall, Payload, UsageMap,
+    ArtifactInputKind, GeneratedExpr, NodeCall, Payload, UsageMap, fresh_ident, is_graph_run_path,
 };
 
 /// Builds the actual call expression for a node wrapper or nested graph entry
@@ -390,8 +390,8 @@ pub(super) fn graph_type_path(path: &syn::Path) -> syn::Path {
 
 #[cfg(test)]
 mod tests {
-    use quote::{quote, ToTokens};
-    use syn::{parse_quote, Ident};
+    use quote::{ToTokens, quote};
+    use syn::{Ident, parse_quote};
 
     use super::{get_single_node_expr, graph_type_path, node_run_call_tokens};
     use crate::shared::{NodeCall, Payload};
@@ -430,10 +430,12 @@ mod tests {
 
         let generated = get_single_node_expr(&call, &Payload::new(), &mut 0, false);
 
-        assert!(generated
-            .tokens
-            .to_string()
-            .contains("demo :: Worker :: __graphium_run"));
+        assert!(
+            generated
+                .tokens
+                .to_string()
+                .contains("demo :: Worker :: __graphium_run")
+        );
         assert!(generated.outputs.is_empty());
     }
 }

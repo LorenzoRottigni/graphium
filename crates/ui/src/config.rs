@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
 use crate::{
-    state::graph::{graph, UiGraph},
+    state::graph::{UiGraph, graph},
     util::default_bind,
 };
 

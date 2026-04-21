@@ -6,7 +6,7 @@ use askama::Template;
 use crate::http::AppHttpError;
 use crate::mermaid::to_mermaid;
 use crate::metrics::{fetch_metrics, fmt_metric};
-use crate::state::{collect_graph_node_names, graph::UiGraph, AppState};
+use crate::state::{AppState, collect_graph_node_names, graph::UiGraph};
 use crate::util::{normalize_symbol, slugify};
 
 #[derive(Default, Clone)]

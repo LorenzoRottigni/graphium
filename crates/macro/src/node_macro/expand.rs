@@ -7,7 +7,7 @@
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::spanned::Spanned as _;
-use syn::{parse_macro_input, Ident, Path, Type};
+use syn::{Ident, Path, Type, parse_macro_input};
 
 use crate::shared::ParamKind;
 

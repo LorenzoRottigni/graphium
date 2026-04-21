@@ -1,8 +1,8 @@
-use axum::Json;
-use graphium_macro::{graph};
 use crate::context::Context;
-use crate::models::{Product};
+use crate::models::{DeleteResult, Product, UpdateProduct};
 use crate::nodes::product_service::*;
+use axum::Json;
+use graphium_macro::graph;
 
 graph! {
     #[metadata(
@@ -17,6 +17,63 @@ graph! {
         CheckProductDoesNotExist(&product_input) >>
         ProductCreate(&product_input) -> product >>
         SerializeProduct(product) -> product_dto
+    }
+}
+
+graph! {
+    #[metadata(
+        context = Context,
+        async = true,
+        inputs = (product_id: i64),
+        outputs = (product_dto: Json<Product>)
+    )]
+    GetProductGraph {
+        ProductGetById(product_id) -> product_result >>
+        UnwrapResultOptionProduct(product_result) -> product >>
+        SerializeProduct(product) -> product_dto
+    }
+}
+
+graph! {
+    #[metadata(
+        context = Context,
+        async = true,
+        inputs = (limit: i64, offset: i64),
+        outputs = (products_dto: Json<Vec<Product>>)
+    )]
+    ListProductsGraph {
+        ProductList(limit, offset) -> products_result >>
+        UnwrapResultProducts(products_result) -> products >>
+        SerializeProducts(products) -> products_dto
+    }
+}
+
+graph! {
+    #[metadata(
+        context = Context,
+        async = true,
+        inputs = (product_id: i64, update: UpdateProduct),
+        outputs = (product_dto: Json<Product>)
+    )]
+    UpdateProductGraph {
+        ProductUpdate(product_id, update) -> product_result >>
+        UnwrapResultOptionProduct(product_result) -> product >>
+        SerializeProduct(product) -> product_dto
+    }
+}
+
+graph! {
+    #[metadata(
+        context = Context,
+        async = true,
+        inputs = (product_id: i64),
+        outputs = (result_dto: Json<DeleteResult>)
+    )]
+    DeleteProductGraph {
+        ProductDelete(product_id) -> rows_result >>
+        UnwrapResultRowsAffected(rows_result) -> rows >>
+        RowsAffectedToDeleteResult(rows) -> result >>
+        SerializeDeleteResult(result) -> result_dto
     }
 }
 

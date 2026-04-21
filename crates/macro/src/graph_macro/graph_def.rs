@@ -5,7 +5,7 @@
 
 use quote::quote;
 
-use crate::shared::{is_graph_run_path, NodeCall, NodeExpr};
+use crate::shared::{NodeCall, NodeExpr, is_graph_run_path};
 
 use super::graph_type_path;
 
@@ -259,7 +259,9 @@ fn artifact_input_list_tokens(
         .zip(kinds.iter())
         .map(|(ident, kind)| match kind {
             crate::shared::ArtifactInputKind::Owned => quote! { stringify!(#ident) },
-            crate::shared::ArtifactInputKind::Borrowed => quote! { concat!("&", stringify!(#ident)) },
+            crate::shared::ArtifactInputKind::Borrowed => {
+                quote! { concat!("&", stringify!(#ident)) }
+            }
             crate::shared::ArtifactInputKind::Taken => quote! { concat!("*", stringify!(#ident)) },
         })
         .collect()

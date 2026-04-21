@@ -25,7 +25,8 @@ pub(crate) struct NodeItem {
 
 pub(crate) fn nodes_page_html(state: &AppState, query: ListQuery) -> String {
     let mut items: Vec<NodeItem> = state
-        .nodes.ordered
+        .nodes
+        .ordered
         .iter()
         .map(|n| NodeItem {
             name: n.dto.label.clone(),

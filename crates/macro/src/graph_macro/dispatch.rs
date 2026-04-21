@@ -135,7 +135,7 @@ pub(super) fn contains_break(node: &NodeExpr) -> bool {
 #[cfg(test)]
 mod tests {
     use quote::quote;
-    use syn::{parse_quote, Ident};
+    use syn::{Ident, parse_quote};
 
     use super::{capture_outputs, contains_break};
     use crate::shared::{LoopExpr, NodeExpr, Payload};

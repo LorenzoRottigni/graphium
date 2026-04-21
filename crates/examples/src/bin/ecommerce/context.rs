@@ -1,5 +1,3 @@
-
-
 #[derive(Clone)]
 pub struct Context {
     pub pool: sqlx::PgPool,
@@ -16,6 +14,17 @@ impl Context {
             .map_err(|e| format!("postgres connect failed: {e}"))
             .unwrap();
 
-        Self { pool, product_input: crate::models::NewProduct { name: String::new(), price: 0 }, product: crate::models::Product { id: 0, name: String::new(), price: 0 } }
+        Self {
+            pool,
+            product_input: crate::models::NewProduct {
+                name: String::new(),
+                price: 0,
+            },
+            product: crate::models::Product {
+                id: 0,
+                name: String::new(),
+                price: 0,
+            },
+        }
     }
 }

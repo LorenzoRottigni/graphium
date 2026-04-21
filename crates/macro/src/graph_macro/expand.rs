@@ -4,10 +4,10 @@
 //! the lower-level graph-expression helpers.
 
 use proc_macro::TokenStream;
-use quote::{quote, ToTokens as _};
+use quote::{ToTokens as _, quote};
 use syn::parse_macro_input;
 
-use crate::shared::{fresh_ident, GeneratedExpr, GraphInput, MetricsSpec, NodeExpr, Payload};
+use crate::shared::{GeneratedExpr, GraphInput, MetricsSpec, NodeExpr, Payload, fresh_ident};
 
 use super::{get_node_expr, graph_definition_tokens};
 

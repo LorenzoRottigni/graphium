@@ -28,7 +28,7 @@ node! {
             r#"
             INSERT INTO products (name, price_cents)
             VALUES ($1, $2)
-            RETURNING id, name, price_cents
+            RETURNING id, name, price_cents AS price
             "#,
         )
         .bind(&new_product.name)
@@ -47,7 +47,7 @@ node! {
     ) -> Result<Option<crate::models::Product>, String> {
         let product = sqlx::query_as::<_, crate::models::Product>(
             r#"
-            SELECT id, name, price_cents
+            SELECT id, name, price_cents AS price
             FROM products
             WHERE id = $1
             "#,
@@ -68,7 +68,7 @@ node! {
     ) -> Result<Vec<crate::models::Product>, String> {
         let items = sqlx::query_as::<_, crate::models::Product>(
             r#"
-            SELECT id, name, price_cents
+            SELECT id, name, price_cents AS price
             FROM products
             ORDER BY id
             LIMIT $1 OFFSET $2
@@ -94,7 +94,7 @@ node! {
             UPDATE products
             SET price_cents = $2
             WHERE id = $1
-            RETURNING id, name, price_cents
+            RETURNING id, name, price_cents AS price
             "#,
         )
         .bind(product_id)
@@ -128,11 +128,11 @@ node! {
 node! {
     pub async fn check_product_does_not_exist(
         ctx: &crate::context::Context,
-        product_input: &crate::models::NewProduct,  
+        product_input: &crate::models::NewProduct,
     ) {
         let existing = sqlx::query_as::<_, crate::models::Product>(
             r#"
-            SELECT id, name, price_cents
+            SELECT id, name, price_cents AS price
             FROM products
             WHERE name = $1
             "#,
@@ -141,8 +141,10 @@ node! {
         .fetch_optional(&ctx.pool)
         .await
         .map_err(|e| format!("check product existence failed: {e}"));
-        if existing.is_ok() {
-            panic!("product with the same name already exists");
+        match existing {
+            Ok(Some(_)) => panic!("product with the same name already exists"),
+            Ok(None) => {}
+            Err(e) => panic!("{e}"),
         }
     }
 }
@@ -177,5 +179,89 @@ node! {
         product: crate::models::Product,
     ) -> Json<crate::models::Product> {
         Json(product)
+    }
+}
+
+node! {
+    pub async fn product_update(
+        ctx: &crate::context::Context,
+        product_id: i64,
+        update: crate::models::UpdateProduct,
+    ) -> Result<Option<crate::models::Product>, String> {
+        let updated = sqlx::query_as::<_, crate::models::Product>(
+            r#"
+            UPDATE products
+            SET
+                name = COALESCE($2, name),
+                price_cents = COALESCE($3, price_cents)
+            WHERE id = $1
+            RETURNING id, name, price_cents AS price
+            "#,
+        )
+        .bind(product_id)
+        .bind(&update.name)
+        .bind(update.price)
+        .fetch_optional(&ctx.pool)
+        .await
+        .map_err(|e| format!("update product failed: {e}"))?;
+        Ok(updated)
+    }
+}
+
+node! {
+    pub async fn unwrap_result_option_product(
+        product: Result<Option<crate::models::Product>, String>,
+    ) -> crate::models::Product {
+        match product {
+            Ok(Some(product)) => product,
+            Ok(None) => panic!("product not found"),
+            Err(e) => panic!("{e}"),
+        }
+    }
+}
+
+node! {
+    pub async fn unwrap_result_products(
+        products: Result<Vec<crate::models::Product>, String>,
+    ) -> Vec<crate::models::Product> {
+        match products {
+            Ok(products) => products,
+            Err(e) => panic!("{e}"),
+        }
+    }
+}
+
+node! {
+    pub async fn unwrap_result_rows_affected(
+        rows: Result<u64, String>,
+    ) -> u64 {
+        match rows {
+            Ok(rows) => rows,
+            Err(e) => panic!("{e}"),
+        }
+    }
+}
+
+node! {
+    pub async fn rows_affected_to_delete_result(
+        rows: u64,
+    ) -> crate::models::DeleteResult {
+        crate::models::DeleteResult { deleted: rows > 0 }
+    }
+}
+
+node! {
+    pub async fn serialize_products(
+        products: Vec<crate::models::Product>,
+    ) -> Json<Vec<crate::models::Product>> {
+        Json(products)
+    }
+}
+
+node! {
+    pub async fn serialize_delete_result(
+        result: crate::models::DeleteResult,
+    ) -> Json<crate::models::DeleteResult> {
+        Json(result)
     }
 }

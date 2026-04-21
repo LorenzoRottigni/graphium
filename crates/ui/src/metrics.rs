@@ -141,4 +141,3 @@ async fn prometheus_query_scalar(client: &reqwest::Client, base: &str, query: &s
     let value = payload.data.result.first()?.value.1.parse::<f64>().ok()?;
     Some(value)
 }
-

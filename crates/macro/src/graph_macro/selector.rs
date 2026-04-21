@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 
 use quote::quote;
 
-use crate::shared::{fresh_ident, Payload};
+use crate::shared::{Payload, fresh_ident};
 
 /// Describes how a selector or condition receives each parameter.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -323,11 +323,11 @@ pub(super) fn build_selector_call(
 mod tests {
     use std::collections::BTreeSet;
 
-    use syn::{parse_quote, Ident};
+    use syn::{Ident, parse_quote};
 
     use super::{
-        build_condition_bindings, build_selector_bindings, parse_selector_params,
-        selector_params_for_on_expr, SelectorParam,
+        SelectorParam, build_condition_bindings, build_selector_bindings, parse_selector_params,
+        selector_params_for_on_expr,
     };
     use crate::shared::Payload;
 
