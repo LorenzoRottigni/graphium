@@ -25,12 +25,19 @@ pub enum ParamKind {
     Input(usize),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ArtifactInputKind {
+    Owned,
+    Borrowed,
+    Taken,
+}
+
 #[derive(Clone)]
 pub struct NodeCall {
     pub path: Path,
     pub explicit_inputs: bool,
     pub inputs: Vec<Ident>,
-    pub input_borrows: Vec<bool>,
+    pub input_kinds: Vec<ArtifactInputKind>,
     pub outputs: Vec<Ident>,
     pub output_borrows: Vec<bool>,
 }

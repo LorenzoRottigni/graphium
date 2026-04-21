@@ -34,7 +34,8 @@ pub(super) fn get_while_node_expr(
         loop_exit_outputs(&while_expr.outputs, &while_expr.output_borrows, &body_shape);
     let (mut outputs, output_decl_tokens) =
         prepare_output_slots(&exit_outputs, "while_out", counter);
-    outputs.borrowed = exit_borrowed;
+    outputs.borrowed = incoming.borrowed.clone();
+    outputs.borrowed.extend(exit_borrowed);
 
     let cond_params = super::selector_params_for_on_expr(&while_expr.condition);
     let cond_bindings = build_condition_bindings(&cond_params, incoming, counter);
@@ -128,7 +129,8 @@ pub(super) fn get_loop_node_expr(
         loop_exit_outputs(&loop_expr.outputs, &loop_expr.output_borrows, &body_shape);
     let (mut outputs, output_decl_tokens) =
         prepare_output_slots(&exit_outputs, "loop_out", counter);
-    outputs.borrowed = exit_borrowed;
+    outputs.borrowed = incoming.borrowed.clone();
+    outputs.borrowed.extend(exit_borrowed);
 
     let required_owned = required_artifacts(&body_shape);
     let required_borrowed = required_borrowed(&body_shape);

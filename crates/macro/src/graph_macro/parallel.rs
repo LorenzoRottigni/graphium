@@ -168,7 +168,12 @@ pub(super) fn get_parallel_nodes_expr(
                 #( #join_tokens )*
             });
         },
-        outputs,
+        outputs: {
+            // Threaded parallel blocks always use `&ctx` and reject borrowed
+            // artifacts, so ctx-borrowed state can't change here.
+            outputs.borrowed = incoming.borrowed.clone();
+            outputs
+        },
     }
 }
 
@@ -194,13 +199,17 @@ pub(super) fn get_parallel_nodes_expr_sequential(
     outputs.borrowed = exit_borrowed;
 
     let mut blocks = Vec::new();
+    let mut current_borrowed = incoming.borrowed.clone();
     for (node, shape) in nodes.iter().zip(shapes.iter()) {
         let (child_payload, child_bindings) =
             prepare_parallel_payload(incoming, shape, &mut remaining, counter);
+        let mut child_payload = child_payload;
+        child_payload.borrowed = current_borrowed.clone();
 
         let generated = get_node_expr(node, &child_payload, counter, in_loop, async_mode);
         let generated_tokens = generated.tokens;
         let output_assigns = assign_outputs_to_slots(&generated.outputs, &outputs);
+        current_borrowed = generated.outputs.borrowed.clone();
 
         blocks.push(quote! {
             {
@@ -216,7 +225,10 @@ pub(super) fn get_parallel_nodes_expr_sequential(
             #( #output_decl_tokens )*
             #( #blocks )*
         },
-        outputs,
+        outputs: {
+            outputs.borrowed = current_borrowed;
+            outputs
+        },
     }
 }
 
@@ -259,7 +271,7 @@ mod tests {
                 path: parse_quote!(demo::A),
                 explicit_inputs: false,
                 inputs: Vec::new(),
-                input_borrows: Vec::new(),
+                input_kinds: Vec::new(),
                 outputs: Vec::new(),
                 output_borrows: Vec::new(),
             }),
@@ -267,7 +279,7 @@ mod tests {
                 path: parse_quote!(demo::B),
                 explicit_inputs: false,
                 inputs: Vec::new(),
-                input_borrows: Vec::new(),
+                input_kinds: Vec::new(),
                 outputs: Vec::new(),
                 output_borrows: Vec::new(),
             }),

@@ -11,7 +11,7 @@ pub(crate) fn next_suite_id() -> usize {
     NEXT_SUITE_ID.fetch_add(1, Ordering::Relaxed)
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub(crate) struct GraphiumDefaults {
     pub(crate) values: std::collections::HashMap<String, Expr>,
 }

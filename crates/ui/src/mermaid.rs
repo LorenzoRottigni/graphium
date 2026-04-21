@@ -2,7 +2,9 @@ use std::collections::{HashMap, HashSet};
 
 use graphium::export::{CtxAccessDto, GraphCaseDto, GraphDefDto, GraphStepDto};
 
-use crate::util::{escape_label, next_id, normalize_symbol, parse_artifact, slugify};
+use crate::util::{
+    escape_label, next_id, normalize_symbol, parse_artifact, slugify, ArtifactAccess,
+};
 
 pub(crate) fn to_mermaid(
     graph: &GraphDefDto,
@@ -129,7 +131,7 @@ pub(crate) fn to_mermaid(
 #[derive(Clone, Default)]
 struct ArtifactTracker {
     owned: HashMap<String, String>,
-    borrowed_live: HashSet<String>,
+    ctx_live: HashSet<String>,
     inputs_node: Option<String>,
     ctx_node: Option<String>,
 }
@@ -277,8 +279,8 @@ fn render_step(
                 lines.push(format!("{} --> {join}", rendered.tail));
 
                 for output in outputs.iter() {
-                    let (base, borrowed) = parse_artifact(output);
-                    if borrowed {
+                    let (base, access) = parse_artifact(output);
+                    if access != ArtifactAccess::Owned {
                         continue;
                     }
                     if let Some(src) = branch_tracker.owned.get(base) {
@@ -290,14 +292,15 @@ fn render_step(
             // Join outputs are the union of branch exit artifacts.
             let mut borrowed_outputs: Vec<&str> = Vec::new();
             for output in outputs.iter() {
-                let (base, borrowed) = parse_artifact(output);
-                if borrowed {
-                    borrowed_outputs.push(base);
-                } else {
-                    tracker.owned.insert(base.to_string(), join.clone());
+                let (base, access) = parse_artifact(output);
+                match access {
+                    ArtifactAccess::Borrowed => borrowed_outputs.push(base),
+                    ArtifactAccess::Owned | ArtifactAccess::Taken => {
+                        tracker.owned.insert(base.to_string(), join.clone());
+                    }
                 }
             }
-            apply_borrowed_lifetimes(tracker, &join, &borrowed_outputs, lines);
+            apply_ctx_updates(tracker, &join, &borrowed_outputs, lines);
 
             RenderedSteps {
                 head: fork,
@@ -350,8 +353,8 @@ fn render_step(
                 lines.push(format!("{} --> {join}", rendered.tail));
 
                 for output in outputs.iter() {
-                    let (base, borrowed) = parse_artifact(output);
-                    if borrowed {
+                    let (base, access) = parse_artifact(output);
+                    if access != ArtifactAccess::Owned {
                         continue;
                     }
                     if let Some(src) = case_tracker.owned.get(base) {
@@ -362,14 +365,15 @@ fn render_step(
 
             let mut borrowed_outputs: Vec<&str> = Vec::new();
             for output in outputs.iter() {
-                let (base, borrowed) = parse_artifact(output);
-                if borrowed {
-                    borrowed_outputs.push(base);
-                } else {
-                    tracker.owned.insert(base.to_string(), join.clone());
+                let (base, access) = parse_artifact(output);
+                match access {
+                    ArtifactAccess::Borrowed => borrowed_outputs.push(base),
+                    ArtifactAccess::Owned | ArtifactAccess::Taken => {
+                        tracker.owned.insert(base.to_string(), join.clone());
+                    }
                 }
             }
-            apply_borrowed_lifetimes(tracker, &join, &borrowed_outputs, lines);
+            apply_ctx_updates(tracker, &join, &borrowed_outputs, lines);
 
             RenderedSteps {
                 head: decision,
@@ -403,14 +407,15 @@ fn render_step(
 
             let mut borrowed_outputs: Vec<&str> = Vec::new();
             for output in outputs.iter() {
-                let (base, borrowed) = parse_artifact(output);
-                if borrowed {
-                    borrowed_outputs.push(base);
-                } else {
-                    tracker.owned.insert(base.to_string(), exit.clone());
+                let (base, access) = parse_artifact(output);
+                match access {
+                    ArtifactAccess::Borrowed => borrowed_outputs.push(base),
+                    ArtifactAccess::Owned | ArtifactAccess::Taken => {
+                        tracker.owned.insert(base.to_string(), exit.clone());
+                    }
                 }
             }
-            apply_borrowed_lifetimes(tracker, &exit, &borrowed_outputs, lines);
+            apply_ctx_updates(tracker, &exit, &borrowed_outputs, lines);
 
             RenderedSteps {
                 head: cond,
@@ -450,14 +455,15 @@ fn render_step(
             // node to visually indicate exits.
             let mut borrowed_outputs: Vec<&str> = Vec::new();
             for output in outputs.iter() {
-                let (base, borrowed) = parse_artifact(output);
-                if borrowed {
-                    borrowed_outputs.push(base);
-                } else {
-                    tracker.owned.insert(base.to_string(), exit.clone());
+                let (base, access) = parse_artifact(output);
+                match access {
+                    ArtifactAccess::Borrowed => borrowed_outputs.push(base),
+                    ArtifactAccess::Owned | ArtifactAccess::Taken => {
+                        tracker.owned.insert(base.to_string(), exit.clone());
+                    }
                 }
             }
-            apply_borrowed_lifetimes(tracker, &exit, &borrowed_outputs, lines);
+            apply_ctx_updates(tracker, &exit, &borrowed_outputs, lines);
 
             RenderedSteps {
                 head: start,
@@ -491,8 +497,8 @@ fn steps_use_ctx(steps: &[GraphStepDto]) -> bool {
                 if *ctx != CtxAccessDto::None {
                     return true;
                 }
-                if inputs.iter().any(|v| v.starts_with('&'))
-                    || outputs.iter().any(|v| v.starts_with('&'))
+                if inputs.iter().any(|v| v.starts_with('&') || v.starts_with('*'))
+                    || outputs.iter().any(|v| v.starts_with('&') || v.starts_with('*'))
                 {
                     return true;
                 }
@@ -506,8 +512,8 @@ fn steps_use_ctx(steps: &[GraphStepDto]) -> bool {
                 if *ctx != CtxAccessDto::None {
                     return true;
                 }
-                if inputs.iter().any(|v| v.starts_with('&'))
-                    || outputs.iter().any(|v| v.starts_with('&'))
+                if inputs.iter().any(|v| v.starts_with('&') || v.starts_with('*'))
+                    || outputs.iter().any(|v| v.starts_with('&') || v.starts_with('*'))
                 {
                     return true;
                 }
@@ -571,13 +577,14 @@ fn emit_artifact_edges(
     }
 
     let mut borrowed_inputs: Vec<&str> = Vec::new();
+    let mut taken_inputs: Vec<&str> = Vec::new();
     let mut owned_inputs: Vec<&str> = Vec::new();
     for input in inputs {
-        let (base, borrowed) = parse_artifact(input);
-        if borrowed {
-            borrowed_inputs.push(base);
-        } else {
-            owned_inputs.push(base);
+        let (base, access) = parse_artifact(input);
+        match access {
+            ArtifactAccess::Borrowed => borrowed_inputs.push(base),
+            ArtifactAccess::Taken => taken_inputs.push(base),
+            ArtifactAccess::Owned => owned_inputs.push(base),
         }
     }
 
@@ -621,19 +628,41 @@ fn emit_artifact_edges(
         }
     }
 
+    if !taken_inputs.is_empty() {
+        taken_inputs.sort();
+        taken_inputs.dedup();
+        if let Some(ctx) = &tracker.ctx_node {
+            let label = if ctx_access == CtxAccessDto::Mut {
+                format!("take (ctx:&mut): {}", taken_inputs.join(", "))
+            } else {
+                format!("take: {}", taken_inputs.join(", "))
+            };
+            lines.push(format!(
+                r#"{ctx} -. "{}" .-> {step_node}"#,
+                escape_label(&label)
+            ));
+        }
+        for base in &taken_inputs {
+            tracker.ctx_live.remove(*base);
+        }
+    }
+
     let mut borrowed_outputs: Vec<&str> = Vec::new();
     for output in outputs {
-        let (base, borrowed) = parse_artifact(output);
-        if borrowed {
-            borrowed_outputs.push(base);
-            continue;
+        let (base, access) = parse_artifact(output);
+        match access {
+            ArtifactAccess::Borrowed => {
+                borrowed_outputs.push(base);
+                continue;
+            }
+            ArtifactAccess::Owned | ArtifactAccess::Taken => {}
         }
         tracker
             .owned
             .insert(base.to_string(), step_node.to_string());
     }
 
-    apply_borrowed_lifetimes(tracker, step_node, &borrowed_outputs, lines);
+    apply_ctx_updates(tracker, step_node, &borrowed_outputs, lines);
 }
 
 fn parallel_fanout(branches: &[Vec<GraphStepDto>]) -> HashMap<String, usize> {
@@ -658,8 +687,8 @@ fn route_selector_fanout(
 
     let mut out: HashMap<String, usize> = HashMap::new();
     for input in selector_inputs {
-        let (base, borrowed) = parse_artifact(input);
-        if borrowed {
+        let (base, access) = parse_artifact(input);
+        if access != ArtifactAccess::Owned {
             continue;
         }
         if branch_required.contains(base) {
@@ -681,8 +710,8 @@ fn collect_steps_owned_requirements(steps: &[GraphStepDto], out: &mut HashSet<St
         match step {
             GraphStepDto::Node { inputs, .. } | GraphStepDto::Nested { inputs, .. } => {
                 for input in inputs {
-                    let (base, borrowed) = parse_artifact(input);
-                    if !borrowed {
+                    let (base, access) = parse_artifact(input);
+                    if access == ArtifactAccess::Owned {
                         out.insert(base.to_string());
                     }
                 }
@@ -694,8 +723,8 @@ fn collect_steps_owned_requirements(steps: &[GraphStepDto], out: &mut HashSet<St
             }
             GraphStepDto::Route { inputs, cases, .. } => {
                 for input in inputs {
-                    let (base, borrowed) = parse_artifact(input);
-                    if !borrowed {
+                    let (base, access) = parse_artifact(input);
+                    if access == ArtifactAccess::Owned {
                         out.insert(base.to_string());
                     }
                 }
@@ -705,8 +734,8 @@ fn collect_steps_owned_requirements(steps: &[GraphStepDto], out: &mut HashSet<St
             }
             GraphStepDto::While { body, inputs, .. } | GraphStepDto::Loop { body, inputs, .. } => {
                 for input in inputs {
-                    let (base, borrowed) = parse_artifact(input);
-                    if !borrowed {
+                    let (base, access) = parse_artifact(input);
+                    if access == ArtifactAccess::Owned {
                         out.insert(base.to_string());
                     }
                 }
@@ -717,48 +746,26 @@ fn collect_steps_owned_requirements(steps: &[GraphStepDto], out: &mut HashSet<St
     }
 }
 
-fn apply_borrowed_lifetimes(
+fn apply_ctx_updates(
     tracker: &mut ArtifactTracker,
     step_node: &str,
     borrowed_outputs: &[&str],
     lines: &mut Vec<String>,
 ) {
-    let next_live: HashSet<String> = borrowed_outputs.iter().map(|v| (*v).to_string()).collect();
     if let Some(ctx) = &tracker.ctx_node {
-        if !next_live.is_empty() {
-            let mut introduced: Vec<&str> = next_live
-                .iter()
-                .filter(|artifact| !tracker.borrowed_live.contains(*artifact))
-                .map(|s| s.as_str())
-                .collect();
-            introduced.sort();
-            introduced.dedup();
-            if !introduced.is_empty() {
-                let label = format!("ctx set refs: {}", introduced.join(", "));
-                lines.push(format!(
-                    r#"{step_node} -. "{}" .- {ctx}"#,
-                    escape_label(&label)
-                ));
-            }
+        if borrowed_outputs.is_empty() {
+            return;
         }
-
-        if !tracker.borrowed_live.is_empty() {
-            let mut dropped: Vec<&str> = tracker
-                .borrowed_live
-                .iter()
-                .filter(|artifact| !next_live.contains(*artifact))
-                .map(|s| s.as_str())
-                .collect();
-            dropped.sort();
-            dropped.dedup();
-            if !dropped.is_empty() {
-                let label = format!("drop: {}", dropped.join(", "));
-                lines.push(format!(
-                    r#"{step_node} -. "{}" .- {ctx}"#,
-                    escape_label(&label)
-                ));
-            }
-        }
+        let mut outputs = borrowed_outputs.to_vec();
+        outputs.sort();
+        outputs.dedup();
+        let label = format!("ctx set: {}", outputs.join(", "));
+        lines.push(format!(
+            r#"{step_node} -. "{}" .- {ctx}"#,
+            escape_label(&label)
+        ));
     }
-    tracker.borrowed_live = next_live;
+    for base in borrowed_outputs {
+        tracker.ctx_live.insert((*base).to_string());
+    }
 }

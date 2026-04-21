@@ -60,6 +60,7 @@ pub(super) fn get_route_node_expr(
     let selector_bindings = &selector_tokens.bindings;
     let selector_key_ident = crate::shared::fresh_ident(counter, "selector_key", "if");
     let mut arms = Vec::new();
+    let mut branch_borrowed: Vec<BTreeSet<String>> = Vec::new();
     for ((key, node), shape) in route.routes.iter().zip(branch_shapes.iter()) {
         let artifacts = required_artifacts(shape);
         let (branch_payload, branch_bindings) =
@@ -68,6 +69,7 @@ pub(super) fn get_route_node_expr(
         let generated = super::get_node_expr(node, &branch_payload, counter, in_loop, async_mode);
         let generated_tokens = generated.tokens;
         let output_assigns = assign_outputs_to_slots(&generated.outputs, &outputs);
+        branch_borrowed.push(generated.outputs.borrowed.clone());
 
         arms.push(quote! {
             #key => {
@@ -84,6 +86,29 @@ pub(super) fn get_route_node_expr(
             }
         });
     }
+
+    // Borrowed ctx artifacts persist by default; route exits conservatively
+    // keep only those that are live across all branches.
+    let mut routed_borrowed = if branch_borrowed.is_empty() {
+        incoming.borrowed.clone()
+    } else {
+        let mut intersection = branch_borrowed[0].clone();
+        for next in branch_borrowed.iter().skip(1) {
+            intersection = intersection
+                .intersection(next)
+                .cloned()
+                .collect::<BTreeSet<String>>();
+        }
+        intersection
+    };
+    if !route.outputs.is_empty() {
+        for (output, is_borrowed) in route.outputs.iter().zip(route.output_borrows.iter()) {
+            if *is_borrowed {
+                routed_borrowed.insert(output.to_string());
+            }
+        }
+    }
+    outputs.borrowed = routed_borrowed;
 
     GeneratedExpr {
         tokens: quote! {

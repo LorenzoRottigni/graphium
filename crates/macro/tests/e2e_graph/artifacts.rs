@@ -70,8 +70,7 @@ fn e2e_graph_macro_borrows_artifacts() {
 }
 
 #[test]
-#[should_panic]
-fn e2e_graph_macro_reference_last_1_hop() {
+fn e2e_graph_macro_borrowed_ctx_values_persist() {
     #[derive(Default)]
     pub struct Context {
         pub number: u32,
@@ -134,4 +133,37 @@ fn e2e_graph_macro_reference_can_be_forwarded() {
     }
 
     ReferenceGraphForwarded::__graphium_run(&mut ctx);
+}
+
+#[test]
+fn e2e_graph_macro_can_take_ownership_from_ctx() {
+    #[derive(Default)]
+    pub struct Context {
+        pub number: u32,
+    }
+
+    let mut ctx = Context::default();
+
+    node! {
+        fn take_number(number: u32) {
+            assert_eq!(number, 42);
+        }
+    }
+
+    node! {
+        fn assert_taken_clears_ctx(ctx: &Context) {
+            assert_eq!(ctx.number, 0);
+        }
+    }
+
+    graph! {
+        #[metadata(context = Context)]
+        TakeGraph {
+            GetNumber() -> (&number) >>
+            TakeNumber(*number) >>
+            AssertTakenClearsCtx()
+        }
+    }
+
+    TakeGraph::__graphium_run(&mut ctx);
 }

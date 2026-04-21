@@ -219,8 +219,8 @@ fn static_str_list_tokens(values: &[String]) -> Vec<proc_macro2::TokenStream> {
 fn node_call_step_tokens(call: &NodeCall) -> proc_macro2::TokenStream {
     let node_path = &call.path;
     let nested_graph_path = is_graph_run_path(node_path).then(|| graph_type_path(node_path));
-    let input_tokens = artifact_list_tokens(&call.inputs, &call.input_borrows);
-    let output_tokens = artifact_list_tokens(&call.outputs, &call.output_borrows);
+    let input_tokens = artifact_input_list_tokens(&call.inputs, &call.input_kinds);
+    let output_tokens = artifact_output_list_tokens(&call.outputs, &call.output_borrows);
 
     if let Some(graph_path) = nested_graph_path {
         quote! {
@@ -243,12 +243,33 @@ fn node_call_step_tokens(call: &NodeCall) -> proc_macro2::TokenStream {
     }
 }
 
-/// Renders artifact labels, prefixing borrowed values with `&`.
+/// Renders node input artifact labels, prefixing borrowed values with `&` and
+/// taken values with `*`.
 ///
 /// Example:
-/// providing idents `[value, shared]` with borrows `[false, true]` expands into
-/// tokens like `["value", "&shared"]`.
-fn artifact_list_tokens(idents: &[syn::Ident], borrows: &[bool]) -> Vec<proc_macro2::TokenStream> {
+/// providing idents `[value, shared, moved]` with kinds
+/// `[Owned, Borrowed, Taken]` expands into tokens like
+/// `["value", "&shared", "*moved"]`.
+fn artifact_input_list_tokens(
+    idents: &[syn::Ident],
+    kinds: &[crate::shared::ArtifactInputKind],
+) -> Vec<proc_macro2::TokenStream> {
+    idents
+        .iter()
+        .zip(kinds.iter())
+        .map(|(ident, kind)| match kind {
+            crate::shared::ArtifactInputKind::Owned => quote! { stringify!(#ident) },
+            crate::shared::ArtifactInputKind::Borrowed => quote! { concat!("&", stringify!(#ident)) },
+            crate::shared::ArtifactInputKind::Taken => quote! { concat!("*", stringify!(#ident)) },
+        })
+        .collect()
+}
+
+/// Renders node output artifact labels, prefixing borrowed values with `&`.
+fn artifact_output_list_tokens(
+    idents: &[syn::Ident],
+    borrows: &[bool],
+) -> Vec<proc_macro2::TokenStream> {
     idents
         .iter()
         .zip(borrows.iter())
@@ -276,7 +297,7 @@ mod tests {
                 path: parse_quote!(demo::A),
                 explicit_inputs: false,
                 inputs: Vec::new(),
-                input_borrows: Vec::new(),
+                input_kinds: Vec::new(),
                 outputs: Vec::new(),
                 output_borrows: Vec::new(),
             }),
@@ -284,7 +305,7 @@ mod tests {
                 path: parse_quote!(demo::B),
                 explicit_inputs: false,
                 inputs: Vec::new(),
-                input_borrows: Vec::new(),
+                input_kinds: Vec::new(),
                 outputs: Vec::new(),
                 output_borrows: Vec::new(),
             }),

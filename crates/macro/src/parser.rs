@@ -66,7 +66,7 @@ fn parse_primary(input: ParseStream) -> Result<NodeExpr> {
                 input.parse::<Token![->]>()?;
                 let out;
                 syn::parenthesized!(out in input);
-                parse_ident_list(&out)?
+                parse_output_ident_list(&out)?
             } else {
                 (Vec::new(), Vec::new())
             };
@@ -92,7 +92,7 @@ fn parse_primary(input: ParseStream) -> Result<NodeExpr> {
                 input.parse::<Token![->]>()?;
                 let out;
                 syn::parenthesized!(out in input);
-                parse_ident_list(&out)?
+                parse_output_ident_list(&out)?
             } else {
                 (Vec::new(), Vec::new())
             };
@@ -113,7 +113,7 @@ fn parse_primary(input: ParseStream) -> Result<NodeExpr> {
                 input.parse::<Token![->]>()?;
                 let out;
                 syn::parenthesized!(out in input);
-                parse_ident_list(&out)?
+                parse_output_ident_list(&out)?
             } else {
                 (Vec::new(), Vec::new())
             };
@@ -142,10 +142,10 @@ impl Parse for NodeCall {
     fn parse(input: ParseStream) -> Result<Self> {
         let path: Path = input.parse()?;
         let explicit_inputs = input.peek(syn::token::Paren);
-        let (inputs, input_borrows) = if explicit_inputs {
+        let (inputs, input_kinds) = if explicit_inputs {
             let content;
             syn::parenthesized!(content in input);
-            parse_ident_list(&content)?
+            parse_input_ident_list(&content)?
         } else {
             (Vec::new(), Vec::new())
         };
@@ -155,7 +155,7 @@ impl Parse for NodeCall {
             if input.peek(syn::token::Paren) {
                 let content;
                 syn::parenthesized!(content in input);
-                parse_ident_list(&content)?
+                parse_output_ident_list(&content)?
             } else {
                 let is_borrowed = if input.peek(Token![&]) {
                     input.parse::<Token![&]>()?;
@@ -174,7 +174,7 @@ impl Parse for NodeCall {
             path,
             explicit_inputs,
             inputs,
-            input_borrows,
+            input_kinds,
             outputs,
             output_borrows,
         })
@@ -183,7 +183,35 @@ impl Parse for NodeCall {
 
 /// Parses a comma-separated list of artifact names used for node inputs or
 /// outputs in the graph DSL.
-fn parse_ident_list(input: ParseStream) -> Result<(Vec<Ident>, Vec<bool>)> {
+fn parse_input_ident_list(
+    input: ParseStream,
+) -> Result<(Vec<Ident>, Vec<crate::shared::ArtifactInputKind>)> {
+    let mut idents = Vec::new();
+    let mut kinds = Vec::new();
+
+    while !input.is_empty() {
+        let kind = if input.peek(Token![&]) {
+            input.parse::<Token![&]>()?;
+            crate::shared::ArtifactInputKind::Borrowed
+        } else if input.peek(Token![*]) {
+            input.parse::<Token![*]>()?;
+            crate::shared::ArtifactInputKind::Taken
+        } else {
+            crate::shared::ArtifactInputKind::Owned
+        };
+        idents.push(input.parse()?);
+        kinds.push(kind);
+        if input.peek(Token![,]) {
+            input.parse::<Token![,]>()?;
+        } else {
+            break;
+        }
+    }
+
+    Ok((idents, kinds))
+}
+
+fn parse_output_ident_list(input: ParseStream) -> Result<(Vec<Ident>, Vec<bool>)> {
     let mut idents = Vec::new();
     let mut borrows = Vec::new();
 
@@ -191,6 +219,8 @@ fn parse_ident_list(input: ParseStream) -> Result<(Vec<Ident>, Vec<bool>)> {
         let is_borrowed = if input.peek(Token![&]) {
             input.parse::<Token![&]>()?;
             true
+        } else if input.peek(Token![*]) {
+            return Err(input.error("`*artifact` is only supported for node inputs"));
         } else {
             false
         };
@@ -316,7 +346,7 @@ fn parse_if_chain(input: ParseStream) -> Result<RouteExpr> {
         input.parse::<Token![->]>()?;
         let out;
         syn::parenthesized!(out in input);
-        parse_ident_list(&out)?
+        parse_output_ident_list(&out)?
     } else {
         (Vec::new(), Vec::new())
     };
@@ -565,7 +595,10 @@ fn parse_graph_input_legacy(input: ParseStream) -> Result<GraphInput> {
 fn node_expr_uses_borrowed_artifacts(node: &NodeExpr) -> bool {
     match node {
         NodeExpr::Single(call) => {
-            call.input_borrows.iter().any(|b| *b) || call.output_borrows.iter().any(|b| *b)
+            call.input_kinds
+                .iter()
+                .any(|k| *k != crate::shared::ArtifactInputKind::Owned)
+                || call.output_borrows.iter().any(|b| *b)
         }
         NodeExpr::Sequence(nodes) | NodeExpr::Parallel(nodes) => {
             nodes.iter().any(node_expr_uses_borrowed_artifacts)

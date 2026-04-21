@@ -52,10 +52,19 @@ pub(crate) fn next_id(counter: &mut usize) -> String {
     id
 }
 
-pub(crate) fn parse_artifact(value: &str) -> (&str, bool) {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ArtifactAccess {
+    Owned,
+    Borrowed,
+    Taken,
+}
+
+pub(crate) fn parse_artifact(value: &str) -> (&str, ArtifactAccess) {
     if let Some(rest) = value.strip_prefix('&') {
-        (rest, true)
+        (rest, ArtifactAccess::Borrowed)
+    } else if let Some(rest) = value.strip_prefix('*') {
+        (rest, ArtifactAccess::Taken)
     } else {
-        (value, false)
+        (value, ArtifactAccess::Owned)
     }
 }
