@@ -31,3 +31,4 @@
 - instead of exposing Graph::export() implement Serialize trait for Graph.
 - graphium-core instead of "export" should name feature "dto"
 - data buffers analysis
+- graphium-ui use wasm to load config at runtime (Docker build compile rust and wasm is provided to rust at runtime)

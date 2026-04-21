@@ -1,0 +1,31 @@
+FROM rust
+
+ARG CONFIG_FILE=config.rs
+
+WORKDIR /app
+
+RUN cargo new --bin ui && \
+    cd ui && \
+    cargo add graphium graphium-macro graphium-ui axum && \
+    cargo add tokio --features=macros,rt-multi-thread,net
+
+RUN printf '\n[features]\ndefault = ["serialize"]\nserialize = ["graphium/serialize"]\n' >> Cargo.toml
+
+RUN cat <<'EOF' > src/main.rs
+#[tokio::main]
+async fn main() {
+    let config = config::config();
+    if let Err(err) = graphium_ui::server::serve(config).await {
+        eprintln!("graphium-ui example failed: {err}");
+        std::process::exit(1);
+    }
+}
+EOF
+
+COPY ${CONFIG_FILE} src/config.rs
+
+RUN cargo build --release
+
+EXPOSE 4000
+
+CMD ["./target/release/ui"]
