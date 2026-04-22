@@ -179,6 +179,7 @@ node! {
 }
 
 node! {
+    /// this node returns a small, deterministic dataset for the UI demo. In a real graph, this could be a node that loads data from a file or database.
     #[metrics("performance", "count")]
     fn get_dataset() -> Dataset {
         // Small, deterministic dataset for the UI demo.
@@ -258,36 +259,25 @@ node! {
 }
 
 graph! {
-    #[metadata(
-        context = Context,
-        inputs = (left: u32, right: u32),
-        outputs = (left: u32, right: u32)
-    )]
     #[metrics("performance", "count", "success_rate")]
-    InnerGraph {
+    InnerGraph<Context>(left: u32, right: u32) -> (left: u32, right: u32) {
         PipeNumber(left) -> (left) & PipeNumber(right) -> (right) >>
         LeftBranch(left) -> (left) & RightBranch(right) -> (right)
     }
 }
 
 graph! {
-    #[metadata(
-        context = Context,
-        inputs = (left: u32, right: u32),
-        outputs = (left: u32, right: u32)
-    )]
     #[metrics("performance", "count", "success_rate")]
-    DeepInnerGraph {
+    DeepInnerGraph<Context>(left: u32, right: u32) -> (left: u32, right: u32) {
         InnerGraph::run(left, right) -> (left, right) >>
         PipeNumber(left) -> (left) & PipeNumber(right) -> (right)
     }
 }
 
 graph! {
-    #[metadata(context = Context, outputs = (a_split: u32))]
     #[metrics("performance", "errors", "count", "caller", "success_rate", "fail_rate")]
     #[tests(OwnedGraphReturnsNonZeroSplit)]
-    OwnedGraph {
+    OwnedGraph<Context> -> (a_split: u32) {
         GetNumber() -> (a_number) >>
         Duplicate(a_number) -> (left, right) >>
         LeftBranch(left) -> (left) & RightBranch(right) -> (right) >>
@@ -308,10 +298,9 @@ graph! {
 }
 
 graph! {
-    #[metadata(context = Context, outputs = (a_number: u32))]
     #[metrics("performance", "count", "success_rate")]
     #[tests(BorrowedGraphKeepsOwnershipPath)]
-    BorrowedGraph {
+    BorrowedGraph<Context> -> (a_number: u32) {
         GetNumber() -> (a_number) >>
         StoreNumber(a_number) -> (&a_number) >>
         TakeOwnership(&a_number) -> (a_number) >>
@@ -320,10 +309,10 @@ graph! {
 }
 
 graph! {
-    #[metadata(context = Context, outputs = (a_number: u32))]
     #[metrics("performance", "count", "success_rate")]
     #[tests(ControlFlowGraphConvergesToSuccessPath)]
-    ControlFlowGraph {
+    #[deprecated(note = "Testing deprecation")]
+    ControlFlowGraph<Context> -> (a_number: u32) {
         InitAttempts() >>
         @while |ctx: &Context| ctx.attempts < 3 {
             BumpAttempts()
@@ -340,10 +329,14 @@ graph! {
 }
 
 graph! {
-    #[metadata(context = Context, outputs = (model: Model))]
+    /// This is a graph for training a linear regression model on a simple dataset,
+    /// included as a demo of a more complex graph with multiple nodes and edges.
+    /// The graph is not intended to produce a meaningful model, and intentionally
+    /// includes redundant nodes and edges for demonstration purposes.
     #[metrics("performance", "errors", "count", "caller", "success_rate", "fail_rate")]
     #[tests(LinearRegressionGraphExportsDefaultModel)]
-    LinearRegressionGraph {
+    #[tags("ml", "demo")]
+    LinearRegressionGraph<Context> -> (model: Model) {
         GetDataset() -> (&dataset) >>
         ParseInputFeatures(&dataset) -> (input_features) & ParseOutputFeatures(&dataset) -> (output_features) >>
         TrainTestSplit(input_features, output_features) -> (&X_train, &X_test, &y_train, &y_test) >>

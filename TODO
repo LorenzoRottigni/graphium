@@ -16,18 +16,6 @@
             7
         }
     }
-- allow nodes explicit naming:
-    node! {
-        #[name = GetNumber]
-        async fn get_number() -> u32 {
-            7
-        }
-    }
-- allow to unpack references to remove them from ctx after they are read:
-    TrainTestSplit(input_features, output_features) -> (&X_train, &X_test, &y_train, &y_test) >>
-    Preprocessing(*X_train, *X_test) -> (X_train, X_test)
-
-    Once "Preprocessing" node takes in X_train and X_test consumes them from ctx.
-- instead of exposing Graph::export() implement Serialize trait for Graph.
-- graphium-core instead of "export" should name feature "dto"
-- data buffers analysis
+- should ctx be split in a static ctx provided at the beginning and a dynamic one for artifacts references?
+- should graph become Result<> based? adding tokens like ! ? for managing them?
+- graphium-ui use wasm to load config at runtime (Docker build compile rust and wasm is provided to rust at runtime)

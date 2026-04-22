@@ -8,7 +8,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use quote::quote;
 
-use crate::shared::{fresh_ident, is_graph_run_path, GeneratedExpr, NodeCall, Payload, UsageMap};
+use crate::shared::{
+    ArtifactInputKind, GeneratedExpr, NodeCall, Payload, UsageMap, fresh_ident, is_graph_run_path,
+};
 
 /// Builds the actual call expression for a node wrapper or nested graph entry
 /// point, including the async `.await` when required.
@@ -57,7 +59,10 @@ pub(super) fn get_single_node_expr(
 ) -> GeneratedExpr {
     let node_path = &call.path;
     let nested_graph_path = is_graph_run_path(node_path).then(|| graph_type_path(node_path));
-    let has_borrowed_inputs = call.input_borrows.iter().any(|is_borrowed| *is_borrowed);
+    let has_borrowed_inputs = call
+        .input_kinds
+        .iter()
+        .any(|kind| *kind == ArtifactInputKind::Borrowed);
 
     if nested_graph_path.is_some() && has_borrowed_inputs {
         panic!("borrowed artifacts are not supported when calling nested graphs");
@@ -78,15 +83,23 @@ pub(super) fn get_single_node_expr(
         };
     }
 
+    let mut next_borrowed = incoming.borrowed.clone();
+
     let mut remaining = UsageMap::new();
-    for (input, is_borrowed) in call.inputs.iter().zip(call.input_borrows.iter()) {
-        if *is_borrowed {
+    for (input, kind) in call.inputs.iter().zip(call.input_kinds.iter()) {
+        if *kind != ArtifactInputKind::Owned {
             continue;
         }
         *remaining.entry(input.to_string()).or_insert(0) += 1;
     }
 
-    let mut arg_vars = Vec::with_capacity(call.inputs.len());
+    let arg_idents: Vec<syn::Ident> = call
+        .inputs
+        .iter()
+        .map(|input| fresh_ident(counter, "arg", &input.to_string()))
+        .collect();
+
+    let arg_vars = arg_idents.clone();
     let mut input_bindings = Vec::with_capacity(call.inputs.len());
     let mut input_by_name: BTreeMap<String, (syn::Ident, bool)> = BTreeMap::new();
     let mut ctx_clone_bindings = Vec::new();
@@ -106,24 +119,63 @@ pub(super) fn get_single_node_expr(
         })
         .collect();
 
-    for (input, is_borrowed) in call.inputs.iter().zip(call.input_borrows.iter()) {
-        let artifact_name = input.to_string();
-        let arg_ident = fresh_ident(counter, "arg", &artifact_name);
-
-        if *is_borrowed {
-            if !incoming.has_borrowed(&artifact_name) {
-                panic!("missing borrowed artifact `{artifact_name}` for node call");
-            }
-            input_bindings.push(quote! {
-                let #arg_ident = &ctx.#input;
-            });
-            input_by_name
-                .entry(artifact_name.clone())
-                .or_insert((arg_ident.clone(), true));
-            arg_vars.push(arg_ident);
+    // Bind taken inputs first so later `&ctx.field` borrows don't conflict with
+    // `&mut ctx.other_field` takes.
+    for ((input, kind), arg_ident) in call
+        .inputs
+        .iter()
+        .zip(call.input_kinds.iter())
+        .zip(arg_idents.iter())
+    {
+        if *kind != ArtifactInputKind::Taken {
             continue;
         }
+        let artifact_name = input.to_string();
+        if !incoming.has_borrowed(&artifact_name) {
+            panic!("missing borrowed artifact `{artifact_name}` for node call");
+        }
+        next_borrowed.remove(&artifact_name);
+        input_bindings.push(quote! {
+            let #arg_ident = ::core::mem::take(&mut ctx.#input);
+        });
+        input_by_name
+            .entry(artifact_name.clone())
+            .or_insert((arg_ident.clone(), false));
+    }
 
+    // Then bind borrowed inputs.
+    for ((input, kind), arg_ident) in call
+        .inputs
+        .iter()
+        .zip(call.input_kinds.iter())
+        .zip(arg_idents.iter())
+    {
+        if *kind != ArtifactInputKind::Borrowed {
+            continue;
+        }
+        let artifact_name = input.to_string();
+        if !incoming.has_borrowed(&artifact_name) {
+            panic!("missing borrowed artifact `{artifact_name}` for node call");
+        }
+        input_bindings.push(quote! {
+            let #arg_ident = &ctx.#input;
+        });
+        input_by_name
+            .entry(artifact_name.clone())
+            .or_insert((arg_ident.clone(), true));
+    }
+
+    // Finally bind owned inputs from the hop payload.
+    for ((input, kind), arg_ident) in call
+        .inputs
+        .iter()
+        .zip(call.input_kinds.iter())
+        .zip(arg_idents.iter())
+    {
+        if *kind != ArtifactInputKind::Owned {
+            continue;
+        }
+        let artifact_name = input.to_string();
         let source = incoming
             .get_owned(&artifact_name)
             .unwrap_or_else(|| panic!("missing artifact `{artifact_name}` for node call"));
@@ -151,7 +203,6 @@ pub(super) fn get_single_node_expr(
         input_by_name
             .entry(artifact_name.clone())
             .or_insert((arg_ident.clone(), false));
-        arg_vars.push(arg_ident);
     }
 
     if !borrowed_outputs.is_empty() {
@@ -190,6 +241,8 @@ pub(super) fn get_single_node_expr(
             async_mode,
         );
 
+        let mut outputs = Payload::new();
+        outputs.borrowed = next_borrowed.clone();
         return GeneratedExpr {
             tokens: quote! {
                 #( #input_bindings )*
@@ -197,7 +250,7 @@ pub(super) fn get_single_node_expr(
                 #run_call;
                 #( #ctx_store_bindings )*
             },
-            outputs: Payload::new(),
+            outputs,
         };
     }
 
@@ -249,7 +302,10 @@ pub(super) fn get_single_node_expr(
                     #( #ctx_store_bindings )*
                     #store_binding
                 },
-                outputs,
+                outputs: {
+                    outputs.borrowed.extend(next_borrowed.iter().cloned());
+                    outputs
+                },
             };
         }
 
@@ -263,7 +319,10 @@ pub(super) fn get_single_node_expr(
                 let mut #output_var = ::std::option::Option::Some(#run_call);
                 #( #ctx_store_bindings )*
             },
-            outputs,
+            outputs: {
+                outputs.borrowed.extend(next_borrowed.iter().cloned());
+                outputs
+            },
         }
     } else {
         let tuple_vars: Vec<syn::Ident> = call
@@ -304,7 +363,10 @@ pub(super) fn get_single_node_expr(
                 #( #ctx_store_bindings )*
                 #( #borrowed_store )*
             },
-            outputs,
+            outputs: {
+                outputs.borrowed.extend(next_borrowed.iter().cloned());
+                outputs
+            },
         }
     }
 }
@@ -328,8 +390,8 @@ pub(super) fn graph_type_path(path: &syn::Path) -> syn::Path {
 
 #[cfg(test)]
 mod tests {
-    use quote::{quote, ToTokens};
-    use syn::{parse_quote, Ident};
+    use quote::{ToTokens, quote};
+    use syn::{Ident, parse_quote};
 
     use super::{get_single_node_expr, graph_type_path, node_run_call_tokens};
     use crate::shared::{NodeCall, Payload};
@@ -361,17 +423,19 @@ mod tests {
             path: parse_quote!(demo::Worker),
             explicit_inputs: false,
             inputs: Vec::new(),
-            input_borrows: Vec::new(),
+            input_kinds: Vec::new(),
             outputs: Vec::new(),
             output_borrows: Vec::new(),
         };
 
         let generated = get_single_node_expr(&call, &Payload::new(), &mut 0, false);
 
-        assert!(generated
-            .tokens
-            .to_string()
-            .contains("demo :: Worker :: __graphium_run"));
+        assert!(
+            generated
+                .tokens
+                .to_string()
+                .contains("demo :: Worker :: __graphium_run")
+        );
         assert!(generated.outputs.is_empty());
     }
 }

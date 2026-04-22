@@ -53,20 +53,14 @@ enum Status {
 }
 
 graph! {
-    #[metadata(
-        context = Context,
-        inputs = (a_split: u32, b_split: u32),
-        outputs = (a_split: u32, b_split: u32)
-    )]
-    InnerGraph {
+    InnerGraph<Context>(a_split: u32, b_split: u32) -> (a_split: u32, b_split: u32) {
         InnerStart(a_split, b_split) -> (a_split, b_split) >>
         InnerFinish(a_split, b_split) -> (a_split, b_split)
     }
 }
 
 graph! {
-    #[metadata(context = Context)]
-    OwnedGraph {
+    OwnedGraph<Context> {
         GetNumber() -> (a_number) >>
         Duplicate(a_number) -> (a_split, b_split) >>
         LeftBranch(a_split) -> (a_split) & RightBranch(b_split) -> (b_split) >>

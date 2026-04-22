@@ -13,12 +13,16 @@ pub(crate) struct GraphsTemplate {
     pub(crate) total_pages: usize,
     pub(crate) sort: String,
     pub(crate) search: String,
+    pub(crate) tag: String,
+    pub(crate) deprecated: String,
 }
 
 #[derive(Clone)]
 pub(crate) struct GraphItem {
     pub(crate) name: String,
     pub(crate) url: String,
+    pub(crate) tags: Vec<String>,
+    pub(crate) deprecated: bool,
 }
 
 pub(crate) fn graphs_page_html(state: &AppState, query: ListQuery) -> String {
@@ -29,11 +33,24 @@ pub(crate) fn graphs_page_html(state: &AppState, query: ListQuery) -> String {
         .map(|g| GraphItem {
             name: g.name.clone(),
             url: format!("/graph/{}", g.id),
+            tags: g.export.tags.clone(),
+            deprecated: g.export.deprecated,
         })
         .collect();
 
     if let Some(ref s) = query.search {
         items.retain(|i| i.name.to_lowercase().contains(&s.to_lowercase()));
+    }
+    if let Some(ref tag) = query.tag {
+        let tag = tag.trim();
+        if !tag.is_empty() {
+            items.retain(|i| i.tags.iter().any(|t| t == tag));
+        }
+    }
+    match query.deprecated.as_deref() {
+        Some("true") => items.retain(|i| i.deprecated),
+        Some("false") => items.retain(|i| !i.deprecated),
+        _ => {}
     }
 
     items.sort_by_key(|i| i.name.clone());
@@ -58,6 +75,8 @@ pub(crate) fn graphs_page_html(state: &AppState, query: ListQuery) -> String {
         total_pages,
         sort: query.sort.unwrap_or("asc".to_string()),
         search: query.search.unwrap_or("".to_string()),
+        tag: query.tag.unwrap_or_default(),
+        deprecated: query.deprecated.unwrap_or_default(),
     }
     .render()
     .expect("render graphs")

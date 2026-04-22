@@ -1,10 +1,4 @@
-use crate::state::{
-    graph::UiGraph,
-    index::UiIndex,
-    node::UiNode,
-    test::UiTest,
-    AppState,
-};
+use crate::state::{AppState, graph::UiGraph, index::UiIndex, node::UiNode, test::UiTest};
 
 pub(crate) fn build_state(prometheus_url: String, graphs: Vec<UiGraph>) -> AppState {
     let mut graphs = UiIndex::from_ordered(graphs, |g| &g.id);
@@ -43,7 +37,16 @@ pub(crate) fn build_state(prometheus_url: String, graphs: Vec<UiGraph>) -> AppSt
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     tests_ordered.retain(|t| seen.insert(t.dto.id.clone()));
 
-    let mut nodes_ordered: Vec<UiNode> = bundle.graphs.iter().flat_map(|g| g.nodes.iter().map(|n| UiNode { dto: n.clone(), graph_id: g.id.clone() })).collect();
+    let mut nodes_ordered: Vec<UiNode> = bundle
+        .graphs
+        .iter()
+        .flat_map(|g| {
+            g.nodes.iter().map(|n| UiNode {
+                dto: n.clone(),
+                graph_id: g.id.clone(),
+            })
+        })
+        .collect();
     nodes_ordered.sort_by_key(|n| n.dto.label.to_string());
     let nodes = UiIndex::from_ordered(nodes_ordered, |n| &n.dto.id);
 

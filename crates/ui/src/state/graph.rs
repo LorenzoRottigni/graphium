@@ -30,6 +30,10 @@ impl UiGraph {
             export: graphium::export::GraphDto {
                 id,
                 name: def.name.clone(),
+                docs: None,
+                tags: Vec::new(),
+                deprecated: false,
+                deprecated_reason: None,
                 schema: None,
                 def,
                 raw_schema: None,

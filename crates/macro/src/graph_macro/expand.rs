@@ -4,10 +4,11 @@
 //! the lower-level graph-expression helpers.
 
 use proc_macro::TokenStream;
-use quote::{quote, ToTokens as _};
+use quote::{ToTokens as _, quote};
 use syn::parse_macro_input;
 
-use crate::shared::{fresh_ident, GeneratedExpr, GraphInput, MetricsSpec, NodeExpr, Payload};
+use crate::shared::{GeneratedExpr, GraphInput, MetricsSpec, NodeExpr, Payload, fresh_ident};
+use crate::shared::doc_string_from_attrs;
 
 use super::{get_node_expr, graph_definition_tokens};
 
@@ -41,6 +42,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
     let raw_schema_lit = syn::LitStr::new(&raw_schema_string, proc_macro2::Span::call_site());
 
     let GraphInput {
+        attrs,
         name,
         context,
         inputs: graph_inputs,
@@ -49,7 +51,31 @@ pub fn expand(input: TokenStream) -> TokenStream {
         async_enabled,
         metrics,
         tests,
+        tags,
+        deprecated,
+        deprecated_reason,
     } = parse_macro_input!(input as GraphInput);
+
+    let graph_docs = doc_string_from_attrs(&attrs);
+    let graph_docs_tokens = match graph_docs {
+        Some(value) => {
+            let lit = syn::LitStr::new(&value, proc_macro2::Span::call_site());
+            quote! { ::std::option::Option::Some(#lit.to_string()) }
+        }
+        None => quote! { ::std::option::Option::None },
+    };
+    let graph_tag_tokens: Vec<_> = tags
+        .iter()
+        .map(|t| syn::LitStr::new(t, proc_macro2::Span::call_site()))
+        .collect();
+    let graph_deprecated_token = deprecated;
+    let graph_deprecated_reason_tokens = match deprecated_reason {
+        Some(value) => {
+            let lit = syn::LitStr::new(&value, proc_macro2::Span::call_site());
+            quote! { ::std::option::Option::Some(#lit.to_string()) }
+        }
+        None => quote! { ::std::option::Option::None },
+    };
 
     let mut counter = 0usize;
     let root_setup = build_root_setup(&graph_inputs, &mut counter);
@@ -215,6 +241,10 @@ pub fn expand(input: TokenStream) -> TokenStream {
                 ::graphium::export::GraphDto {
                     id: ::graphium::export::slugify(def.name),
                     name: def.name.to_string(),
+                    docs: #graph_docs_tokens,
+                    tags: vec![ #( #graph_tag_tokens.to_string() ),* ],
+                    deprecated: #graph_deprecated_token,
+                    deprecated_reason: #graph_deprecated_reason_tokens,
                     schema: ::std::option::Option::Some(::graphium::export::GraphSchemaDto {
                         context: stringify!(#context).to_string(),
                         inputs: vec![ #( #export_inputs ),* ],

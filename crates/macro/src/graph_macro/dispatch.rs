@@ -25,7 +25,7 @@ pub(crate) fn get_node_expr(
     in_loop: bool,
     async_mode: bool,
 ) -> GeneratedExpr {
-    let generated = match node {
+    match node {
         NodeExpr::Single(call) => get_single_node_expr(call, incoming, counter, async_mode),
         NodeExpr::Sequence(nodes) => {
             get_sequence_nodes_expr(nodes, incoming, counter, in_loop, async_mode)
@@ -49,30 +49,6 @@ pub(crate) fn get_node_expr(
                 outputs: Payload::new(),
             }
         }
-    };
-
-    if matches!(node, NodeExpr::Break) || incoming.borrowed.is_empty() {
-        return generated;
-    }
-
-    let expired: Vec<_> = incoming
-        .borrowed
-        .iter()
-        .filter(|artifact| !generated.outputs.borrowed.contains(*artifact))
-        .map(|artifact| syn::Ident::new(artifact, proc_macro2::Span::call_site()))
-        .collect();
-
-    if expired.is_empty() {
-        return generated;
-    }
-
-    let tokens = generated.tokens;
-    GeneratedExpr {
-        tokens: quote! {
-            #tokens
-            #( ctx.#expired = ::core::default::Default::default(); )*
-        },
-        outputs: generated.outputs,
     }
 }
 
@@ -159,7 +135,7 @@ pub(super) fn contains_break(node: &NodeExpr) -> bool {
 #[cfg(test)]
 mod tests {
     use quote::quote;
-    use syn::{parse_quote, Ident};
+    use syn::{Ident, parse_quote};
 
     use super::{capture_outputs, contains_break};
     use crate::shared::{LoopExpr, NodeExpr, Payload};

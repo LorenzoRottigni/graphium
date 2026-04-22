@@ -19,9 +19,8 @@ fn e2e_graph_metrics_api_emits_prometheus_metrics() {
     }
 
     graph! {
-        #[metadata(context = graphium::Context, outputs = (result: u32))]
         #[metrics("performance", "count", "success_rate")]
-        MetricsGraph {
+        MetricsGraph<graphium::Context> -> (result: u32) {
             Seed() -> (left, right) >>
             Sum(left, right) -> (result)
         }

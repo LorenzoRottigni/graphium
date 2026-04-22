@@ -22,8 +22,7 @@ fn e2e_graph_while_loop() {
     }
 
     graph! {
-        #[metadata(context = Context)]
-        WhileGraph {
+        WhileGraph<Context> {
             InitCtx() >>
             @while |ctx: &Context| ctx.number < 3 {
                 IncCtx()
@@ -61,8 +60,7 @@ fn e2e_graph_loop_with_break() {
     }
 
     graph! {
-        #[metadata(context = Context)]
-        LoopBreakGraph {
+        LoopBreakGraph<Context> {
             InitCtx() >>
             @loop {
                 IncCtx() >>

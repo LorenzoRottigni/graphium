@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use axum::Form;
+use axum::Router;
 use axum::extract::{Path, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
-use axum::Form;
-use axum::Router;
 use serde::Deserialize;
 use tower_http::services::ServeDir;
 
@@ -14,14 +14,19 @@ pub(crate) struct ListQuery {
     pub(crate) page: Option<usize>,
     pub(crate) sort: Option<String>,
     pub(crate) search: Option<String>,
+    pub(crate) tag: Option<String>,
+    pub(crate) deprecated: Option<String>,
 }
 
 use crate::{
     config::GraphiumUiConfig,
     error::UiError,
     http::AppHttpError,
-    pages::{graph as graph_pages, graphs as graphs_pages, home as home_pages, node as node_pages, nodes as nodes_pages, tests as tests_pages},
-    state::{build::build_state, AppState},
+    pages::{
+        graph as graph_pages, graphs as graphs_pages, home as home_pages, node as node_pages,
+        nodes as nodes_pages, tests as tests_pages,
+    },
+    state::{AppState, build::build_state},
 };
 
 pub async fn serve(config: GraphiumUiConfig) -> Result<(), UiError> {
@@ -67,11 +72,17 @@ async fn dashboard(State(state): State<Arc<AppState>>) -> Html<String> {
     Html(graph_pages::dashboard_page_html(&state, &default_id))
 }
 
-async fn graphs(axum::extract::Query(query): axum::extract::Query<ListQuery>, State(state): State<Arc<AppState>>) -> Html<String> {
+async fn graphs(
+    axum::extract::Query(query): axum::extract::Query<ListQuery>,
+    State(state): State<Arc<AppState>>,
+) -> Html<String> {
     Html(graphs_pages::graphs_page_html(&state, query))
 }
 
-async fn nodes(axum::extract::Query(query): axum::extract::Query<ListQuery>, State(state): State<Arc<AppState>>) -> Html<String> {
+async fn nodes(
+    axum::extract::Query(query): axum::extract::Query<ListQuery>,
+    State(state): State<Arc<AppState>>,
+) -> Html<String> {
     Html(nodes_pages::nodes_page_html(&state, query))
 }
 
@@ -80,7 +91,9 @@ struct SelectQuery {
     id: String,
 }
 
-async fn select_graph_query(axum::extract::Query(q): axum::extract::Query<SelectQuery>) -> Redirect {
+async fn select_graph_query(
+    axum::extract::Query(q): axum::extract::Query<SelectQuery>,
+) -> Redirect {
     Redirect::to(&format!("/graph/{}", q.id))
 }
 
@@ -151,7 +164,10 @@ async fn node_page(
     Ok(Html(node_pages::node_page_html(state, id).await?))
 }
 
-async fn tests_page(axum::extract::Query(query): axum::extract::Query<ListQuery>, State(state): State<Arc<AppState>>) -> Html<String> {
+async fn tests_page(
+    axum::extract::Query(query): axum::extract::Query<ListQuery>,
+    State(state): State<Arc<AppState>>,
+) -> Html<String> {
     Html(tests_pages::tests_page_html(&state, query))
 }
 

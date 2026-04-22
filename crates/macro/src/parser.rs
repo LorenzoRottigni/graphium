@@ -2,12 +2,12 @@ use proc_macro2::TokenTree;
 use syn::parse::discouraged::Speculative;
 use syn::parse_quote;
 use syn::{
-    parse::{Parse, ParseStream},
     Expr, Ident, Path, Result, Token, Type,
+    parse::{Parse, ParseStream},
 };
 
 use crate::shared::{
-    parse_metric_name, GraphInput, LoopExpr, MetricsSpec, NodeCall, NodeExpr, RouteExpr, WhileExpr,
+    GraphInput, LoopExpr, MetricsSpec, NodeCall, NodeExpr, RouteExpr, WhileExpr, parse_metric_name,
 };
 
 // Parsing module for the graph DSL.
@@ -66,7 +66,7 @@ fn parse_primary(input: ParseStream) -> Result<NodeExpr> {
                 input.parse::<Token![->]>()?;
                 let out;
                 syn::parenthesized!(out in input);
-                parse_ident_list(&out)?
+                parse_output_ident_list(&out)?
             } else {
                 (Vec::new(), Vec::new())
             };
@@ -92,7 +92,7 @@ fn parse_primary(input: ParseStream) -> Result<NodeExpr> {
                 input.parse::<Token![->]>()?;
                 let out;
                 syn::parenthesized!(out in input);
-                parse_ident_list(&out)?
+                parse_output_ident_list(&out)?
             } else {
                 (Vec::new(), Vec::new())
             };
@@ -113,7 +113,7 @@ fn parse_primary(input: ParseStream) -> Result<NodeExpr> {
                 input.parse::<Token![->]>()?;
                 let out;
                 syn::parenthesized!(out in input);
-                parse_ident_list(&out)?
+                parse_output_ident_list(&out)?
             } else {
                 (Vec::new(), Vec::new())
             };
@@ -142,10 +142,10 @@ impl Parse for NodeCall {
     fn parse(input: ParseStream) -> Result<Self> {
         let path: Path = input.parse()?;
         let explicit_inputs = input.peek(syn::token::Paren);
-        let (inputs, input_borrows) = if explicit_inputs {
+        let (inputs, input_kinds) = if explicit_inputs {
             let content;
             syn::parenthesized!(content in input);
-            parse_ident_list(&content)?
+            parse_input_ident_list(&content)?
         } else {
             (Vec::new(), Vec::new())
         };
@@ -155,7 +155,7 @@ impl Parse for NodeCall {
             if input.peek(syn::token::Paren) {
                 let content;
                 syn::parenthesized!(content in input);
-                parse_ident_list(&content)?
+                parse_output_ident_list(&content)?
             } else {
                 let is_borrowed = if input.peek(Token![&]) {
                     input.parse::<Token![&]>()?;
@@ -174,7 +174,7 @@ impl Parse for NodeCall {
             path,
             explicit_inputs,
             inputs,
-            input_borrows,
+            input_kinds,
             outputs,
             output_borrows,
         })
@@ -183,7 +183,35 @@ impl Parse for NodeCall {
 
 /// Parses a comma-separated list of artifact names used for node inputs or
 /// outputs in the graph DSL.
-fn parse_ident_list(input: ParseStream) -> Result<(Vec<Ident>, Vec<bool>)> {
+fn parse_input_ident_list(
+    input: ParseStream,
+) -> Result<(Vec<Ident>, Vec<crate::shared::ArtifactInputKind>)> {
+    let mut idents = Vec::new();
+    let mut kinds = Vec::new();
+
+    while !input.is_empty() {
+        let kind = if input.peek(Token![&]) {
+            input.parse::<Token![&]>()?;
+            crate::shared::ArtifactInputKind::Borrowed
+        } else if input.peek(Token![*]) {
+            input.parse::<Token![*]>()?;
+            crate::shared::ArtifactInputKind::Taken
+        } else {
+            crate::shared::ArtifactInputKind::Owned
+        };
+        idents.push(input.parse()?);
+        kinds.push(kind);
+        if input.peek(Token![,]) {
+            input.parse::<Token![,]>()?;
+        } else {
+            break;
+        }
+    }
+
+    Ok((idents, kinds))
+}
+
+fn parse_output_ident_list(input: ParseStream) -> Result<(Vec<Ident>, Vec<bool>)> {
     let mut idents = Vec::new();
     let mut borrows = Vec::new();
 
@@ -191,6 +219,8 @@ fn parse_ident_list(input: ParseStream) -> Result<(Vec<Ident>, Vec<bool>)> {
         let is_borrowed = if input.peek(Token![&]) {
             input.parse::<Token![&]>()?;
             true
+        } else if input.peek(Token![*]) {
+            return Err(input.error("`*artifact` is only supported for node inputs"));
         } else {
             false
         };
@@ -316,7 +346,7 @@ fn parse_if_chain(input: ParseStream) -> Result<RouteExpr> {
         input.parse::<Token![->]>()?;
         let out;
         syn::parenthesized!(out in input);
-        parse_ident_list(&out)?
+        parse_output_ident_list(&out)?
     } else {
         (Vec::new(), Vec::new())
     };
@@ -466,106 +496,17 @@ impl Parse for GraphInput {
     /// Parses the outer `graph!` object, including graph name, context type,
     /// and the bracketed graph schema.
     fn parse(input: ParseStream) -> Result<Self> {
-        if input.peek(Token![#]) {
-            return parse_graph_input_with_metadata(input);
-        }
-
-        parse_graph_input_legacy(input)
+        parse_graph_input(input)
     }
-}
-
-/// Parses the original key/value graph syntax:
-/// `name: ..., context: ..., inputs: (...), outputs: (...), schema: [ ... ]`.
-fn parse_graph_input_legacy(input: ParseStream) -> Result<GraphInput> {
-    let mut name: Option<Ident> = None;
-    let mut context: Option<Path> = None;
-    let mut graph_inputs: Vec<(Ident, Type)> = Vec::new();
-    let mut graph_outputs: Vec<(Ident, Type)> = Vec::new();
-    let mut nodes: Option<NodeExpr> = None;
-    let mut async_enabled = false;
-    let mut metrics = MetricsSpec::default();
-    let tests: Vec<Path> = Vec::new();
-
-    while !input.is_empty() {
-        if input.peek(Token![async]) {
-            input.parse::<Token![async]>()?;
-            input.parse::<Token![:]>()?;
-            let lit: syn::LitBool = input.parse()?;
-            async_enabled = lit.value;
-        } else {
-            let key: Ident = input.parse()?;
-            input.parse::<Token![:]>()?;
-
-            match key.to_string().as_str() {
-                "name" => {
-                    name = Some(input.parse()?);
-                }
-                "context" => {
-                    context = Some(input.parse()?);
-                }
-                "inputs" => {
-                    let content;
-                    syn::parenthesized!(content in input);
-                    graph_inputs = parse_typed_ident_list(&content)?;
-                }
-                "outputs" => {
-                    let content;
-                    syn::parenthesized!(content in input);
-                    graph_outputs = parse_typed_ident_list(&content)?;
-                }
-                "schema" => {
-                    let content;
-                    syn::bracketed!(content in input);
-                    nodes = Some(content.parse()?);
-                }
-                "async" => {
-                    let lit: syn::LitBool = input.parse()?;
-                    async_enabled = lit.value;
-                }
-                "metrics" => {
-                    let content;
-                    syn::parenthesized!(content in input);
-                    metrics = parse_metrics_list(&content)?;
-                }
-                _ => {
-                    return Err(input
-                        .error("expected one of: `name`, `context`, `inputs`, `outputs`, `schema`, `async`, `metrics`"));
-                }
-            }
-        }
-
-        input.parse::<Token![,]>().ok();
-    }
-
-    let nodes = nodes.ok_or_else(|| input.error("missing `schema`"))?;
-    let context = match context {
-        Some(ctx) => ctx,
-        None => {
-            if node_expr_uses_borrowed_artifacts(&nodes) {
-                return Err(input.error(
-                    "missing `context`; graphs that borrow artifacts (e.g. `(&x)` or `-> (&x)`) must declare a context type that stores borrowed artifacts as fields",
-                ));
-            }
-            parse_quote!(::graphium::Context)
-        }
-    };
-
-    Ok(GraphInput {
-        name: name.ok_or_else(|| input.error("missing `name`"))?,
-        context,
-        inputs: graph_inputs,
-        outputs: graph_outputs,
-        nodes,
-        async_enabled,
-        metrics,
-        tests,
-    })
 }
 
 fn node_expr_uses_borrowed_artifacts(node: &NodeExpr) -> bool {
     match node {
         NodeExpr::Single(call) => {
-            call.input_borrows.iter().any(|b| *b) || call.output_borrows.iter().any(|b| *b)
+            call.input_kinds
+                .iter()
+                .any(|k| *k != crate::shared::ArtifactInputKind::Owned)
+                || call.output_borrows.iter().any(|b| *b)
         }
         NodeExpr::Sequence(nodes) | NodeExpr::Parallel(nodes) => {
             nodes.iter().any(node_expr_uses_borrowed_artifacts)
@@ -589,92 +530,143 @@ fn node_expr_uses_borrowed_artifacts(node: &NodeExpr) -> bool {
     }
 }
 
-/// Parses the ergonomic metadata style:
-/// `#[metadata(context = Ctx, inputs = (...), outputs = (...))] MyGraph { ... }`
-fn parse_graph_input_with_metadata(input: ParseStream) -> Result<GraphInput> {
+/// Parses the current graph syntax:
+/// `#[metrics(...)] #[tests(...)] async MyGraph<Ctx>(inputs...) -> (outputs...) { ... }`
+fn parse_graph_input(input: ParseStream) -> Result<GraphInput> {
     let mut context: Option<Path> = None;
     let mut graph_inputs: Vec<(Ident, Type)> = Vec::new();
     let mut graph_outputs: Vec<(Ident, Type)> = Vec::new();
     let mut async_enabled = false;
     let mut metrics = MetricsSpec::default();
-    let mut metadata_seen = false;
     let mut tests: Vec<Path> = Vec::new();
+    let mut attrs: Vec<syn::Attribute> = Vec::new();
+    let mut tags: Vec<String> = Vec::new();
+    let mut deprecated = false;
+    let mut deprecated_reason: Option<String> = None;
 
-    while input.peek(Token![#]) {
-        input.parse::<Token![#]>()?;
-        let bracket_content;
-        syn::bracketed!(bracket_content in input);
-
-        let attr_name: Ident = bracket_content.parse()?;
-        if attr_name == "metadata" {
-            metadata_seen = true;
-            let metadata_content;
-            syn::parenthesized!(metadata_content in bracket_content);
-            while !metadata_content.is_empty() {
-                let key_string = if metadata_content.peek(Token![async]) {
-                    metadata_content.parse::<Token![async]>()?;
-                    "async".to_string()
-                } else {
-                    let key: Ident = metadata_content.parse()?;
-                    key.to_string()
-                };
-
-                metadata_content.parse::<Token![=]>()?;
-
-                match key_string.as_str() {
-                    "context" => {
-                        context = Some(metadata_content.parse()?);
-                    }
-                    "inputs" => {
-                        let typed;
-                        syn::parenthesized!(typed in metadata_content);
-                        graph_inputs = parse_typed_ident_list(&typed)?;
-                    }
-                    "outputs" => {
-                        let typed;
-                        syn::parenthesized!(typed in metadata_content);
-                        graph_outputs = parse_typed_ident_list(&typed)?;
-                    }
-                    "async" => {
-                        let lit: syn::LitBool = metadata_content.parse()?;
-                        async_enabled = lit.value;
-                    }
-                    _ => {
-                        return Err(metadata_content
-                            .error("expected one of: `context`, `inputs`, `outputs`, `async`"));
-                    }
-                }
-
-                if metadata_content.peek(Token![,]) {
-                    metadata_content.parse::<Token![,]>()?;
-                } else {
-                    break;
+    let outer_attrs = input.call(syn::Attribute::parse_outer)?;
+    for attr in outer_attrs {
+        if attr.path().is_ident("metrics") {
+            let syn::Meta::List(list) = &attr.meta else {
+                return Err(syn::Error::new_spanned(attr, "expected `#[metrics(...)]`"));
+            };
+            let parsed = syn::parse::Parser::parse2(parse_metrics_list, list.tokens.clone())?;
+            metrics.performance |= parsed.performance;
+            metrics.errors |= parsed.errors;
+            metrics.count |= parsed.count;
+            metrics.caller |= parsed.caller;
+            metrics.success_rate |= parsed.success_rate;
+            metrics.fail_rate |= parsed.fail_rate;
+            continue;
+        }
+        if attr.path().is_ident("tests") {
+            let syn::Meta::List(list) = &attr.meta else {
+                return Err(syn::Error::new_spanned(attr, "expected `#[tests(...)]`"));
+            };
+            let list = syn::parse::Parser::parse2(
+                syn::punctuated::Punctuated::<Path, Token![,]>::parse_terminated,
+                list.tokens.clone(),
+            )?;
+            tests.extend(list.into_iter());
+            continue;
+        }
+        if attr.path().is_ident("doc") {
+            attrs.push(attr);
+            continue;
+        }
+        if attr.path().is_ident("tags") {
+            let syn::Meta::List(list) = &attr.meta else {
+                return Err(syn::Error::new_spanned(attr, "expected `#[tags(\"a\", \"b\")]`"));
+            };
+            let items = syn::parse::Parser::parse2(
+                syn::punctuated::Punctuated::<syn::LitStr, Token![,]>::parse_terminated,
+                list.tokens.clone(),
+            )?;
+            for item in items {
+                let tag = item.value();
+                let tag = tag.trim();
+                if !tag.is_empty() {
+                    tags.push(tag.to_string());
                 }
             }
-        } else if attr_name == "metrics" {
-            let metrics_content;
-            syn::parenthesized!(metrics_content in bracket_content);
-            metrics = parse_metrics_list(&metrics_content)?;
-        } else if attr_name == "tests" {
-            let tests_content;
-            syn::parenthesized!(tests_content in bracket_content);
-            let list =
-                syn::punctuated::Punctuated::<Path, Token![,]>::parse_terminated(&tests_content)?;
-            tests.extend(list.into_iter());
-        } else {
-            return Err(bracket_content.error("expected `metadata`, `metrics`, or `tests`"));
+            continue;
+        }
+        if attr.path().is_ident("deprecated") {
+            deprecated = true;
+            match &attr.meta {
+                syn::Meta::Path(_) => {}
+                syn::Meta::NameValue(name_value) => {
+                    if let syn::Expr::Lit(expr_lit) = &name_value.value {
+                        if let syn::Lit::Str(lit) = &expr_lit.lit {
+                            let value = lit.value().trim().to_string();
+                            if !value.is_empty() {
+                                deprecated_reason = Some(value);
+                            }
+                        }
+                    }
+                }
+                syn::Meta::List(list) => {
+                    let parsed = syn::parse::Parser::parse2(
+                        syn::punctuated::Punctuated::<syn::MetaNameValue, Token![,]>::parse_terminated,
+                        list.tokens.clone(),
+                    );
+                    if let Ok(items) = parsed {
+                        for item in items {
+                            if item.path.is_ident("note") {
+                                if let syn::Expr::Lit(expr_lit) = &item.value {
+                                    if let syn::Lit::Str(lit) = &expr_lit.lit {
+                                        let value = lit.value().trim().to_string();
+                                        if !value.is_empty() {
+                                            deprecated_reason = Some(value);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            continue;
+        }
+        if attr.path().is_ident("metadata") {
+            return Err(syn::Error::new_spanned(
+                attr,
+                "`#[metadata(...)]` is no longer supported for graphs; use `MyGraph<Context>` and the `async` keyword",
+            ));
         }
 
-        if !bracket_content.is_empty() {
-            return Err(bracket_content.error("unexpected tokens in attribute payload"));
-        }
+        return Err(syn::Error::new_spanned(
+            attr,
+            "unsupported graph attribute; allowed: `/// doc`, `#[metrics(...)]`, `#[tests(...)]`",
+        ));
     }
 
-    if !metadata_seen {
-        return Err(input.error("missing `#[metadata(...)]` attribute"));
+    if input.peek(Token![async]) {
+        input.parse::<Token![async]>()?;
+        async_enabled = true;
     }
 
     let name: Ident = input.parse()?;
+
+    if input.peek(Token![<]) {
+        input.parse::<Token![<]>()?;
+        context = Some(input.parse()?);
+        input.parse::<Token![>]>()?;
+    }
+
+    if input.peek(syn::token::Paren) {
+        let typed;
+        syn::parenthesized!(typed in input);
+        graph_inputs = parse_typed_ident_list(&typed)?;
+    }
+
+    if input.peek(Token![->]) {
+        input.parse::<Token![->]>()?;
+        let typed;
+        syn::parenthesized!(typed in input);
+        graph_outputs = parse_typed_ident_list(&typed)?;
+    }
+
     let body;
     syn::braced!(body in input);
     let nodes: NodeExpr = body.parse()?;
@@ -692,7 +684,7 @@ fn parse_graph_input_with_metadata(input: ParseStream) -> Result<GraphInput> {
         None => {
             if node_expr_uses_borrowed_artifacts(&nodes) {
                 return Err(input.error(
-                    "missing `context`; graphs that borrow artifacts (e.g. `(&x)` or `-> (&x)`) must declare a context type that stores borrowed artifacts as fields",
+                    "missing context type; graphs that borrow artifacts (e.g. `(&x)` or `-> (&x)`) must declare a context type like `MyGraph<Context>` that stores borrowed artifacts as fields",
                 ));
             }
             parse_quote!(::graphium::Context)
@@ -700,6 +692,7 @@ fn parse_graph_input_with_metadata(input: ParseStream) -> Result<GraphInput> {
     };
 
     Ok(GraphInput {
+        attrs,
         name,
         context,
         inputs: graph_inputs,
@@ -708,6 +701,9 @@ fn parse_graph_input_with_metadata(input: ParseStream) -> Result<GraphInput> {
         async_enabled,
         metrics,
         tests,
+        tags,
+        deprecated,
+        deprecated_reason,
     })
 }
 

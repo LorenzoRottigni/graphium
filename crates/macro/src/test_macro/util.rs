@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use quote::{format_ident, quote};
-use syn::{parse_quote, Attribute, Expr, FnArg, Ident, ItemFn, Pat, PatIdent, ReturnType, Type};
+use syn::{Attribute, Expr, FnArg, Ident, ItemFn, Pat, PatIdent, ReturnType, Type, parse_quote};
 
 use crate::shared::pascal_case;
 
@@ -11,7 +11,7 @@ pub(crate) fn next_suite_id() -> usize {
     NEXT_SUITE_ID.fetch_add(1, Ordering::Relaxed)
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub(crate) struct GraphiumDefaults {
     pub(crate) values: std::collections::HashMap<String, Expr>,
 }

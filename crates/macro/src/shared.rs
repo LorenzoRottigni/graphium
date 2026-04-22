@@ -17,6 +17,10 @@ pub struct NodeDef {
     pub return_ty: Option<Type>,
     pub metrics: MetricsSpec,
     pub return_is_result: bool,
+    pub docs: Option<String>,
+    pub tags: Vec<String>,
+    pub deprecated: bool,
+    pub deprecated_reason: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -25,12 +29,19 @@ pub enum ParamKind {
     Input(usize),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ArtifactInputKind {
+    Owned,
+    Borrowed,
+    Taken,
+}
+
 #[derive(Clone)]
 pub struct NodeCall {
     pub path: Path,
     pub explicit_inputs: bool,
     pub inputs: Vec<Ident>,
-    pub input_borrows: Vec<bool>,
+    pub input_kinds: Vec<ArtifactInputKind>,
     pub outputs: Vec<Ident>,
     pub output_borrows: Vec<bool>,
 }
@@ -71,6 +82,7 @@ pub struct LoopExpr {
 }
 
 pub struct GraphInput {
+    pub attrs: Vec<syn::Attribute>,
     pub name: Ident,
     pub context: Path,
     pub inputs: Vec<(Ident, Type)>,
@@ -79,6 +91,9 @@ pub struct GraphInput {
     pub async_enabled: bool,
     pub metrics: MetricsSpec,
     pub tests: Vec<Path>,
+    pub tags: Vec<String>,
+    pub deprecated: bool,
+    pub deprecated_reason: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -115,6 +130,34 @@ pub fn parse_metric_name(value: &str) -> Option<fn(&mut MetricsSpec)> {
         "success_rate" => Some(|spec| spec.success_rate = true),
         "fail_rate" => Some(|spec| spec.fail_rate = true),
         _ => None,
+    }
+}
+
+pub fn doc_string_from_attrs(attrs: &[syn::Attribute]) -> Option<String> {
+    let mut lines = Vec::new();
+    for attr in attrs {
+        if !attr.path().is_ident("doc") {
+            continue;
+        }
+        let syn::Meta::NameValue(name_value) = &attr.meta else {
+            continue;
+        };
+        let syn::Expr::Lit(expr_lit) = &name_value.value else {
+            continue;
+        };
+        let syn::Lit::Str(lit_str) = &expr_lit.lit else {
+            continue;
+        };
+        let line = lit_str.value();
+        lines.push(line.trim_start_matches(' ').to_string());
+    }
+
+    if lines.is_empty() {
+        None
+    } else {
+        let joined = lines.join("\n");
+        let trimmed = joined.trim().to_string();
+        if trimmed.is_empty() { None } else { Some(trimmed) }
     }
 }
 

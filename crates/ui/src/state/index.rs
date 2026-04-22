@@ -27,4 +27,3 @@ impl<T: Clone> UiIndex<T> {
         self.by_id.insert(id, item);
     }
 }
-

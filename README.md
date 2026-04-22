@@ -19,9 +19,8 @@ The example above shows how Graphium, in a few lines, allows you to:
 
 ```rust
 graph! {
-    #[metadata(context = Context, outputs = (model: Model))]
     #[metrics("performance", "errors", "count", "caller", "success_rate", "fail_rate")]
-    LinearRegressionGraph {
+    LinearRegressionGraph<Context> -> (model: Model) {
         GetDataset() -> (&dataset) >>
         ParseInputFeatures(&dataset) -> (input_features) & ParseOutputFeatures(&dataset) -> (output_features) >>
         TrainTestSplit(input_features, output_features) -> (&X_train, &X_test, &y_train, &y_test) >>
@@ -61,8 +60,7 @@ InnerGraph::run(a_split, b_split) -> (a_split, b_split)
 
 ```rust
 graph! {
-    #[metadata(context = Context)]
-    ConditionalGraph {
+    ConditionalGraph<Context> {
         GetOperationStatus() -> (&status) >>
         @match ctx.status {
             Status::Success => OnSuccess(&status),
@@ -77,8 +75,7 @@ graph! {
 
 ```rust
 graph! {
-    #[metadata(context = Context, outputs = (result: u32))]
-    IfGraph {
+    IfGraph<Context> -> (result: u32) {
         GetOperationStatus() -> (status) >>
         @if |status: Status| status == Status::Success -> (result) {
             OnSuccess() -> (result)
@@ -97,8 +94,7 @@ graph! {
 
 ```rust
 graph! {
-    #[metadata(context = Context)]
-    WhileGraph {
+    WhileGraph<Context> {
         InitCtx() >>
         @while |ctx: &Context| ctx.a_number < 3 {
             IncCtx()
@@ -109,8 +105,7 @@ graph! {
 
 ```rust
 graph! {
-    #[metadata(context = Context)]
-    LoopBreakGraph {
+    LoopBreakGraph<Context> {
         InitCtx() >>
         @loop {
             IncCtx() >>
@@ -129,8 +124,7 @@ graph! {
 
 ```rust
 graph! {
-    #[metadata(context = Context, outputs = (a_number: u32), async = true)]
-    AsyncGraph {
+    async AsyncGraph<Context> -> (a_number: u32) {
         GetNumber() -> (a_number) >>
         AddOne(a_number) -> (a_number)
     }

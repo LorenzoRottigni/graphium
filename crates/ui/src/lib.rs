@@ -11,7 +11,7 @@ pub mod util;
 pub use crate::config::GraphiumUiConfig;
 pub use crate::error::UiError;
 pub use crate::server::serve;
-pub use crate::state::graph::{graph, ConfiguredGraph, UiGraph};
+pub use crate::state::graph::{ConfiguredGraph, UiGraph, graph};
 pub use crate::state::playground::Playground;
 
 /// Convenience macro to build a `Vec<UiGraph>` from a list of graph *provider types*.

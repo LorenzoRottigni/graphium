@@ -29,8 +29,8 @@ use payload::{
 };
 use route::{get_route_node_expr, route_exit_outputs};
 use selector::{
-    build_condition_bindings, build_condition_call, build_selector_bindings, build_selector_call,
-    selector_params_for_on_expr, SelectorParam,
+    SelectorParam, build_condition_bindings, build_condition_call, build_selector_bindings,
+    build_selector_call, selector_params_for_on_expr,
 };
 use single::{get_single_node_expr, graph_type_path};
 

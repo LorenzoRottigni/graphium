@@ -5,7 +5,7 @@
 
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, Item};
+use syn::{Item, parse_macro_input};
 
 use super::util::{next_suite_id, synthesize_ui_test_case};
 

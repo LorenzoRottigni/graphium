@@ -6,7 +6,7 @@ use askama::Template;
 use crate::http::AppHttpError;
 use crate::mermaid::to_mermaid;
 use crate::metrics::{fetch_metrics, fmt_metric};
-use crate::state::{collect_graph_node_names, graph::UiGraph, AppState};
+use crate::state::{AppState, collect_graph_node_names, graph::UiGraph};
 use crate::util::{normalize_symbol, slugify};
 
 #[derive(Default, Clone)]
@@ -87,6 +87,10 @@ pub(crate) struct PlaygroundTemplateView {
 #[template(path = "pages/graph_fragment.html")]
 pub(crate) struct GraphFragmentTemplate {
     pub(crate) graph_id: String,
+    pub(crate) graph_docs: Option<String>,
+    pub(crate) graph_tags: Vec<String>,
+    pub(crate) graph_deprecated: bool,
+    pub(crate) graph_deprecated_reason: Option<String>,
     pub(crate) mermaid: String,
     pub(crate) prometheus_base_url: String,
     pub(crate) metrics: MetricCards,
@@ -226,6 +230,10 @@ pub(crate) async fn render_graph_fragment(
 
     Ok(GraphFragmentTemplate {
         graph_id: id,
+        graph_docs: graph.export.docs.clone(),
+        graph_tags: graph.export.tags.clone(),
+        graph_deprecated: graph.export.deprecated,
+        graph_deprecated_reason: graph.export.deprecated_reason.clone(),
         mermaid,
         prometheus_base_url: state.prometheus_base_url.clone(),
         metrics,

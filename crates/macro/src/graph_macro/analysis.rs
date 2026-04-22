@@ -6,11 +6,11 @@
 
 use std::collections::BTreeSet;
 
-use crate::shared::{ExprShape, NodeCall, NodeExpr, UsageMap};
+use crate::shared::{ArtifactInputKind, ExprShape, NodeCall, NodeExpr, UsageMap};
 
 use super::{
-    collect_parallel_entry_usage, loop_exit_outputs, route_exit_outputs,
-    selector_params_for_on_expr, SelectorParam,
+    SelectorParam, collect_parallel_entry_usage, loop_exit_outputs, route_exit_outputs,
+    selector_params_for_on_expr,
 };
 
 /// Computes the entry requirements and possible exit artifacts of a graph
@@ -148,11 +148,14 @@ fn analyze_single(call: &NodeCall) -> ExprShape {
 
     let mut entry_usage = UsageMap::new();
     let mut entry_borrowed = BTreeSet::new();
-    for (input, is_borrowed) in call.inputs.iter().zip(call.input_borrows.iter()) {
-        if *is_borrowed {
-            entry_borrowed.insert(input.to_string());
-        } else {
-            *entry_usage.entry(input.to_string()).or_insert(0) += 1;
+    for (input, kind) in call.inputs.iter().zip(call.input_kinds.iter()) {
+        match kind {
+            ArtifactInputKind::Owned => {
+                *entry_usage.entry(input.to_string()).or_insert(0) += 1;
+            }
+            ArtifactInputKind::Borrowed | ArtifactInputKind::Taken => {
+                entry_borrowed.insert(input.to_string());
+            }
         }
     }
 
@@ -297,7 +300,7 @@ mod tests {
     use super::{
         analyze_expr, collect_parallel_outputs, collect_route_outputs, required_artifacts,
     };
-    use crate::shared::{ExprShape, LoopExpr, NodeCall, NodeExpr};
+    use crate::shared::{ArtifactInputKind, ExprShape, LoopExpr, NodeCall, NodeExpr};
 
     #[test]
     fn analyze_single_counts_duplicate_owned_inputs() {
@@ -305,7 +308,7 @@ mod tests {
             path: parse_quote!(demo::Node),
             explicit_inputs: true,
             inputs: vec![parse_quote!(value), parse_quote!(value)],
-            input_borrows: vec![false, false],
+            input_kinds: vec![ArtifactInputKind::Owned, ArtifactInputKind::Owned],
             outputs: vec![parse_quote!(out)],
             output_borrows: vec![false],
         });
@@ -323,7 +326,7 @@ mod tests {
                 path: parse_quote!(demo::Node),
                 explicit_inputs: true,
                 inputs: vec![parse_quote!(value)],
-                input_borrows: vec![false],
+                input_kinds: vec![ArtifactInputKind::Owned],
                 outputs: vec![parse_quote!(out)],
                 output_borrows: vec![false],
             })),

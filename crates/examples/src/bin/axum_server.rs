@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use axum::{response::IntoResponse, routing::get, Router};
+use axum::{Router, response::IntoResponse, routing::get};
 use graphium_macro::{graph, node};
 
 #[derive(Clone)]
@@ -91,8 +91,7 @@ node! {
 }
 
 graph! {
-    #[metadata(context = Context, async = true)]
-    AxumServerGraph {
+    async AxumServerGraph<Context> {
         InitRouter() >>
         AddRootRoute() >>
         AddHealthRoute() >>

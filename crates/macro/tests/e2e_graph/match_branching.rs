@@ -42,8 +42,7 @@ fn e2e_graph_branching_borrow() {
     }
 
     graph! {
-        #[metadata(context = Context)]
-        ConditionalGraph {
+        ConditionalGraph<Context> {
             GetOperationStatus() -> (&status) >>
             @match ctx.status {
                 Status::Success => OnSuccess(&status),
@@ -85,8 +84,7 @@ fn e2e_graph_branching_move() {
     }
 
     graph! {
-        #[metadata(context = graphium::Context)]
-        ConditionalGraph {
+        ConditionalGraph<graphium::Context> {
             GetOperationStatus() -> (status) >>
             @match status {
                 Status::Success => OnSuccess(status),
@@ -133,8 +131,7 @@ fn e2e_graph_nested_branching() {
     }
 
     graph! {
-        #[metadata(context = Context)]
-        NestedConditionalGraph {
+        NestedConditionalGraph<Context> {
             GetOperationStatus() -> (status) >>
             @match status {
                 Status::Success => @match ctx.status {
@@ -180,8 +177,7 @@ fn e2e_graph_match_outputs() {
     }
 
     graph! {
-        #[metadata(context = graphium::Context, outputs = (match_result: u32))]
-        MatchOutputGraph {
+        MatchOutputGraph<graphium::Context> -> (match_result: u32) {
             GetOperationStatus() -> (status) >>
             @match status -> (match_result) {
                 Status::Success => OnSuccess() -> (match_result),
