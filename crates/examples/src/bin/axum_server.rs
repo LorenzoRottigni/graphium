@@ -91,8 +91,7 @@ node! {
 }
 
 graph! {
-    #[metadata(context = Context)]
-    async AxumServerGraph {
+    async AxumServerGraph<Context> {
         InitRouter() >>
         AddRootRoute() >>
         AddHealthRoute() >>

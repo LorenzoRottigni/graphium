@@ -531,7 +531,7 @@ fn node_expr_uses_borrowed_artifacts(node: &NodeExpr) -> bool {
 }
 
 /// Parses the current graph syntax:
-/// `#[metadata(context = Ctx)] #[metrics(...)] #[tests(...)] async MyGraph(inputs...) -> (outputs...) { ... }`
+/// `#[metrics(...)] #[tests(...)] async MyGraph<Ctx>(inputs...) -> (outputs...) { ... }`
 fn parse_graph_input(input: ParseStream) -> Result<GraphInput> {
     let mut context: Option<Path> = None;
     let mut graph_inputs: Vec<(Ident, Type)> = Vec::new();
@@ -546,31 +546,7 @@ fn parse_graph_input(input: ParseStream) -> Result<GraphInput> {
         syn::bracketed!(bracket_content in input);
 
         let attr_name: Ident = bracket_content.parse()?;
-        if attr_name == "metadata" {
-            let metadata_content;
-            syn::parenthesized!(metadata_content in bracket_content);
-            while !metadata_content.is_empty() {
-                let key: Ident = metadata_content.parse()?;
-                let key_string = key.to_string();
-
-                metadata_content.parse::<Token![=]>()?;
-
-                match key_string.as_str() {
-                    "context" => {
-                        context = Some(metadata_content.parse()?);
-                    }
-                    _ => {
-                        return Err(metadata_content.error("expected `context`"));
-                    }
-                }
-
-                if metadata_content.peek(Token![,]) {
-                    metadata_content.parse::<Token![,]>()?;
-                } else {
-                    break;
-                }
-            }
-        } else if attr_name == "metrics" {
+        if attr_name == "metrics" {
             let metrics_content;
             syn::parenthesized!(metrics_content in bracket_content);
             metrics = parse_metrics_list(&metrics_content)?;
@@ -580,8 +556,12 @@ fn parse_graph_input(input: ParseStream) -> Result<GraphInput> {
             let list =
                 syn::punctuated::Punctuated::<Path, Token![,]>::parse_terminated(&tests_content)?;
             tests.extend(list.into_iter());
+        } else if attr_name == "metadata" {
+            return Err(bracket_content.error(
+                "`#[metadata(...)]` is no longer supported for graphs; use `MyGraph<Context>` and the `async` keyword",
+            ));
         } else {
-            return Err(bracket_content.error("expected `metadata`, `metrics`, or `tests`"));
+            return Err(bracket_content.error("expected `metrics` or `tests`"));
         }
 
         if !bracket_content.is_empty() {
@@ -595,6 +575,12 @@ fn parse_graph_input(input: ParseStream) -> Result<GraphInput> {
     }
 
     let name: Ident = input.parse()?;
+
+    if input.peek(Token![<]) {
+        input.parse::<Token![<]>()?;
+        context = Some(input.parse()?);
+        input.parse::<Token![>]>()?;
+    }
 
     if input.peek(syn::token::Paren) {
         let typed;
@@ -626,7 +612,7 @@ fn parse_graph_input(input: ParseStream) -> Result<GraphInput> {
         None => {
             if node_expr_uses_borrowed_artifacts(&nodes) {
                 return Err(input.error(
-                    "missing `context`; graphs that borrow artifacts (e.g. `(&x)` or `-> (&x)`) must declare a context type that stores borrowed artifacts as fields",
+                    "missing context type; graphs that borrow artifacts (e.g. `(&x)` or `-> (&x)`) must declare a context type like `MyGraph<Context>` that stores borrowed artifacts as fields",
                 ));
             }
             parse_quote!(::graphium::Context)

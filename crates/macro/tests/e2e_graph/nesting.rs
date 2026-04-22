@@ -52,96 +52,83 @@ node! {
 }
 
 graph! {
-    #[metadata(context = TestContext)]
-    InnerPassthrough(a: u32, b: u32) -> (a: u32, b: u32) {
+    InnerPassthrough<TestContext>(a: u32, b: u32) -> (a: u32, b: u32) {
         IdentityPass(a, b) -> (a, b)
     }
 }
 
 graph! {
-    #[metadata(context = TestContext)]
-    InnerSum(a: u32, b: u32) -> (sum: u32) {
+    InnerSum<TestContext>(a: u32, b: u32) -> (sum: u32) {
         AddNumbers(a, b) -> (sum)
     }
 }
 
 graph! {
-    #[metadata(context = TestContext)]
-    InnerProduct(a: u32, b: u32) -> (product: u32) {
+    InnerProduct<TestContext>(a: u32, b: u32) -> (product: u32) {
         MultiplyNumbers(a, b) -> (product)
     }
 }
 
 graph! {
-    #[metadata(context = TestContext)]
-    InnerAddBoth(a: u32, b: u32) -> (a: u32, b: u32) {
+    InnerAddBoth<TestContext>(a: u32, b: u32) -> (a: u32, b: u32) {
         AddTen(a) -> (a) & AddTen(b) -> (b)
     }
 }
 
 graph! {
-    #[metadata(context = TestContext)]
-    InnerDuplicate(value: u32) -> (a: u32, b: u32) {
+    InnerDuplicate<TestContext>(value: u32) -> (a: u32, b: u32) {
         DuplicateValue(value) -> (a, b)
     }
 }
 
 graph! {
-    #[metadata(context = TestContext)]
-    InnerSplitSum(a: u32, b: u32) -> (a: u32, b: u32, sum: u32) {
+    InnerSplitSum<TestContext>(a: u32, b: u32) -> (a: u32, b: u32, sum: u32) {
         SplitSum(a, b) -> (a, b, sum)
     }
 }
 
 graph! {
-    #[metadata(context = TestContext)]
-    OuterGraphWithPassthrough(value: u32) -> (a: u32, b: u32) {
+    OuterGraphWithPassthrough<TestContext>(value: u32) -> (a: u32, b: u32) {
         DuplicateValue(value) -> (a, b) >>
         InnerPassthrough::run(a, b) -> (a, b)
     }
 }
 
 graph! {
-    #[metadata(context = TestContext)]
-    OuterGraphWithNestedSum(value: u32) -> (sum: u32) {
+    OuterGraphWithNestedSum<TestContext>(value: u32) -> (sum: u32) {
         DuplicateValue(value) -> (a, b) >>
         InnerSum::run(a, b) -> (sum)
     }
 }
 
 graph! {
-    #[metadata(context = TestContext)]
-    OuterGraphWithNestedProduct(a: u32, b: u32) -> (result: u32) {
+    OuterGraphWithNestedProduct<TestContext>(a: u32, b: u32) -> (result: u32) {
         InnerProduct::run(a, b) -> (product) >>
         AddNumbers(product, product) -> (result)
     }
 }
 
 graph! {
-    #[metadata(context = TestContext)]
-    OuterGraphWithAddBoth(a: u32, b: u32) -> (a: u32, b: u32) {
+    OuterGraphWithAddBoth<TestContext>(a: u32, b: u32) -> (a: u32, b: u32) {
         InnerAddBoth::run(a, b) -> (a, b)
     }
 }
 
 graph! {
-    #[metadata(context = TestContext)]
-    OuterGraphWithSplitSum(a: u32, b: u32) -> (a: u32, b: u32, sum: u32) {
+    OuterGraphWithSplitSum<TestContext>(a: u32, b: u32) -> (a: u32, b: u32, sum: u32) {
         InnerSplitSum::run(a, b) -> (a, b, sum)
     }
 }
 
 graph! {
-    #[metadata(context = TestContext)]
-    DeepNestingLevel1(value: u32) -> (sum: u32) {
+    DeepNestingLevel1<TestContext>(value: u32) -> (sum: u32) {
         DuplicateValue(value) -> (a, b) >>
         InnerSum::run(a, b) -> (sum)
     }
 }
 
 graph! {
-    #[metadata(context = TestContext)]
-    DeepNestingLevel2(value: u32) -> (sum: u32) {
+    DeepNestingLevel2<TestContext>(value: u32) -> (sum: u32) {
         DeepNestingLevel1::run(value) -> (inner_sum) >>
         DuplicateValue(inner_sum) -> (a, b) >>
         InnerSum::run(a, b) -> (sum)
@@ -149,8 +136,7 @@ graph! {
 }
 
 graph! {
-    #[metadata(context = TestContext)]
-    TripleNesting(value: u32) -> (sum: u32) {
+    TripleNesting<TestContext>(value: u32) -> (sum: u32) {
         DuplicateValue(value) -> (a, b) >>
         InnerSum::run(a, b) -> (sum1) >>
         MultiplyNumbers(sum1, sum1) -> (sum)
@@ -158,23 +144,20 @@ graph! {
 }
 
 graph! {
-    #[metadata(context = TestContext)]
-    ChainedNestedGraphs(a: u32, b: u32) -> (a: u32, b: u32) {
+    ChainedNestedGraphs<TestContext>(a: u32, b: u32) -> (a: u32, b: u32) {
         InnerPassthrough::run(a, b) -> (a1, b1) >>
         InnerPassthrough::run(a1, b1) -> (a, b)
     }
 }
 
 graph! {
-    #[metadata(context = TestContext)]
-    InnerQuad(v: u32) -> (a: u32, b: u32, c: u32, d: u32) {
+    InnerQuad<TestContext>(v: u32) -> (a: u32, b: u32, c: u32, d: u32) {
         QuadSplit(v) -> (a, b, c, d)
     }
 }
 
 graph! {
-    #[metadata(context = TestContext)]
-    InnerConstant -> (value: u32) {
+    InnerConstant<TestContext> -> (value: u32) {
         ConstantValue() -> (value)
     }
 }

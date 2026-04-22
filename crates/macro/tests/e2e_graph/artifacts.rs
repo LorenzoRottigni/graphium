@@ -56,8 +56,7 @@ fn e2e_graph_macro_borrows_artifacts() {
     }
 
     graph! {
-        #[metadata(context = Context)]
-        BorrowedGraph -> (number: u32) {
+        BorrowedGraph<Context> -> (number: u32) {
             GetNumber() -> (number) >>
             StoreNumber(number) -> (&number) >>
             TakeOwnership(&number) -> (number) >>
@@ -90,8 +89,7 @@ fn e2e_graph_macro_borrowed_ctx_values_persist() {
     }
 
     graph! {
-        #[metadata(context = Context)]
-        ReferenceGraph {
+        ReferenceGraph<Context> {
             GetNumber() -> (&number) >>
             CheckNumber(&number) >>
             CheckReferenceExpiration()
@@ -123,8 +121,7 @@ fn e2e_graph_macro_reference_can_be_forwarded() {
     }
 
     graph! {
-        #[metadata(context = Context)]
-        ReferenceGraphForwarded {
+        ReferenceGraphForwarded<Context> {
             GetNumber() -> (&number) >>
             CheckNumber(&number) -> &number >>
             CheckReferenceExpiration()
@@ -156,8 +153,7 @@ fn e2e_graph_macro_can_take_ownership_from_ctx() {
     }
 
     graph! {
-        #[metadata(context = Context)]
-        TakeGraph {
+        TakeGraph<Context> {
             GetNumber() -> (&number) >>
             TakeNumber(*number) >>
             AssertTakenClearsCtx()

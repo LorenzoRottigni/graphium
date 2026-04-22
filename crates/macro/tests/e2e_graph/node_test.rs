@@ -14,8 +14,7 @@ node! {
 }
 
 graph! {
-    #[metadata(context = graphium::Context)]
-    TestableGraph -> (result: u32) {
+    TestableGraph<graphium::Context> -> (result: u32) {
         GetNumber() -> (number) >>
         PipeNumber(number) -> (result)
     }

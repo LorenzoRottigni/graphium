@@ -38,8 +38,7 @@ fn e2e_graph_if_elif_else_outputs() {
     }
 
     graph! {
-        #[metadata(context = graphium::Context)]
-        IfGraph -> (result: u32) {
+        IfGraph<graphium::Context> -> (result: u32) {
             GetOperationStatus() -> (status) >>
             @if |status: Status| status == Status::Success -> (result) {
                 OnSuccess() -> (result)
@@ -91,8 +90,7 @@ fn e2e_graph_if_elif_else_borrow() {
     }
 
     graph! {
-        #[metadata(context = Context)]
-        IfBorrowGraph {
+        IfBorrowGraph<Context> {
             GetOperationStatus() -> (&status) >>
             @if |ctx: &Context| ctx.status == Status::Success {
                 OnSuccess(&status)
@@ -138,8 +136,7 @@ fn e2e_graph_if_elif_else_move() {
     }
 
     graph! {
-        #[metadata(context = graphium::Context)]
-        IfMoveGraph {
+        IfMoveGraph<graphium::Context> {
             GetOperationStatus() -> (status) >>
             @if |status: Status| status == Status::Success {
                 OnSuccess(status)
@@ -190,8 +187,7 @@ fn e2e_graph_if_elif_else_nested() {
     }
 
     graph! {
-        #[metadata(context = Context)]
-        IfNestedGraph {
+        IfNestedGraph<Context> {
             GetOperationStatus() -> (status) >>
             @if |status: Status| status == Status::Success {
                 @if |ctx: &Context| ctx.status == Status::Success {
@@ -240,8 +236,7 @@ fn e2e_graph_if_multiple_params() {
     }
 
     graph! {
-        #[metadata(context = graphium::Context)]
-        IfMultiParamGraph {
+        IfMultiParamGraph<graphium::Context> {
             GetInputs() -> (status, count) >>
             @if |status: Status, count: u32| status == Status::Success && count == 2 {
                 OnSuccess(status, count)

@@ -258,28 +258,25 @@ node! {
 }
 
 graph! {
-    #[metadata(context = Context)]
     #[metrics("performance", "count", "success_rate")]
-    InnerGraph(left: u32, right: u32) -> (left: u32, right: u32) {
+    InnerGraph<Context>(left: u32, right: u32) -> (left: u32, right: u32) {
         PipeNumber(left) -> (left) & PipeNumber(right) -> (right) >>
         LeftBranch(left) -> (left) & RightBranch(right) -> (right)
     }
 }
 
 graph! {
-    #[metadata(context = Context)]
     #[metrics("performance", "count", "success_rate")]
-    DeepInnerGraph(left: u32, right: u32) -> (left: u32, right: u32) {
+    DeepInnerGraph<Context>(left: u32, right: u32) -> (left: u32, right: u32) {
         InnerGraph::run(left, right) -> (left, right) >>
         PipeNumber(left) -> (left) & PipeNumber(right) -> (right)
     }
 }
 
 graph! {
-    #[metadata(context = Context)]
     #[metrics("performance", "errors", "count", "caller", "success_rate", "fail_rate")]
     #[tests(OwnedGraphReturnsNonZeroSplit)]
-    OwnedGraph -> (a_split: u32) {
+    OwnedGraph<Context> -> (a_split: u32) {
         GetNumber() -> (a_number) >>
         Duplicate(a_number) -> (left, right) >>
         LeftBranch(left) -> (left) & RightBranch(right) -> (right) >>
@@ -300,10 +297,9 @@ graph! {
 }
 
 graph! {
-    #[metadata(context = Context)]
     #[metrics("performance", "count", "success_rate")]
     #[tests(BorrowedGraphKeepsOwnershipPath)]
-    BorrowedGraph -> (a_number: u32) {
+    BorrowedGraph<Context> -> (a_number: u32) {
         GetNumber() -> (a_number) >>
         StoreNumber(a_number) -> (&a_number) >>
         TakeOwnership(&a_number) -> (a_number) >>
@@ -312,10 +308,9 @@ graph! {
 }
 
 graph! {
-    #[metadata(context = Context)]
     #[metrics("performance", "count", "success_rate")]
     #[tests(ControlFlowGraphConvergesToSuccessPath)]
-    ControlFlowGraph -> (a_number: u32) {
+    ControlFlowGraph<Context> -> (a_number: u32) {
         InitAttempts() >>
         @while |ctx: &Context| ctx.attempts < 3 {
             BumpAttempts()
@@ -332,10 +327,9 @@ graph! {
 }
 
 graph! {
-    #[metadata(context = Context)]
     #[metrics("performance", "errors", "count", "caller", "success_rate", "fail_rate")]
     #[tests(LinearRegressionGraphExportsDefaultModel)]
-    LinearRegressionGraph -> (model: Model) {
+    LinearRegressionGraph<Context> -> (model: Model) {
         GetDataset() -> (&dataset) >>
         ParseInputFeatures(&dataset) -> (input_features) & ParseOutputFeatures(&dataset) -> (output_features) >>
         TrainTestSplit(input_features, output_features) -> (&X_train, &X_test, &y_train, &y_test) >>
