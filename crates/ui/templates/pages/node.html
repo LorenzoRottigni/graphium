@@ -5,6 +5,12 @@
     <h2 class="text-xl font-semibold">Node: <code>{{ label }}</code></h2>
     <p class="text-sm text-light mt-1">Target: <code class="text-white">{{ target }}</code></p>
     <p class="text-sm text-light mt-1">Context access: <code class="text-white">{{ ctx_access }}</code></p>
+    {% if docs.is_some() %}
+    <div class="mt-3 border border-dark rounded-md p-3 bg-black/20">
+        <div class="text-sm font-semibold mb-1">Description</div>
+        <pre class="text-sm whitespace-pre-wrap text-light">{{ docs.as_ref().unwrap() }}</pre>
+    </div>
+    {% endif %}
 </section>
 
 <section class="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -73,4 +79,3 @@
     </section>
 </section>
 {% endblock %}
-

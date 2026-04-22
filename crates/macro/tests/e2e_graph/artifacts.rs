@@ -18,12 +18,14 @@ fn e2e_graph_macro_moves_artifacts() {
     let mut ctx = graphium::Context::default();
 
     node! {
+        /// Duplicates a number into two outputs.
         fn duplicate(a: u32) -> (u32, u32) {
             (a, a)
         }
     }
 
     graph! {
+        /// Duplicates a single number and pipes it through the graph.
         OwnedGraph -> (a_split: u32) {
             GetNumber() -> (number) >>
             Duplicate(number) -> (a_split, b_split) >>
@@ -31,6 +33,16 @@ fn e2e_graph_macro_moves_artifacts() {
         }
     }
     let duplicated = OwnedGraph::__graphium_run(&mut ctx);
+    let graph_dto = OwnedGraph::__graphium_dto();
+    assert_eq!(
+        graph_dto.docs.as_deref(),
+        Some("Duplicates a single number and pipes it through the graph.")
+    );
+    let node_dto = Duplicate::__graphium_dto();
+    assert_eq!(
+        node_dto.docs.as_deref(),
+        Some("Duplicates a number into two outputs.")
+    );
 
     assert_eq!(duplicated, 42);
 }

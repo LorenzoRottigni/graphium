@@ -34,6 +34,7 @@ pub(crate) struct NodeTemplate {
     pub(crate) label: String,
     pub(crate) target: String,
     pub(crate) ctx_access: String,
+    pub(crate) docs: Option<String>,
 
     pub(crate) metrics_graph: String,
     pub(crate) metrics_node: String,
@@ -92,6 +93,7 @@ pub(crate) async fn node_page_html(
         label: node.dto.label.clone(),
         target: node.dto.target.clone(),
         ctx_access: ctx_access_label(node.dto.ctx_access).to_string(),
+        docs: node.dto.docs.clone(),
         metrics_graph: node.dto.metrics_graph.clone(),
         metrics_node: node.dto.metrics_node.clone(),
         metrics,

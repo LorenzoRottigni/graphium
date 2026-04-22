@@ -1,3 +1,10 @@
+{% if graph_docs.is_some() %}
+<section class="border border-dark rounded-md p-4 bg-darkest mb-6">
+    <h3 class="text-lg font-semibold mb-2">Description</h3>
+    <pre class="text-sm whitespace-pre-wrap text-light">{{ graph_docs.as_ref().unwrap() }}</pre>
+</section>
+{% endif %}
+
 <section class="border border-dark rounded-md p-4 bg-darkest">
     <h3 class="text-lg font-semibold mb-3">Graph structure</h3>
     <div class="overflow-x-auto scrollbar-primary">
@@ -152,4 +159,3 @@
         </section>
     </section>
 </section>
-

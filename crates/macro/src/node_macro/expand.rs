@@ -111,6 +111,13 @@ pub fn expand(input: TokenStream) -> TokenStream {
     let fn_name = &node_def.fn_name;
     let struct_name = &node_def.struct_name;
     let is_async = func.sig.asyncness.is_some();
+    let docs_tokens = match &node_def.docs {
+        Some(value) => {
+            let lit = syn::LitStr::new(value, proc_macro2::Span::call_site());
+            quote! { ::std::option::Option::Some(#lit.to_string()) }
+        }
+        None => quote! { ::std::option::Option::None },
+    };
     let ctx_generic = if node_def.ctx_type.is_none() {
         quote! { <Ctx> }
     } else {
@@ -545,6 +552,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
                     id: #id_literal.to_string(),
                     target: stringify!(#struct_name).to_string(),
                     label: stringify!(#struct_name).to_string(),
+                    docs: #docs_tokens,
                     source: ::std::option::Option::Some(::graphium::export::SourceSpanDto {
                         file: file!().to_string(),
                         start_line: #start_line,

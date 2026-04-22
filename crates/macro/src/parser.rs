@@ -539,34 +539,49 @@ fn parse_graph_input(input: ParseStream) -> Result<GraphInput> {
     let mut async_enabled = false;
     let mut metrics = MetricsSpec::default();
     let mut tests: Vec<Path> = Vec::new();
+    let mut attrs: Vec<syn::Attribute> = Vec::new();
 
-    while input.peek(Token![#]) {
-        input.parse::<Token![#]>()?;
-        let bracket_content;
-        syn::bracketed!(bracket_content in input);
-
-        let attr_name: Ident = bracket_content.parse()?;
-        if attr_name == "metrics" {
-            let metrics_content;
-            syn::parenthesized!(metrics_content in bracket_content);
-            metrics = parse_metrics_list(&metrics_content)?;
-        } else if attr_name == "tests" {
-            let tests_content;
-            syn::parenthesized!(tests_content in bracket_content);
-            let list =
-                syn::punctuated::Punctuated::<Path, Token![,]>::parse_terminated(&tests_content)?;
+    let outer_attrs = input.call(syn::Attribute::parse_outer)?;
+    for attr in outer_attrs {
+        if attr.path().is_ident("metrics") {
+            let syn::Meta::List(list) = &attr.meta else {
+                return Err(syn::Error::new_spanned(attr, "expected `#[metrics(...)]`"));
+            };
+            let parsed = syn::parse::Parser::parse2(parse_metrics_list, list.tokens.clone())?;
+            metrics.performance |= parsed.performance;
+            metrics.errors |= parsed.errors;
+            metrics.count |= parsed.count;
+            metrics.caller |= parsed.caller;
+            metrics.success_rate |= parsed.success_rate;
+            metrics.fail_rate |= parsed.fail_rate;
+            continue;
+        }
+        if attr.path().is_ident("tests") {
+            let syn::Meta::List(list) = &attr.meta else {
+                return Err(syn::Error::new_spanned(attr, "expected `#[tests(...)]`"));
+            };
+            let list = syn::parse::Parser::parse2(
+                syn::punctuated::Punctuated::<Path, Token![,]>::parse_terminated,
+                list.tokens.clone(),
+            )?;
             tests.extend(list.into_iter());
-        } else if attr_name == "metadata" {
-            return Err(bracket_content.error(
+            continue;
+        }
+        if attr.path().is_ident("doc") {
+            attrs.push(attr);
+            continue;
+        }
+        if attr.path().is_ident("metadata") {
+            return Err(syn::Error::new_spanned(
+                attr,
                 "`#[metadata(...)]` is no longer supported for graphs; use `MyGraph<Context>` and the `async` keyword",
             ));
-        } else {
-            return Err(bracket_content.error("expected `metrics` or `tests`"));
         }
 
-        if !bracket_content.is_empty() {
-            return Err(bracket_content.error("unexpected tokens in attribute payload"));
-        }
+        return Err(syn::Error::new_spanned(
+            attr,
+            "unsupported graph attribute; allowed: `/// doc`, `#[metrics(...)]`, `#[tests(...)]`",
+        ));
     }
 
     if input.peek(Token![async]) {
@@ -620,6 +635,7 @@ fn parse_graph_input(input: ParseStream) -> Result<GraphInput> {
     };
 
     Ok(GraphInput {
+        attrs,
         name,
         context,
         inputs: graph_inputs,

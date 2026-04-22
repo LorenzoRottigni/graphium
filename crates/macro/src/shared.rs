@@ -17,6 +17,7 @@ pub struct NodeDef {
     pub return_ty: Option<Type>,
     pub metrics: MetricsSpec,
     pub return_is_result: bool,
+    pub docs: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -78,6 +79,7 @@ pub struct LoopExpr {
 }
 
 pub struct GraphInput {
+    pub attrs: Vec<syn::Attribute>,
     pub name: Ident,
     pub context: Path,
     pub inputs: Vec<(Ident, Type)>,
@@ -122,6 +124,34 @@ pub fn parse_metric_name(value: &str) -> Option<fn(&mut MetricsSpec)> {
         "success_rate" => Some(|spec| spec.success_rate = true),
         "fail_rate" => Some(|spec| spec.fail_rate = true),
         _ => None,
+    }
+}
+
+pub fn doc_string_from_attrs(attrs: &[syn::Attribute]) -> Option<String> {
+    let mut lines = Vec::new();
+    for attr in attrs {
+        if !attr.path().is_ident("doc") {
+            continue;
+        }
+        let syn::Meta::NameValue(name_value) = &attr.meta else {
+            continue;
+        };
+        let syn::Expr::Lit(expr_lit) = &name_value.value else {
+            continue;
+        };
+        let syn::Lit::Str(lit_str) = &expr_lit.lit else {
+            continue;
+        };
+        let line = lit_str.value();
+        lines.push(line.trim_start_matches(' ').to_string());
+    }
+
+    if lines.is_empty() {
+        None
+    } else {
+        let joined = lines.join("\n");
+        let trimmed = joined.trim().to_string();
+        if trimmed.is_empty() { None } else { Some(trimmed) }
     }
 }
 

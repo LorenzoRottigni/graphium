@@ -7,7 +7,7 @@
 use quote::format_ident;
 use syn::{FnArg, ItemFn, Pat, ReturnType, Type};
 
-use crate::shared::{MetricsSpec, NodeDef, ParamKind, pascal_case};
+use crate::shared::{MetricsSpec, NodeDef, ParamKind, doc_string_from_attrs, pascal_case};
 
 /// Extracts the compile-time metadata the graph macro needs from a node
 /// function signature.
@@ -91,6 +91,7 @@ pub fn parse_node_def(func: &ItemFn, metrics: MetricsSpec) -> NodeDef {
         return_ty,
         metrics,
         return_is_result,
+        docs: doc_string_from_attrs(&func.attrs),
     }
 }
 
