@@ -53,12 +53,8 @@ enum Status {
 }
 
 graph! {
-    #[metadata(
-        context = Context,
-        inputs = (a_split: u32, b_split: u32),
-        outputs = (a_split: u32, b_split: u32)
-    )]
-    InnerGraph {
+    #[metadata(context = Context)]
+    InnerGraph(a_split: u32, b_split: u32) -> (a_split: u32, b_split: u32) {
         InnerStart(a_split, b_split) -> (a_split, b_split) >>
         InnerFinish(a_split, b_split) -> (a_split, b_split)
     }

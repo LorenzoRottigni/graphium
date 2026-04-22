@@ -23,9 +23,8 @@ pub fn main() {
     }
 
     graph! {
-        #[metadata(outputs = (a_split: u32))]
         #[metrics("performance")]
-        OwnedGraph {
+        OwnedGraph -> (a_split: u32) {
             GetNumber() -> (number) >>
             Duplicate(number) -> (a_split, b_split) >>
             PipeNumber(a_split) -> (a_split)

@@ -34,8 +34,8 @@ fn e2e_graph_parallel_branches_run_concurrently() {
     }
 
     graph! {
-        #[metadata(context = graphium::Context, outputs = (value: u32))]
-        ParallelGraph {
+        #[metadata(context = graphium::Context)]
+        ParallelGraph -> (value: u32) {
             LeftWork() -> (left) & RightWork() -> (right) >>
             Sum(left, right) -> (value)
         }

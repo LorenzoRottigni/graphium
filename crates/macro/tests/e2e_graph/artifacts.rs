@@ -24,8 +24,7 @@ fn e2e_graph_macro_moves_artifacts() {
     }
 
     graph! {
-        #[metadata(outputs = (a_split: u32))]
-        OwnedGraph {
+        OwnedGraph -> (a_split: u32) {
             GetNumber() -> (number) >>
             Duplicate(number) -> (a_split, b_split) >>
             PipeNumber(a_split) -> (a_split)
@@ -57,8 +56,8 @@ fn e2e_graph_macro_borrows_artifacts() {
     }
 
     graph! {
-        #[metadata(context = Context, outputs = (number: u32))]
-        BorrowedGraph {
+        #[metadata(context = Context)]
+        BorrowedGraph -> (number: u32) {
             GetNumber() -> (number) >>
             StoreNumber(number) -> (&number) >>
             TakeOwnership(&number) -> (number) >>

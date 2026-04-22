@@ -45,8 +45,8 @@ fn e2e_graph_async_nodes() {
     }
 
     graph! {
-        #[metadata(context = graphium::Context, outputs = (a_number: u32), async = true)]
-        AsyncGraph {
+        #[metadata(context = graphium::Context, async = true)]
+        AsyncGraph -> (a_number: u32) {
             GetNumber() -> (a_number) >>
             AddOne(a_number) -> (a_number)
         }

@@ -496,100 +496,8 @@ impl Parse for GraphInput {
     /// Parses the outer `graph!` object, including graph name, context type,
     /// and the bracketed graph schema.
     fn parse(input: ParseStream) -> Result<Self> {
-        if input.peek(Token![#]) {
-            return parse_graph_input_with_metadata(input);
-        }
-
-        parse_graph_input_legacy(input)
+        parse_graph_input(input)
     }
-}
-
-/// Parses the original key/value graph syntax:
-/// `name: ..., context: ..., inputs: (...), outputs: (...), schema: [ ... ]`.
-fn parse_graph_input_legacy(input: ParseStream) -> Result<GraphInput> {
-    let mut name: Option<Ident> = None;
-    let mut context: Option<Path> = None;
-    let mut graph_inputs: Vec<(Ident, Type)> = Vec::new();
-    let mut graph_outputs: Vec<(Ident, Type)> = Vec::new();
-    let mut nodes: Option<NodeExpr> = None;
-    let mut async_enabled = false;
-    let mut metrics = MetricsSpec::default();
-    let tests: Vec<Path> = Vec::new();
-
-    while !input.is_empty() {
-        if input.peek(Token![async]) {
-            input.parse::<Token![async]>()?;
-            input.parse::<Token![:]>()?;
-            let lit: syn::LitBool = input.parse()?;
-            async_enabled = lit.value;
-        } else {
-            let key: Ident = input.parse()?;
-            input.parse::<Token![:]>()?;
-
-            match key.to_string().as_str() {
-                "name" => {
-                    name = Some(input.parse()?);
-                }
-                "context" => {
-                    context = Some(input.parse()?);
-                }
-                "inputs" => {
-                    let content;
-                    syn::parenthesized!(content in input);
-                    graph_inputs = parse_typed_ident_list(&content)?;
-                }
-                "outputs" => {
-                    let content;
-                    syn::parenthesized!(content in input);
-                    graph_outputs = parse_typed_ident_list(&content)?;
-                }
-                "schema" => {
-                    let content;
-                    syn::bracketed!(content in input);
-                    nodes = Some(content.parse()?);
-                }
-                "async" => {
-                    let lit: syn::LitBool = input.parse()?;
-                    async_enabled = lit.value;
-                }
-                "metrics" => {
-                    let content;
-                    syn::parenthesized!(content in input);
-                    metrics = parse_metrics_list(&content)?;
-                }
-                _ => {
-                    return Err(input
-                        .error("expected one of: `name`, `context`, `inputs`, `outputs`, `schema`, `async`, `metrics`"));
-                }
-            }
-        }
-
-        input.parse::<Token![,]>().ok();
-    }
-
-    let nodes = nodes.ok_or_else(|| input.error("missing `schema`"))?;
-    let context = match context {
-        Some(ctx) => ctx,
-        None => {
-            if node_expr_uses_borrowed_artifacts(&nodes) {
-                return Err(input.error(
-                    "missing `context`; graphs that borrow artifacts (e.g. `(&x)` or `-> (&x)`) must declare a context type that stores borrowed artifacts as fields",
-                ));
-            }
-            parse_quote!(::graphium::Context)
-        }
-    };
-
-    Ok(GraphInput {
-        name: name.ok_or_else(|| input.error("missing `name`"))?,
-        context,
-        inputs: graph_inputs,
-        outputs: graph_outputs,
-        nodes,
-        async_enabled,
-        metrics,
-        tests,
-    })
 }
 
 fn node_expr_uses_borrowed_artifacts(node: &NodeExpr) -> bool {
@@ -622,15 +530,14 @@ fn node_expr_uses_borrowed_artifacts(node: &NodeExpr) -> bool {
     }
 }
 
-/// Parses the ergonomic metadata style:
-/// `#[metadata(context = Ctx, inputs = (...), outputs = (...))] MyGraph { ... }`
-fn parse_graph_input_with_metadata(input: ParseStream) -> Result<GraphInput> {
+/// Parses the current graph syntax:
+/// `#[metadata(context = Ctx, async = true)] #[metrics(...)] #[tests(...)] MyGraph(inputs...) -> (outputs...) { ... }`
+fn parse_graph_input(input: ParseStream) -> Result<GraphInput> {
     let mut context: Option<Path> = None;
     let mut graph_inputs: Vec<(Ident, Type)> = Vec::new();
     let mut graph_outputs: Vec<(Ident, Type)> = Vec::new();
     let mut async_enabled = false;
     let mut metrics = MetricsSpec::default();
-    let mut metadata_seen = false;
     let mut tests: Vec<Path> = Vec::new();
 
     while input.peek(Token![#]) {
@@ -640,7 +547,6 @@ fn parse_graph_input_with_metadata(input: ParseStream) -> Result<GraphInput> {
 
         let attr_name: Ident = bracket_content.parse()?;
         if attr_name == "metadata" {
-            metadata_seen = true;
             let metadata_content;
             syn::parenthesized!(metadata_content in bracket_content);
             while !metadata_content.is_empty() {
@@ -658,23 +564,13 @@ fn parse_graph_input_with_metadata(input: ParseStream) -> Result<GraphInput> {
                     "context" => {
                         context = Some(metadata_content.parse()?);
                     }
-                    "inputs" => {
-                        let typed;
-                        syn::parenthesized!(typed in metadata_content);
-                        graph_inputs = parse_typed_ident_list(&typed)?;
-                    }
-                    "outputs" => {
-                        let typed;
-                        syn::parenthesized!(typed in metadata_content);
-                        graph_outputs = parse_typed_ident_list(&typed)?;
-                    }
                     "async" => {
                         let lit: syn::LitBool = metadata_content.parse()?;
                         async_enabled = lit.value;
                     }
                     _ => {
                         return Err(metadata_content
-                            .error("expected one of: `context`, `inputs`, `outputs`, `async`"));
+                            .error("expected one of: `context`, `async`"));
                     }
                 }
 
@@ -703,11 +599,21 @@ fn parse_graph_input_with_metadata(input: ParseStream) -> Result<GraphInput> {
         }
     }
 
-    if !metadata_seen {
-        return Err(input.error("missing `#[metadata(...)]` attribute"));
+    let name: Ident = input.parse()?;
+
+    if input.peek(syn::token::Paren) {
+        let typed;
+        syn::parenthesized!(typed in input);
+        graph_inputs = parse_typed_ident_list(&typed)?;
     }
 
-    let name: Ident = input.parse()?;
+    if input.peek(Token![->]) {
+        input.parse::<Token![->]>()?;
+        let typed;
+        syn::parenthesized!(typed in input);
+        graph_outputs = parse_typed_ident_list(&typed)?;
+    }
+
     let body;
     syn::braced!(body in input);
     let nodes: NodeExpr = body.parse()?;

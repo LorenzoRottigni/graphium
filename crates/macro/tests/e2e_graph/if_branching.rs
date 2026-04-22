@@ -38,8 +38,8 @@ fn e2e_graph_if_elif_else_outputs() {
     }
 
     graph! {
-        #[metadata(context = graphium::Context, outputs = (result: u32))]
-        IfGraph {
+        #[metadata(context = graphium::Context)]
+        IfGraph -> (result: u32) {
             GetOperationStatus() -> (status) >>
             @if |status: Status| status == Status::Success -> (result) {
                 OnSuccess() -> (result)

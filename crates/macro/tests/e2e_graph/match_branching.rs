@@ -180,8 +180,8 @@ fn e2e_graph_match_outputs() {
     }
 
     graph! {
-        #[metadata(context = graphium::Context, outputs = (match_result: u32))]
-        MatchOutputGraph {
+        #[metadata(context = graphium::Context)]
+        MatchOutputGraph -> (match_result: u32) {
             GetOperationStatus() -> (status) >>
             @match status -> (match_result) {
                 Status::Success => OnSuccess() -> (match_result),

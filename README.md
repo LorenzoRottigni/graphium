@@ -19,9 +19,9 @@ The example above shows how Graphium, in a few lines, allows you to:
 
 ```rust
 graph! {
-    #[metadata(context = Context, outputs = (model: Model))]
+    #[metadata(context = Context)]
     #[metrics("performance", "errors", "count", "caller", "success_rate", "fail_rate")]
-    LinearRegressionGraph {
+    LinearRegressionGraph -> (model: Model) {
         GetDataset() -> (&dataset) >>
         ParseInputFeatures(&dataset) -> (input_features) & ParseOutputFeatures(&dataset) -> (output_features) >>
         TrainTestSplit(input_features, output_features) -> (&X_train, &X_test, &y_train, &y_test) >>
@@ -77,8 +77,8 @@ graph! {
 
 ```rust
 graph! {
-    #[metadata(context = Context, outputs = (result: u32))]
-    IfGraph {
+    #[metadata(context = Context)]
+    IfGraph -> (result: u32) {
         GetOperationStatus() -> (status) >>
         @if |status: Status| status == Status::Success -> (result) {
             OnSuccess() -> (result)
@@ -129,8 +129,8 @@ graph! {
 
 ```rust
 graph! {
-    #[metadata(context = Context, outputs = (a_number: u32), async = true)]
-    AsyncGraph {
+    #[metadata(context = Context, async = true)]
+    AsyncGraph -> (a_number: u32) {
         GetNumber() -> (a_number) >>
         AddOne(a_number) -> (a_number)
     }
