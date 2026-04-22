@@ -9,7 +9,9 @@ name = "graphium"
 [dependencies]
 prometheus = "0.13"
 serde = { version = "1", features = ["derive"], optional = true }
+graphium-macro = { version = "0.1.0", path = "../macro", optional = true }
 
 [features]
 # Enables serde (de)serialization derives for DTOs.
 serialize = ["dep:serde"]
+macros = ["dep:graphium-macro"]

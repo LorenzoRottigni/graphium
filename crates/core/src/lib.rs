@@ -18,6 +18,9 @@ pub trait Artifact: Clone + 'static {}
 
 impl<T> Artifact for T where T: Clone + 'static {}
 
+#[cfg(feature = "macros")]
+pub use graphium_macro::{graph, graph_test, node, node_test};
+
 /// Trait implemented by macro-generated graph configuration types.
 ///
 /// The graph object describes and executes the plan.

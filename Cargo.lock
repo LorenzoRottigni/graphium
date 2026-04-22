@@ -582,6 +582,7 @@ dependencies = [
 name = "graphium"
 version = "0.1.0"
 dependencies = [
+ "graphium-macro",
  "prometheus",
  "serde",
 ]
