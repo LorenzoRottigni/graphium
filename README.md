@@ -129,8 +129,8 @@ graph! {
 
 ```rust
 graph! {
-    #[metadata(context = Context, async = true)]
-    AsyncGraph -> (a_number: u32) {
+    #[metadata(context = Context)]
+    async AsyncGraph -> (a_number: u32) {
         GetNumber() -> (a_number) >>
         AddOne(a_number) -> (a_number)
     }

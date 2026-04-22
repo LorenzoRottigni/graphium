@@ -5,8 +5,8 @@ use axum::Json;
 use graphium_macro::graph;
 
 graph! {
-    #[metadata(context = Context, async = true)]
-    CreateProductGraph(name: String, price: String) -> (product_dto: Json<Product>) {
+    #[metadata(context = Context)]
+    async CreateProductGraph(name: String, price: String) -> (product_dto: Json<Product>) {
         GetProductInput(name, price) -> &product_input >>
         ValidateProductInputData(&product_input) &
         CheckProductDoesNotExist(&product_input) >>
@@ -16,8 +16,8 @@ graph! {
 }
 
 graph! {
-    #[metadata(context = Context, async = true)]
-    GetProductGraph(product_id: i64) -> (product_dto: Json<Product>) {
+    #[metadata(context = Context)]
+    async GetProductGraph(product_id: i64) -> (product_dto: Json<Product>) {
         ProductGetById(product_id) -> product_result >>
         UnwrapResultOptionProduct(product_result) -> product >>
         SerializeProduct(product) -> product_dto
@@ -25,8 +25,8 @@ graph! {
 }
 
 graph! {
-    #[metadata(context = Context, async = true)]
-    ListProductsGraph(limit: i64, offset: i64) -> (products_dto: Json<Vec<Product>>) {
+    #[metadata(context = Context)]
+    async ListProductsGraph(limit: i64, offset: i64) -> (products_dto: Json<Vec<Product>>) {
         ProductList(limit, offset) -> products_result >>
         UnwrapResultProducts(products_result) -> products >>
         SerializeProducts(products) -> products_dto
@@ -34,8 +34,8 @@ graph! {
 }
 
 graph! {
-    #[metadata(context = Context, async = true)]
-    UpdateProductGraph(product_id: i64, update: UpdateProduct) -> (product_dto: Json<Product>) {
+    #[metadata(context = Context)]
+    async UpdateProductGraph(product_id: i64, update: UpdateProduct) -> (product_dto: Json<Product>) {
         ProductUpdate(product_id, update) -> product_result >>
         UnwrapResultOptionProduct(product_result) -> product >>
         SerializeProduct(product) -> product_dto
@@ -43,8 +43,8 @@ graph! {
 }
 
 graph! {
-    #[metadata(context = Context, async = true)]
-    DeleteProductGraph(product_id: i64) -> (result_dto: Json<DeleteResult>) {
+    #[metadata(context = Context)]
+    async DeleteProductGraph(product_id: i64) -> (result_dto: Json<DeleteResult>) {
         ProductDelete(product_id) -> rows_result >>
         UnwrapResultRowsAffected(rows_result) -> rows >>
         RowsAffectedToDeleteResult(rows) -> result >>

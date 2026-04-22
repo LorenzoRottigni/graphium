@@ -531,7 +531,7 @@ fn node_expr_uses_borrowed_artifacts(node: &NodeExpr) -> bool {
 }
 
 /// Parses the current graph syntax:
-/// `#[metadata(context = Ctx, async = true)] #[metrics(...)] #[tests(...)] MyGraph(inputs...) -> (outputs...) { ... }`
+/// `#[metadata(context = Ctx)] #[metrics(...)] #[tests(...)] async MyGraph(inputs...) -> (outputs...) { ... }`
 fn parse_graph_input(input: ParseStream) -> Result<GraphInput> {
     let mut context: Option<Path> = None;
     let mut graph_inputs: Vec<(Ident, Type)> = Vec::new();
@@ -550,13 +550,8 @@ fn parse_graph_input(input: ParseStream) -> Result<GraphInput> {
             let metadata_content;
             syn::parenthesized!(metadata_content in bracket_content);
             while !metadata_content.is_empty() {
-                let key_string = if metadata_content.peek(Token![async]) {
-                    metadata_content.parse::<Token![async]>()?;
-                    "async".to_string()
-                } else {
-                    let key: Ident = metadata_content.parse()?;
-                    key.to_string()
-                };
+                let key: Ident = metadata_content.parse()?;
+                let key_string = key.to_string();
 
                 metadata_content.parse::<Token![=]>()?;
 
@@ -564,13 +559,8 @@ fn parse_graph_input(input: ParseStream) -> Result<GraphInput> {
                     "context" => {
                         context = Some(metadata_content.parse()?);
                     }
-                    "async" => {
-                        let lit: syn::LitBool = metadata_content.parse()?;
-                        async_enabled = lit.value;
-                    }
                     _ => {
-                        return Err(metadata_content
-                            .error("expected one of: `context`, `async`"));
+                        return Err(metadata_content.error("expected `context`"));
                     }
                 }
 
@@ -597,6 +587,11 @@ fn parse_graph_input(input: ParseStream) -> Result<GraphInput> {
         if !bracket_content.is_empty() {
             return Err(bracket_content.error("unexpected tokens in attribute payload"));
         }
+    }
+
+    if input.peek(Token![async]) {
+        input.parse::<Token![async]>()?;
+        async_enabled = true;
     }
 
     let name: Ident = input.parse()?;
