@@ -540,6 +540,9 @@ fn parse_graph_input(input: ParseStream) -> Result<GraphInput> {
     let mut metrics = MetricsSpec::default();
     let mut tests: Vec<Path> = Vec::new();
     let mut attrs: Vec<syn::Attribute> = Vec::new();
+    let mut tags: Vec<String> = Vec::new();
+    let mut deprecated = false;
+    let mut deprecated_reason: Option<String> = None;
 
     let outer_attrs = input.call(syn::Attribute::parse_outer)?;
     for attr in outer_attrs {
@@ -569,6 +572,60 @@ fn parse_graph_input(input: ParseStream) -> Result<GraphInput> {
         }
         if attr.path().is_ident("doc") {
             attrs.push(attr);
+            continue;
+        }
+        if attr.path().is_ident("tags") {
+            let syn::Meta::List(list) = &attr.meta else {
+                return Err(syn::Error::new_spanned(attr, "expected `#[tags(\"a\", \"b\")]`"));
+            };
+            let items = syn::parse::Parser::parse2(
+                syn::punctuated::Punctuated::<syn::LitStr, Token![,]>::parse_terminated,
+                list.tokens.clone(),
+            )?;
+            for item in items {
+                let tag = item.value();
+                let tag = tag.trim();
+                if !tag.is_empty() {
+                    tags.push(tag.to_string());
+                }
+            }
+            continue;
+        }
+        if attr.path().is_ident("deprecated") {
+            deprecated = true;
+            match &attr.meta {
+                syn::Meta::Path(_) => {}
+                syn::Meta::NameValue(name_value) => {
+                    if let syn::Expr::Lit(expr_lit) = &name_value.value {
+                        if let syn::Lit::Str(lit) = &expr_lit.lit {
+                            let value = lit.value().trim().to_string();
+                            if !value.is_empty() {
+                                deprecated_reason = Some(value);
+                            }
+                        }
+                    }
+                }
+                syn::Meta::List(list) => {
+                    let parsed = syn::parse::Parser::parse2(
+                        syn::punctuated::Punctuated::<syn::MetaNameValue, Token![,]>::parse_terminated,
+                        list.tokens.clone(),
+                    );
+                    if let Ok(items) = parsed {
+                        for item in items {
+                            if item.path.is_ident("note") {
+                                if let syn::Expr::Lit(expr_lit) = &item.value {
+                                    if let syn::Lit::Str(lit) = &expr_lit.lit {
+                                        let value = lit.value().trim().to_string();
+                                        if !value.is_empty() {
+                                            deprecated_reason = Some(value);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             continue;
         }
         if attr.path().is_ident("metadata") {
@@ -644,6 +701,9 @@ fn parse_graph_input(input: ParseStream) -> Result<GraphInput> {
         async_enabled,
         metrics,
         tests,
+        tags,
+        deprecated,
+        deprecated_reason,
     })
 }
 

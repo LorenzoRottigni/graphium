@@ -5,6 +5,26 @@
 </section>
 {% endif %}
 
+{% if graph_deprecated || !graph_tags.is_empty() || graph_deprecated_reason.is_some() %}
+<section class="border border-dark rounded-md p-4 bg-darkest mb-6">
+    <h3 class="text-lg font-semibold mb-2">Metadata</h3>
+    <div class="flex flex-wrap gap-2">
+        {% if graph_deprecated %}
+        <span class="text-xs px-2 py-1 rounded bg-yellow-900/40 border border-yellow-800 text-yellow-200">deprecated</span>
+        {% endif %}
+        {% for t in graph_tags %}
+        <span class="text-xs px-2 py-1 rounded bg-black/40 border border-dark text-light">#{{ t }}</span>
+        {% endfor %}
+    </div>
+    {% if graph_deprecated_reason.is_some() %}
+    <div class="mt-3">
+        <div class="text-sm font-semibold mb-1">Deprecation reason</div>
+        <pre class="text-sm whitespace-pre-wrap text-light">{{ graph_deprecated_reason.as_ref().unwrap() }}</pre>
+    </div>
+    {% endif %}
+</section>
+{% endif %}
+
 <section class="border border-dark rounded-md p-4 bg-darkest">
     <h3 class="text-lg font-semibold mb-3">Graph structure</h3>
     <div class="overflow-x-auto scrollbar-primary">

@@ -5,9 +5,15 @@
 
 <form method="get" class="mb-4 flex gap-2">
     <input type="text" name="search" value="{{ search }}" placeholder="Search by name" class="px-3 py-2 rounded-md bg-dark border border-light text-white">
+    <input type="text" name="tag" value="{{ tag }}" placeholder="Tag (exact)" class="px-3 py-2 rounded-md bg-dark border border-light text-white">
     <select name="sort" class="px-3 py-2 rounded-md bg-dark border border-light text-white">
         <option value="asc" {% if sort == "asc" %}selected{% endif %}>A-Z</option>
         <option value="desc" {% if sort == "desc" %}selected{% endif %}>Z-A</option>
+    </select>
+    <select name="deprecated" class="px-3 py-2 rounded-md bg-dark border border-light text-white">
+        <option value="" {% if deprecated == "" %}selected{% endif %}>All</option>
+        <option value="true" {% if deprecated == "true" %}selected{% endif %}>Deprecated</option>
+        <option value="false" {% if deprecated == "false" %}selected{% endif %}>Not deprecated</option>
     </select>
     <button type="submit" class="px-4 py-2 bg-primary text-white rounded">Filter</button>
 </form>
@@ -17,19 +23,27 @@
     <li class="border border-primary/30 rounded p-4 bg-darkest">
         <a href="{{ item.url }}" class="text-white hover:text-primary">{{ item.name }}</a>
         <small>Graph: <a href="{{ item.graph_url }}" class="text-light hover:text-white">{{ item.graph_name }}</a></small>
+        <div class="mt-2 flex flex-wrap gap-2">
+            {% if item.deprecated %}
+            <span class="text-xs px-2 py-1 rounded bg-yellow-900/40 border border-yellow-800 text-yellow-200">deprecated</span>
+            {% endif %}
+            {% for t in item.tags %}
+            <span class="text-xs px-2 py-1 rounded bg-black/40 border border-dark text-light">#{{ t }}</span>
+            {% endfor %}
+        </div>
     </li>
     {% endfor %}
 </ul>
 
 <div class="mt-4 flex justify-between">
     {% if current_page > 1 %}
-    <a href="?page={{ current_page - 1 }}&sort={{ sort }}&search={{ search | urlencode }}" class="px-4 py-2 bg-primary text-white rounded">Previous</a>
+    <a href="?page={{ current_page - 1 }}&sort={{ sort }}&search={{ search | urlencode }}&tag={{ tag | urlencode }}&deprecated={{ deprecated | urlencode }}" class="px-4 py-2 bg-primary text-white rounded">Previous</a>
     {% else %}
     <span></span>
     {% endif %}
     <span>Page {{ current_page }} of {{ total_pages }}</span>
     {% if current_page < total_pages %}
-    <a href="?page={{ current_page + 1 }}&sort={{ sort }}&search={{ search | urlencode }}" class="px-4 py-2 bg-primary text-white rounded">Next</a>
+    <a href="?page={{ current_page + 1 }}&sort={{ sort }}&search={{ search | urlencode }}&tag={{ tag | urlencode }}&deprecated={{ deprecated | urlencode }}" class="px-4 py-2 bg-primary text-white rounded">Next</a>
     {% else %}
     <span></span>
     {% endif %}

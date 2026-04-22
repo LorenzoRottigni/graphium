@@ -179,6 +179,7 @@ node! {
 }
 
 node! {
+    /// this node returns a small, deterministic dataset for the UI demo. In a real graph, this could be a node that loads data from a file or database.
     #[metrics("performance", "count")]
     fn get_dataset() -> Dataset {
         // Small, deterministic dataset for the UI demo.
@@ -310,6 +311,7 @@ graph! {
 graph! {
     #[metrics("performance", "count", "success_rate")]
     #[tests(ControlFlowGraphConvergesToSuccessPath)]
+    #[deprecated(note = "Testing deprecation")]
     ControlFlowGraph<Context> -> (a_number: u32) {
         InitAttempts() >>
         @while |ctx: &Context| ctx.attempts < 3 {
@@ -327,8 +329,13 @@ graph! {
 }
 
 graph! {
+    /// This is a graph for training a linear regression model on a simple dataset,
+    /// included as a demo of a more complex graph with multiple nodes and edges.
+    /// The graph is not intended to produce a meaningful model, and intentionally
+    /// includes redundant nodes and edges for demonstration purposes.
     #[metrics("performance", "errors", "count", "caller", "success_rate", "fail_rate")]
     #[tests(LinearRegressionGraphExportsDefaultModel)]
+    #[tags("ml", "demo")]
     LinearRegressionGraph<Context> -> (model: Model) {
         GetDataset() -> (&dataset) >>
         ParseInputFeatures(&dataset) -> (input_features) & ParseOutputFeatures(&dataset) -> (output_features) >>

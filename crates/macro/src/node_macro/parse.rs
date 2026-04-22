@@ -92,6 +92,9 @@ pub fn parse_node_def(func: &ItemFn, metrics: MetricsSpec) -> NodeDef {
         metrics,
         return_is_result,
         docs: doc_string_from_attrs(&func.attrs),
+        tags: Vec::new(),
+        deprecated: false,
+        deprecated_reason: None,
     }
 }
 

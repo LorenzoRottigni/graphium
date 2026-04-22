@@ -104,14 +104,36 @@ fn output_supported(return_ty: &Option<Type>, returns_result: bool) -> bool {
 /// - `__graphium_run` for sync nodes or `__graphium_run_async` for async nodes
 pub fn expand(input: TokenStream) -> TokenStream {
     let mut func = parse_macro_input!(input as syn::ItemFn);
+    let name_override = extract_name_from_attrs(&mut func.attrs);
+    let tags = extract_tags_from_attrs(&mut func.attrs);
+    let (deprecated, deprecated_reason) = extract_deprecation_from_attrs(&func.attrs);
     let tests = extract_tests_from_attrs(&mut func.attrs);
     let metrics = super::metrics::extract_metrics_from_attrs(&mut func.attrs);
-    let node_def = parse_node_def(&func, metrics);
+    let mut node_def = parse_node_def(&func, metrics);
+    if let Some(ident) = name_override {
+        node_def.struct_name = ident;
+    }
+    node_def.tags = tags;
+    node_def.deprecated = deprecated;
+    node_def.deprecated_reason = deprecated_reason;
 
     let fn_name = &node_def.fn_name;
     let struct_name = &node_def.struct_name;
     let is_async = func.sig.asyncness.is_some();
     let docs_tokens = match &node_def.docs {
+        Some(value) => {
+            let lit = syn::LitStr::new(value, proc_macro2::Span::call_site());
+            quote! { ::std::option::Option::Some(#lit.to_string()) }
+        }
+        None => quote! { ::std::option::Option::None },
+    };
+    let tag_tokens: Vec<_> = node_def
+        .tags
+        .iter()
+        .map(|t| syn::LitStr::new(t, proc_macro2::Span::call_site()))
+        .collect();
+    let deprecated_token = node_def.deprecated;
+    let deprecated_reason_tokens = match &node_def.deprecated_reason {
         Some(value) => {
             let lit = syn::LitStr::new(value, proc_macro2::Span::call_site());
             quote! { ::std::option::Option::Some(#lit.to_string()) }
@@ -553,6 +575,9 @@ pub fn expand(input: TokenStream) -> TokenStream {
                     target: stringify!(#struct_name).to_string(),
                     label: stringify!(#struct_name).to_string(),
                     docs: #docs_tokens,
+                    tags: vec![ #( #tag_tokens.to_string() ),* ],
+                    deprecated: #deprecated_token,
+                    deprecated_reason: #deprecated_reason_tokens,
                     source: ::std::option::Option::Some(::graphium::export::SourceSpanDto {
                         file: file!().to_string(),
                         start_line: #start_line,
@@ -599,6 +624,116 @@ pub fn expand(input: TokenStream) -> TokenStream {
     };
 
     TokenStream::from(expanded)
+}
+
+fn extract_name_from_attrs(attrs: &mut Vec<syn::Attribute>) -> Option<Ident> {
+    let mut out = None;
+    let mut keep: Vec<syn::Attribute> = Vec::with_capacity(attrs.len());
+    for attr in attrs.drain(..) {
+        if attr.path().is_ident("name") {
+            if out.is_some() {
+                panic!("node `#[name = ...]` can only be specified once");
+            }
+            let syn::Meta::NameValue(name_value) = &attr.meta else {
+                panic!("node `#[name = ...]` expects `#[name = Ident]` or `#[name = \"Ident\"]`");
+            };
+            let ident = match &name_value.value {
+                syn::Expr::Path(expr_path) => expr_path
+                    .path
+                    .get_ident()
+                    .cloned()
+                    .unwrap_or_else(|| panic!("node `#[name = ...]` expects a single ident")),
+                syn::Expr::Lit(expr_lit) => match &expr_lit.lit {
+                    syn::Lit::Str(lit_str) => syn::parse_str::<Ident>(&lit_str.value())
+                        .unwrap_or_else(|_| panic!("node `#[name = ...]` must be a valid ident")),
+                    _ => panic!("node `#[name = ...]` must be an ident or string literal"),
+                },
+                _ => panic!("node `#[name = ...]` must be an ident or string literal"),
+            };
+            out = Some(ident);
+            continue;
+        }
+        keep.push(attr);
+    }
+    *attrs = keep;
+    out
+}
+
+fn extract_tags_from_attrs(attrs: &mut Vec<syn::Attribute>) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut keep: Vec<syn::Attribute> = Vec::with_capacity(attrs.len());
+    for attr in attrs.drain(..) {
+        if attr.path().is_ident("tags") {
+            let list = attr
+                .parse_args_with(
+                    syn::punctuated::Punctuated::<syn::LitStr, syn::Token![,]>::parse_terminated,
+                )
+                .unwrap_or_else(|_| {
+                    panic!("`#[tags(...)]` expects string literals, e.g. `#[tags(\"db\", \"io\")]`")
+                });
+            for item in list {
+                let tag = item.value();
+                let tag = tag.trim();
+                if !tag.is_empty() {
+                    out.push(tag.to_string());
+                }
+            }
+            continue;
+        }
+        keep.push(attr);
+    }
+    *attrs = keep;
+    out
+}
+
+fn extract_deprecation_from_attrs(attrs: &[syn::Attribute]) -> (bool, Option<String>) {
+    let mut deprecated = false;
+    let mut reason: Option<String> = None;
+
+    for attr in attrs {
+        if !attr.path().is_ident("deprecated") {
+            continue;
+        }
+        deprecated = true;
+        match &attr.meta {
+            syn::Meta::Path(_) => {}
+            syn::Meta::NameValue(name_value) => {
+                let syn::Expr::Lit(expr_lit) = &name_value.value else {
+                    continue;
+                };
+                let syn::Lit::Str(lit) = &expr_lit.lit else {
+                    continue;
+                };
+                let value = lit.value().trim().to_string();
+                if !value.is_empty() {
+                    reason = Some(value);
+                }
+            }
+            syn::Meta::List(list) => {
+                // Accept `#[deprecated(note = "...")]` style too.
+                let parsed = syn::parse::Parser::parse2(
+                    syn::punctuated::Punctuated::<syn::MetaNameValue, syn::Token![,]>::parse_terminated,
+                    list.tokens.clone(),
+                );
+                if let Ok(items) = parsed {
+                    for item in items {
+                        if item.path.is_ident("note") {
+                            if let syn::Expr::Lit(expr_lit) = &item.value {
+                                if let syn::Lit::Str(lit) = &expr_lit.lit {
+                                    let value = lit.value().trim().to_string();
+                                    if !value.is_empty() {
+                                        reason = Some(value);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    (deprecated, reason)
 }
 
 fn extract_tests_from_attrs(attrs: &mut Vec<syn::Attribute>) -> Vec<Path> {

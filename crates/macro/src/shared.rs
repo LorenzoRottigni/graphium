@@ -18,6 +18,9 @@ pub struct NodeDef {
     pub metrics: MetricsSpec,
     pub return_is_result: bool,
     pub docs: Option<String>,
+    pub tags: Vec<String>,
+    pub deprecated: bool,
+    pub deprecated_reason: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -88,6 +91,9 @@ pub struct GraphInput {
     pub async_enabled: bool,
     pub metrics: MetricsSpec,
     pub tests: Vec<Path>,
+    pub tags: Vec<String>,
+    pub deprecated: bool,
+    pub deprecated_reason: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

@@ -14,6 +14,8 @@ pub(crate) struct ListQuery {
     pub(crate) page: Option<usize>,
     pub(crate) sort: Option<String>,
     pub(crate) search: Option<String>,
+    pub(crate) tag: Option<String>,
+    pub(crate) deprecated: Option<String>,
 }
 
 use crate::{

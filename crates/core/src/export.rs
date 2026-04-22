@@ -67,6 +67,9 @@ pub struct GraphDto {
     pub id: String,
     pub name: String,
     pub docs: Option<String>,
+    pub tags: Vec<String>,
+    pub deprecated: bool,
+    pub deprecated_reason: Option<String>,
     pub schema: Option<GraphSchemaDto>,
     pub def: GraphDefDto,
     /// Raw schema definition text (typically the `graph! { ... }` tokens).
@@ -144,6 +147,9 @@ pub struct NodeDto {
     pub target: String,
     pub label: String,
     pub docs: Option<String>,
+    pub tags: Vec<String>,
+    pub deprecated: bool,
+    pub deprecated_reason: Option<String>,
     pub source: Option<SourceSpanDto>,
     /// Tests explicitly attached to this node (UI/admin build only).
     pub tests: Vec<TestDto>,

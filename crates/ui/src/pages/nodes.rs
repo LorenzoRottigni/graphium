@@ -13,6 +13,8 @@ pub(crate) struct NodesTemplate {
     pub(crate) total_pages: usize,
     pub(crate) sort: String,
     pub(crate) search: String,
+    pub(crate) tag: String,
+    pub(crate) deprecated: String,
 }
 
 #[derive(Clone)]
@@ -21,6 +23,8 @@ pub(crate) struct NodeItem {
     pub(crate) url: String,
     pub(crate) graph_name: String,
     pub(crate) graph_url: String,
+    pub(crate) tags: Vec<String>,
+    pub(crate) deprecated: bool,
 }
 
 pub(crate) fn nodes_page_html(state: &AppState, query: ListQuery) -> String {
@@ -33,11 +37,24 @@ pub(crate) fn nodes_page_html(state: &AppState, query: ListQuery) -> String {
             url: format!("/node/{}", n.dto.id),
             graph_name: state.graphs.by_id[&n.graph_id].name.clone(),
             graph_url: format!("/graph/{}", n.graph_id),
+            tags: n.dto.tags.clone(),
+            deprecated: n.dto.deprecated,
         })
         .collect();
 
     if let Some(ref s) = query.search {
         items.retain(|i| i.name.to_lowercase().contains(&s.to_lowercase()));
+    }
+    if let Some(ref tag) = query.tag {
+        let tag = tag.trim();
+        if !tag.is_empty() {
+            items.retain(|i| i.tags.iter().any(|t| t == tag));
+        }
+    }
+    match query.deprecated.as_deref() {
+        Some("true") => items.retain(|i| i.deprecated),
+        Some("false") => items.retain(|i| !i.deprecated),
+        _ => {}
     }
 
     items.sort_by_key(|i| i.name.clone());
@@ -62,6 +79,8 @@ pub(crate) fn nodes_page_html(state: &AppState, query: ListQuery) -> String {
         total_pages,
         sort: query.sort.unwrap_or("asc".to_string()),
         search: query.search.unwrap_or("".to_string()),
+        tag: query.tag.unwrap_or_default(),
+        deprecated: query.deprecated.unwrap_or_default(),
     }
     .render()
     .expect("render nodes")

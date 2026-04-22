@@ -1,5 +1,6 @@
 use graphium;
 use graphium_macro::{graph, node};
+use futures::executor::block_on;
 
 node! {
     fn get_number() -> u32 {
@@ -19,6 +20,8 @@ fn e2e_graph_macro_moves_artifacts() {
 
     node! {
         /// Duplicates a number into two outputs.
+        #[tags("math", "util")]
+        #[deprecated = "use `BetterDuplicate` instead"]
         fn duplicate(a: u32) -> (u32, u32) {
             (a, a)
         }
@@ -26,6 +29,8 @@ fn e2e_graph_macro_moves_artifacts() {
 
     graph! {
         /// Duplicates a single number and pipes it through the graph.
+        #[tags("demo", "math")]
+        #[deprecated(note = "use `BetterGraph` instead")]
         OwnedGraph -> (a_split: u32) {
             GetNumber() -> (number) >>
             Duplicate(number) -> (a_split, b_split) >>
@@ -38,13 +43,52 @@ fn e2e_graph_macro_moves_artifacts() {
         graph_dto.docs.as_deref(),
         Some("Duplicates a single number and pipes it through the graph.")
     );
+    assert_eq!(graph_dto.tags, vec!["demo".to_string(), "math".to_string()]);
+    assert!(graph_dto.deprecated);
+    assert_eq!(
+        graph_dto.deprecated_reason.as_deref(),
+        Some("use `BetterGraph` instead")
+    );
     let node_dto = Duplicate::__graphium_dto();
     assert_eq!(
         node_dto.docs.as_deref(),
         Some("Duplicates a number into two outputs.")
     );
+    assert_eq!(node_dto.tags, vec!["math".to_string(), "util".to_string()]);
+    assert!(node_dto.deprecated);
+    assert_eq!(
+        node_dto.deprecated_reason.as_deref(),
+        Some("use `BetterDuplicate` instead")
+    );
 
     assert_eq!(duplicated, 42);
+}
+
+#[test]
+fn e2e_node_macro_supports_explicit_name_override() {
+    let mut ctx = graphium::Context::default();
+
+    node! {
+        #[name = getNumber]
+        #[tags("io")]
+        async fn get_number_custom() -> u32 {
+            9
+        }
+    }
+
+    graph! {
+        #[tags("io")]
+        async CustomNameGraph<graphium::Context> -> (out: u32) {
+            getNumber() -> (out)
+        }
+    }
+
+    let value = block_on(CustomNameGraph::__graphium_run_async(&mut ctx));
+    assert_eq!(value, 9);
+
+    let node_dto = getNumber::__graphium_dto();
+    assert_eq!(node_dto.label, "getNumber");
+    assert_eq!(node_dto.tags, vec!["io".to_string()]);
 }
 
 #[test]

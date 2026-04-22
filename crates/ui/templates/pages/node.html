@@ -5,6 +5,22 @@
     <h2 class="text-xl font-semibold">Node: <code>{{ label }}</code></h2>
     <p class="text-sm text-light mt-1">Target: <code class="text-white">{{ target }}</code></p>
     <p class="text-sm text-light mt-1">Context access: <code class="text-white">{{ ctx_access }}</code></p>
+    {% if deprecated || !tags.is_empty() || deprecated_reason.is_some() %}
+    <div class="mt-3 flex flex-wrap gap-2">
+        {% if deprecated %}
+        <span class="text-xs px-2 py-1 rounded bg-yellow-900/40 border border-yellow-800 text-yellow-200">deprecated</span>
+        {% endif %}
+        {% for t in tags %}
+        <span class="text-xs px-2 py-1 rounded bg-black/40 border border-dark text-light">#{{ t }}</span>
+        {% endfor %}
+    </div>
+    {% if deprecated_reason.is_some() %}
+    <div class="mt-3 border border-dark rounded-md p-3 bg-black/20">
+        <div class="text-sm font-semibold mb-1">Deprecation reason</div>
+        <pre class="text-sm whitespace-pre-wrap text-light">{{ deprecated_reason.as_ref().unwrap() }}</pre>
+    </div>
+    {% endif %}
+    {% endif %}
     {% if docs.is_some() %}
     <div class="mt-3 border border-dark rounded-md p-3 bg-black/20">
         <div class="text-sm font-semibold mb-1">Description</div>
