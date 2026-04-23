@@ -71,7 +71,7 @@ graph! {
 
 graph! {
     InnerAddBoth<TestContext>(a: u32, b: u32) -> (a: u32, b: u32) {
-        AddTen(a) -> (a) & AddTen(b) -> (b)
+        AddTen(a) -> (a) && AddTen(b) -> (b)
     }
 }
 

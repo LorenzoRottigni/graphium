@@ -1,7 +1,8 @@
 //! Sequence and parallel expansion.
 //!
-//! These helpers implement the hop-to-hop forwarding rules for `>>` and `|`
-//! expressions.
+//! These helpers implement the hop-to-hop forwarding rules for:
+//! - `>>` (sequencing)
+//! - `&&` (parallel fan-out)
 
 use quote::quote;
 
