@@ -1,3 +1,9 @@
+//! Helpers for generating playground support for graphs.
+//!
+//! This module is responsible for producing the `GraphPlayground` trait
+//! implementation that the UI runtime can use to render playground forms and
+//! execute graph runs from serialized input values.
+
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::Ident;
@@ -9,6 +15,10 @@ pub(super) enum PlaygroundParseKind {
     FromStr,
 }
 
+/// Generate the `GraphPlayground` trait implementation for the graph.
+///
+/// This produces playground metadata and the runtime `playground_run` helper
+/// which converts form inputs into the actual graph `run()` invocation.
 pub(super) fn build_playground_impl(
     name: &Ident,
     context: &syn::Path,
@@ -16,6 +26,8 @@ pub(super) fn build_playground_impl(
     graph_outputs: &[(Ident, syn::Type)],
     async_enabled: bool,
 ) -> TokenStream {
+    // Build playground metadata for graph inputs and outputs. These values are
+    // exposed as the schema shape that UI forms rely on.
     let input_params: Vec<_> = graph_inputs
         .iter()
         .map(|(ident, ty)| {
@@ -33,6 +45,9 @@ pub(super) fn build_playground_impl(
         })
         .collect();
 
+    // Playground support requires a synchronous graph and inputs that can be
+    // parsed from string form. If any input type is unsupported, runtime
+    // playground execution is disabled for this graph.
     let supported = !async_enabled
         && graph_inputs
             .iter()
@@ -86,6 +101,8 @@ pub(super) fn build_playground_impl(
             args.push(quote! { #var_ident });
         }
 
+        // If the graph produces no outputs, return a generic OK payload.
+        // Otherwise serialize the result with `Debug` for display in the playground.
         let output_format = if graph_outputs.is_empty() {
             quote! { ::std::result::Result::Ok("ok".to_string()) }
         } else {
@@ -129,6 +146,9 @@ pub(super) fn build_playground_impl(
     }
 }
 
+/// Determine whether a type can be parsed from a playground form input.
+///
+/// Supported playground types are `String`, `bool`, and numeric primitives.
 fn playground_parse_kind(ty: &syn::Type) -> Option<PlaygroundParseKind> {
     let syn::Type::Path(type_path) = ty else {
         return None;

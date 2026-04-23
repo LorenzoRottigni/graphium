@@ -1,3 +1,11 @@
+//! Helpers for generating graph DTO and graph flow code.
+//!
+//! This module produces the `dto()` and `flow()` impls that allow a macro-
+//! generated graph type to export stable metadata about its structure,
+//! inputs/outputs, nodes, subgraphs, tags, docs, and optional playground schema.
+//!
+//! The generated DTO is intended for tooling and serialization, not execution.
+
 use proc_macro2::TokenStream;
 use quote::quote;
 use quote::ToTokens as _;
@@ -5,6 +13,11 @@ use syn::Ident;
 
 use crate::shared::{MetricsSpec, NodeExpr};
 
+/// Generate a small helper impl that exposes the graph flow structure.
+///
+/// The graph flow is a serialized description of the graph's runtime shape:
+/// inputs, outputs, and the sequence of `GraphStepDto` nodes needed to replay
+/// the graph structure in external tools.
 pub(super) fn build_flow_impl(name: &Ident, graph_flow_tokens: &TokenStream) -> TokenStream {
     quote! {
         #[cfg(any(feature = "dto", feature = "export"))]
@@ -16,6 +29,15 @@ pub(super) fn build_flow_impl(name: &Ident, graph_flow_tokens: &TokenStream) -> 
     }
 }
 
+/// Generate DTO export code for the graph type.
+///
+/// This produces an impl block containing `pub fn dto() -> GraphDto` and the
+/// graph UI test export helpers. The generated DTO includes:
+/// - graph id, name, docs, tags, and deprecation metadata
+/// - schema inputs/outputs and metrics configuration
+/// - the raw source schema text
+/// - nested node and subgraph DTO exports
+/// - optional playground metadata when enabled
 pub(super) fn build_graph_dto(
     name: &Ident,
     context: &syn::Path,
@@ -29,6 +51,8 @@ pub(super) fn build_graph_dto(
     deprecated_token: bool,
     deprecated_reason_tokens: TokenStream,
 ) -> proc_macro2::TokenStream {
+    // Convert graph inputs into exportable input DTOs.
+    // These values are emitted as static metadata, not runtime values.
     let export_inputs: Vec<_> = graph_inputs
         .iter()
         .map(|(ident, ty)| {
@@ -40,6 +64,7 @@ pub(super) fn build_graph_dto(
             }
         })
         .collect();
+    // Convert graph outputs into exportable output DTOs.
     let export_outputs: Vec<_> = graph_outputs
         .iter()
         .map(|(ident, ty)| {
@@ -51,9 +76,11 @@ pub(super) fn build_graph_dto(
             }
         })
         .collect();
+    // Collect configured metrics and all referenced nodes/subgraphs.
     let export_metrics = metric_names_tokens(metrics);
 
     let export_paths = collect_export_paths(nodes);
+    // Emit DTO constructors for any referenced child nodes and nested graphs.
     let export_nodes: Vec<_> = export_paths
         .node_paths
         .iter()

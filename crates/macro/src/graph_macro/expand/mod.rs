@@ -1,8 +1,16 @@
 //! Top-level `graph!` expansion.
 //!
-//! The expander is organized so this `mod.rs` is responsible for producing the
-//! generated graph "class" (`pub struct GraphName;`). Submodules then append
-//! feature-gated impl blocks and helper trait impls.
+//! This module is the entry point for expanding a `graph! { ... }` definition
+//! into generated Rust code. It orchestrates the creation of the graph struct,
+//! runtime execution methods, feature-gated helpers, and export metadata.
+//!
+//! The generated output currently includes:
+//! - `pub struct GraphName;`
+//! - `Default` implementation for the graph type
+//! - synchronous `run(...)` method for non-async graphs
+//! - asynchronous `run_async(...)` method for graphs using `async`
+//! - graph flow and DTO export support under `dto` / `export` features
+//! - optional playground metadata and runtime helper impls under `playground`
 
 use proc_macro::TokenStream;
 use quote::quote;
@@ -10,20 +18,24 @@ use syn::parse_macro_input;
 
 use crate::shared::{GraphInput, doc_string_from_attrs};
 
-mod dto;
+mod flow;
+mod metadata;
 mod metrics;
 mod playground;
-mod r#async;
-mod sync;
+mod runtime;
 
 /// Expands a `graph!` definition into:
 /// - `pub struct GraphName;`
 /// - inherent `run` / `run_async` methods
 /// - optional feature-gated helpers (DTO, metrics, playground)
 pub fn expand(input: TokenStream) -> TokenStream {
+    // Preserve the original macro source text. This raw schema string is
+    // exported into the graph DTO for debugging, visualization, and round-trip
+    // inspection use cases.
     let raw_schema_string = input.to_string();
     let raw_schema_lit = syn::LitStr::new(&raw_schema_string, proc_macro2::Span::call_site());
 
+    // Parse the graph definition into a strongly typed representation.
     let GraphInput {
         attrs,
         name,
@@ -60,6 +72,9 @@ pub fn expand(input: TokenStream) -> TokenStream {
         None => quote! { ::std::option::Option::None },
     };
 
+    // Build the execution model for the graph body.
+    // `root_setup` maps declared graph inputs to generated runtime parameters.
+    // `execution` contains the step-by-step generated logic for sync/async paths.
     let mut counter = 0usize;
     let root_setup = super::execution::build_root_setup(&graph_inputs, &mut counter);
     let execution = super::execution::generate_execution(
@@ -82,13 +97,15 @@ pub fn expand(input: TokenStream) -> TokenStream {
         false,
     );
 
+    // Build the graph run bodies with optional metrics instrumentation.
+    // Metrics wrappers are only activated when `metrics` is enabled.
     let metrics_enabled = metrics_spec.enabled();
     let metrics_config_tokens = metrics::metric_config_tokens(&metrics_spec);
     let sync_graph_body = metrics::wrap_sync_graph_body(&run_body, &metrics_spec);
     let async_graph_body = metrics::wrap_async_graph_body(&run_body_async, metrics_enabled);
 
     let metrics_impl = metrics::build_metrics_impl(&name, metrics_enabled, &metrics_config_tokens);
-    let sync_impl = sync::build_sync_impl(
+    let sync_impl = runtime::build_sync_impl(
         &name,
         &context,
         async_enabled,
@@ -96,7 +113,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
         &run_return_sig,
         &sync_graph_body,
     );
-    let async_impl = r#async::build_async_impl(
+    let async_impl = runtime::build_async_impl(
         &name,
         &context,
         &root_setup.run_params,
@@ -104,8 +121,11 @@ pub fn expand(input: TokenStream) -> TokenStream {
         &async_graph_body,
     );
 
-    let graph_flow_tokens = super::flow::graph_flow_tokens(&graph_inputs, &graph_outputs, &nodes);
-    let dto_impl = dto::build_graph_dto(
+    // Generate the graph flow DTO tokens and the complete graph DTO impl.
+    // These exports are consumed by tools such as graphium-ui and serve as the
+    // serialized graph metadata surface.
+    let graph_flow_tokens = flow::graph_flow_tokens(&graph_inputs, &graph_outputs, &nodes);
+    let dto_impl = metadata::build_graph_dto(
         &name,
         &context,
         &graph_inputs,
@@ -118,7 +138,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
         graph_deprecated_token,
         graph_deprecated_reason_tokens,
     );
-    let flow_impl = dto::build_flow_impl(&name, &graph_flow_tokens);
+    let flow_impl = metadata::build_flow_impl(&name, &graph_flow_tokens);
 
     let playground_impl = playground::build_playground_impl(
         &name,

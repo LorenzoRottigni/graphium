@@ -4,10 +4,15 @@
 //! representation of the graph's step tree for UI and inspection features.
 
 use quote::quote;
-
+use crate::graph_macro::{
+    analyze_expr,
+    graph_type_path,
+    required_artifacts,
+    required_borrowed,
+    selector_params_for_on_expr,
+    SelectorParam,
+};
 use crate::shared::{NodeCall, NodeExpr, is_graph_run_path};
-
-use super::graph_type_path;
 
 /// Builds the `GraphFlowDto` literal returned by generated graph types.
 pub(super) fn graph_flow_tokens(
@@ -43,9 +48,9 @@ fn node_expr_steps_tokens(node: &NodeExpr) -> Vec<proc_macro2::TokenStream> {
         NodeExpr::Single(call) => vec![node_call_step_tokens(call)],
         NodeExpr::Sequence(nodes) => nodes.iter().flat_map(node_expr_steps_tokens).collect(),
         NodeExpr::Parallel(nodes) => {
-            let shape = super::analyze_expr(node);
-            let inputs = super::required_artifacts(&shape);
-            let borrowed_inputs = super::required_borrowed(&shape);
+            let shape = analyze_expr(node);
+            let inputs = required_artifacts(&shape);
+            let borrowed_inputs = required_borrowed(&shape);
             let outputs = shape.exit_outputs;
             let borrowed_outputs: Vec<String> = shape.exit_borrowed.into_iter().collect();
 
@@ -77,7 +82,7 @@ fn node_expr_steps_tokens(node: &NodeExpr) -> Vec<proc_macro2::TokenStream> {
             }]
         }
         NodeExpr::Route(route) => {
-            let shape = super::analyze_expr(node);
+            let shape = analyze_expr(node);
             let outputs = shape.exit_outputs;
             let borrowed_outputs: Vec<String> = shape.exit_borrowed.into_iter().collect();
             let mut output_labels = outputs;
@@ -86,11 +91,11 @@ fn node_expr_steps_tokens(node: &NodeExpr) -> Vec<proc_macro2::TokenStream> {
             }
             let output_tokens = static_str_list_tokens(&output_labels);
 
-            let selector_params = super::selector_params_for_on_expr(&route.on);
+            let selector_params = selector_params_for_on_expr(&route.on);
             let input_labels: Vec<String> = selector_params
                 .into_iter()
                 .filter_map(|param| match param {
-                    super::SelectorParam::Artifact { ident, borrowed } => {
+                    SelectorParam::Artifact { ident, borrowed } => {
                         let base = ident.to_string();
                         if borrowed {
                             Some(format!("&{base}"))
@@ -98,7 +103,7 @@ fn node_expr_steps_tokens(node: &NodeExpr) -> Vec<proc_macro2::TokenStream> {
                             Some(base)
                         }
                     }
-                    super::SelectorParam::Ctx { .. } => None,
+                    SelectorParam::Ctx { .. } => None,
                 })
                 .collect();
             let input_tokens = static_str_list_tokens(&input_labels);
@@ -127,7 +132,7 @@ fn node_expr_steps_tokens(node: &NodeExpr) -> Vec<proc_macro2::TokenStream> {
             }]
         }
         NodeExpr::While(while_expr) => {
-            let shape = super::analyze_expr(node);
+            let shape = analyze_expr(node);
             let outputs = shape.exit_outputs;
             let borrowed_outputs: Vec<String> = shape.exit_borrowed.into_iter().collect();
             let mut output_labels = outputs;
@@ -136,11 +141,11 @@ fn node_expr_steps_tokens(node: &NodeExpr) -> Vec<proc_macro2::TokenStream> {
             }
             let output_tokens = static_str_list_tokens(&output_labels);
 
-            let selector_params = super::selector_params_for_on_expr(&while_expr.condition);
+            let selector_params = selector_params_for_on_expr(&while_expr.condition);
             let input_labels: Vec<String> = selector_params
                 .into_iter()
                 .filter_map(|param| match param {
-                    super::SelectorParam::Artifact { ident, borrowed } => {
+                    SelectorParam::Artifact { ident, borrowed } => {
                         let base = ident.to_string();
                         if borrowed {
                             Some(format!("&{base}"))
@@ -148,7 +153,7 @@ fn node_expr_steps_tokens(node: &NodeExpr) -> Vec<proc_macro2::TokenStream> {
                             Some(base)
                         }
                     }
-                    super::SelectorParam::Ctx { .. } => None,
+                    SelectorParam::Ctx { .. } => None,
                 })
                 .collect();
             let input_tokens = static_str_list_tokens(&input_labels);
@@ -165,9 +170,9 @@ fn node_expr_steps_tokens(node: &NodeExpr) -> Vec<proc_macro2::TokenStream> {
             }]
         }
         NodeExpr::Loop(loop_expr) => {
-            let shape = super::analyze_expr(node);
-            let inputs = super::required_artifacts(&shape);
-            let borrowed_inputs = super::required_borrowed(&shape);
+            let shape = analyze_expr(node);
+            let inputs = required_artifacts(&shape);
+            let borrowed_inputs = required_borrowed(&shape);
             let outputs = shape.exit_outputs;
             let borrowed_outputs: Vec<String> = shape.exit_borrowed.into_iter().collect();
             let mut input_labels = inputs;
