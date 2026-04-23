@@ -6,9 +6,9 @@
 
 use std::collections::BTreeSet;
 
-use crate::shared::{ArtifactInputKind, ExprShape, NodeCall, NodeExpr, UsageMap};
+use crate::ir::{ArtifactInputKind, ExprShape, NodeCall, NodeExpr, UsageMap};
 
-use super::{
+use super::expr::{
     SelectorParam, collect_parallel_entry_usage, loop_exit_outputs, route_exit_outputs,
     selector_params_for_on_expr,
 };
@@ -300,7 +300,7 @@ mod tests {
     use super::{
         analyze_expr, collect_parallel_outputs, collect_route_outputs, required_artifacts,
     };
-    use crate::shared::{ArtifactInputKind, ExprShape, LoopExpr, NodeCall, NodeExpr};
+    use crate::ir::{ArtifactInputKind, ExprShape, LoopExpr, NodeCall, NodeExpr};
 
     #[test]
     fn analyze_single_counts_duplicate_owned_inputs() {

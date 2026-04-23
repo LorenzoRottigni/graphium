@@ -2,14 +2,13 @@
 //!
 //! This module contains the top-level `expand` function that orchestrates
 //! the transformation of a user-defined node function into a wrapper type
-//! with the standard `__graphium_run` entry point.
+//! with the standard `run` entry point.
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::spanned::Spanned as _;
 use syn::{Ident, Path, Type, parse_macro_input};
 
-use crate::shared::ParamKind;
+use crate::ir::ParamKind;
 
 use super::metrics::metric_config_tokens;
 use super::parse::parse_node_def;
@@ -101,8 +100,11 @@ fn output_supported(return_ty: &Option<Type>, returns_result: bool) -> bool {
 /// - A wrapper struct with the same name in PascalCase
 /// - A `NAME` constant for introspection
 /// - Optional `__graphium_node_metrics` function if metrics are enabled
-/// - `__graphium_run` for sync nodes or `__graphium_run_async` for async nodes
+/// - `run` for sync nodes and `run_async` for async nodes
 pub fn expand(input: TokenStream) -> TokenStream {
+    let raw_schema_string = input.to_string();
+    let raw_schema_lit = syn::LitStr::new(&raw_schema_string, proc_macro2::Span::call_site());
+
     let mut func = parse_macro_input!(input as syn::ItemFn);
     let name_override = extract_name_from_attrs(&mut func.attrs);
     let tags = extract_tags_from_attrs(&mut func.attrs);
@@ -178,11 +180,6 @@ pub fn expand(input: TokenStream) -> TokenStream {
         Some(ty) => quote! { stringify!(#ty) },
         None => quote! { "()" },
     };
-
-    let span = func.span().unwrap();
-    let start_line: u32 = span.start().line() as u32;
-    let end_span = func.block.span().unwrap();
-    let end_line: u32 = end_span.end().line() as u32;
 
     let playground_inputs: Vec<_> = node_def
         .inputs
@@ -271,18 +268,18 @@ pub fn expand(input: TokenStream) -> TokenStream {
         let ctx_setup = match &node_def.ctx_type {
             None => quote! {
                 let ctx = ();
-                let __graphium_result = #struct_name::__graphium_run::<()>(&ctx, #( #args ),* );
+                let __graphium_result = #struct_name::run::<()>(&ctx, #( #args ),* );
             },
             Some(ctx_ty) => {
                 if node_def.ctx_mut {
                     quote! {
                         let mut ctx: #ctx_ty = ::core::default::Default::default();
-                        let __graphium_result = #struct_name::__graphium_run(&mut ctx, #( #args ),* );
+                        let __graphium_result = #struct_name::run(&mut ctx, #( #args ),* );
                     }
                 } else {
                     quote! {
                         let ctx: #ctx_ty = ::core::default::Default::default();
-                        let __graphium_result = #struct_name::__graphium_run(&ctx, #( #args ),* );
+                        let __graphium_result = #struct_name::run(&ctx, #( #args ),* );
                     }
                 }
             }
@@ -433,7 +430,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
         };
 
         quote! {
-            pub fn __graphium_run #ctx_generic(
+            pub fn run #ctx_generic(
                 ctx: #ctx_param,
                 #( #input_idents: #input_types ),*
             ) #return_sig {
@@ -470,7 +467,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
             quote! { #fn_name(#( #call_args ),*).await }
         };
         quote! {
-            pub async fn __graphium_run_async #ctx_generic(
+            pub async fn run_async #ctx_generic(
                 ctx: #ctx_param,
                 #( #input_idents: #input_types ),*
             ) #return_sig {
@@ -505,7 +502,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
             quote! { #fn_name(#( #call_args ),*) }
         };
         quote! {
-            pub async fn __graphium_run_async #ctx_generic(
+            pub async fn run_async #ctx_generic(
                 ctx: #ctx_param,
                 #( #input_idents: #input_types ),*
             ) #return_sig {
@@ -534,43 +531,37 @@ pub fn expand(input: TokenStream) -> TokenStream {
 
             #sync_run
             #async_run
-
-            pub fn __graphium_test_runs() -> ::std::vec::Vec<::graphium::export::TestRun> {
-                #[cfg(feature = "serialize")]
-                {
-                    vec![
-                        #(
-                            ::graphium::export::TestRun {
-                                dto: ::graphium::export::TestDto::new(
-                                    ::graphium::export::TestKindDto::Node,
-                                    #tests::NAME,
-                                    stringify!(#struct_name),
-                                ),
-                                schema: #tests::__graphium_ui_schema(),
-                                default_values: #tests::__graphium_ui_default_values(),
-                                run: #tests::__graphium_ui_run_with_args,
-                            }
-                        ),*
-                    ]
-                }
-                #[cfg(not(feature = "serialize"))]
-                {
-                    Vec::new()
-                }
-            }
         }
 
         static #play_inputs_ident: &[::graphium::PlaygroundParam] = &[ #( #playground_inputs ),* ];
         static #play_outputs_ident: &[::graphium::PlaygroundParam] = &[ #( #output_params ),* ];
 
+        #[cfg(feature = "export")]
         impl #struct_name {
-            pub fn __graphium_dto() -> ::graphium::export::NodeDto {
+            pub fn test_runs() -> ::std::vec::Vec<::graphium::dto::TestRun> {
+                vec![
+                    #(
+                        ::graphium::dto::TestRun {
+                            dto: ::graphium::dto::TestDto::new(
+                                ::graphium::dto::TestKindDto::Node,
+                                #tests::NAME,
+                                stringify!(#struct_name),
+                            ),
+                            schema: #tests::__graphium_ui_schema(),
+                            default_values: #tests::__graphium_ui_default_values(),
+                            run: #tests::__graphium_ui_run_with_args,
+                        }
+                    ),*
+                ]
+            }
+
+            pub fn dto() -> ::graphium::dto::NodeDto {
                 let schema = ::graphium::PlaygroundSchema {
                     inputs: #play_inputs_ident,
                     outputs: #play_outputs_ident,
                     context: #ctx_ty_tokens,
                 };
-                ::graphium::export::NodeDto {
+                ::graphium::dto::NodeDto {
                     id: #id_literal.to_string(),
                     target: stringify!(#struct_name).to_string(),
                     label: stringify!(#struct_name).to_string(),
@@ -578,45 +569,32 @@ pub fn expand(input: TokenStream) -> TokenStream {
                     tags: vec![ #( #tag_tokens.to_string() ),* ],
                     deprecated: #deprecated_token,
                     deprecated_reason: #deprecated_reason_tokens,
-                    source: ::std::option::Option::Some(::graphium::export::SourceSpanDto {
-                        file: file!().to_string(),
-                        start_line: #start_line,
-                        end_line: #end_line,
-                    }),
-                    tests: {
-                        #[cfg(feature = "serialize")]
-                        {
-                            vec![
-                                #(
-                                    ::graphium::export::TestDto::new(
-                                        ::graphium::export::TestKindDto::Node,
-                                        #tests::NAME,
-                                        stringify!(#struct_name),
-                                    )
-                                ),*
-                            ]
-                        }
-                        #[cfg(not(feature = "serialize"))]
-                        {
-                            Vec::new()
-                        }
-                    },
-                    ctx_access: ::graphium::export::CtxAccessDto::from(#ctx_access),
+                    raw_schema: ::std::option::Option::Some(#raw_schema_lit.to_string()),
+                    tests: vec![
+                        #(
+                            ::graphium::dto::TestDto::new(
+                                ::graphium::dto::TestKindDto::Node,
+                                #tests::NAME,
+                                stringify!(#struct_name),
+                            )
+                        ),*
+                    ],
+                    ctx_access: ::graphium::dto::CtxAccessDto::from(#ctx_access),
                     metrics_graph: module_path!().to_string(),
                     metrics_node: stringify!(#fn_name).to_string(),
                     playground_supported: #playground_supported,
-                    playground_schema: ::graphium::export::PlaygroundSchemaDto::from_schema(&schema),
+                    playground_schema: ::graphium::dto::PlaygroundSchemaDto::from_schema(&schema),
                 }
             }
         }
 
-        #[cfg(feature = "serialize")]
+        #[cfg(feature = "export")]
         impl ::graphium::serde::Serialize for #struct_name {
             fn serialize<S>(&self, serializer: S) -> ::std::result::Result<S::Ok, S::Error>
             where
                 S: ::graphium::serde::Serializer,
             {
-                let dto = Self::__graphium_dto();
+                let dto = Self::dto();
                 ::graphium::serde::Serialize::serialize(&dto, serializer)
             }
         }

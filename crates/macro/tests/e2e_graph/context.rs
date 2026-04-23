@@ -41,5 +41,5 @@ fn e2e_graph_macro_wires_ctx() {
         }
     }
 
-    CtxGraph::__graphium_run(&mut ctx);
+    CtxGraph::run(&mut ctx);
 }

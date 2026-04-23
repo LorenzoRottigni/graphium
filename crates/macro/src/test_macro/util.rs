@@ -1,9 +1,21 @@
+//! Shared helpers for `graph_test!` and `node_test!`.
+//!
+//! The test macros do two jobs at once:
+//! - forward normal Rust test items unchanged, so the user's test code remains
+//!   idiomatic and works with the standard test harness
+//! - optionally synthesize additional "marker" items (behind features) that
+//!   UI tooling can discover and render
+//!
+//! This module contains the small utilities both macros need: suite id
+//! generation, attribute extraction, and the IR-to-token conversion for the
+//! synthesized UI test cases.
+
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use quote::{format_ident, quote};
 use syn::{Attribute, Expr, FnArg, Ident, ItemFn, Pat, PatIdent, ReturnType, Type, parse_quote};
 
-use crate::shared::pascal_case;
+use crate::ir::pascal_case;
 
 static NEXT_SUITE_ID: AtomicUsize = AtomicUsize::new(0);
 
@@ -91,7 +103,7 @@ fn is_injected_ref_param(arg: &FnArg) -> Option<(Ident, Type, bool)> {
 
 fn test_param_kind(ty: &Type) -> proc_macro2::TokenStream {
     let Type::Path(type_path) = ty else {
-        return quote! { ::graphium::export::TestParamKind::Text };
+        return quote! { ::graphium::dto::TestParamKind::Text };
     };
     let ident = type_path
         .path
@@ -100,10 +112,10 @@ fn test_param_kind(ty: &Type) -> proc_macro2::TokenStream {
         .map(|s| s.ident.to_string())
         .unwrap_or_default();
     match ident.as_str() {
-        "bool" => quote! { ::graphium::export::TestParamKind::Bool },
+        "bool" => quote! { ::graphium::dto::TestParamKind::Bool },
         "u8" | "u16" | "u32" | "u64" | "u128" | "usize" | "i8" | "i16" | "i32" | "i64" | "i128"
-        | "isize" | "f32" | "f64" => quote! { ::graphium::export::TestParamKind::Number },
-        _ => quote! { ::graphium::export::TestParamKind::Text },
+        | "isize" | "f32" | "f64" => quote! { ::graphium::dto::TestParamKind::Number },
+        _ => quote! { ::graphium::dto::TestParamKind::Text },
     }
 }
 
@@ -250,7 +262,7 @@ pub(crate) fn synthesize_ui_test_case(mut item_fn: ItemFn) -> syn::Result<UiTest
     wrapper_call_args.extend(all_params.clone());
 
     // If the first parameter is `graph: &T` / `node: &T`, inject a type alias (`type graph = T;`)
-    // so the test body can call `graph::__graphium_run(...)` without adding methods to `T`.
+    // so the test body can call `graph::run(...)` without adding methods to `T`.
     if let Some((ident, inner_ty, _is_mut)) = injected.as_ref() {
         let mut stmts: Vec<syn::Stmt> = Vec::new();
         let ignore_stmt: syn::Stmt = parse_quote! { let _ = #ident; };
@@ -282,7 +294,7 @@ pub(crate) fn synthesize_ui_test_case(mut item_fn: ItemFn) -> syn::Result<UiTest
         let name = ident.to_string();
         let kind = test_param_kind(ty);
         quote! {
-            ::graphium::export::TestParam {
+            ::graphium::dto::TestParam {
                 name: #name.to_string(),
                 kind: #kind,
             }
@@ -381,7 +393,7 @@ pub(crate) fn synthesize_ui_test_case(mut item_fn: ItemFn) -> syn::Result<UiTest
                 #return_normalization
             })) {
                 Ok(res) => res,
-                Err(payload) => Err(::graphium::export::panic_payload_to_string(payload)),
+                Err(payload) => Err(::graphium::dto::panic_payload_to_string(payload)),
             }
         }
     } else {
@@ -391,16 +403,16 @@ pub(crate) fn synthesize_ui_test_case(mut item_fn: ItemFn) -> syn::Result<UiTest
 
     let marker_tokens = quote! {
         #( #cfg )*
-        #[cfg(feature = "serialize")]
+        #[cfg(feature = "export")]
         pub struct #marker_ident;
 
         #( #cfg )*
-        #[cfg(feature = "serialize")]
+        #[cfg(feature = "export")]
         impl #marker_ident {
             pub const NAME: &'static str = concat!(module_path!(), "::", stringify!(#wrapper_ident));
 
-            pub fn __graphium_ui_schema() -> ::graphium::export::TestSchema {
-                ::graphium::export::TestSchema {
+            pub fn __graphium_ui_schema() -> ::graphium::dto::TestSchema {
+                ::graphium::dto::TestSchema {
                     params: vec![ #( #schema_tokens ),* ],
                 }
             }

@@ -5,9 +5,8 @@
 
 use quote::quote;
 
-use crate::shared::{ExprShape, Payload, UsageMap, fresh_ident};
-
-use super::required_artifacts;
+use crate::graph_macro::analysis::required_artifacts;
+use crate::ir::{ExprShape, Payload, UsageMap, fresh_ident};
 
 /// Builds a fresh hop payload by moving the requested artifacts out of the
 /// current expression outputs.
@@ -15,7 +14,7 @@ use super::required_artifacts;
 /// Example:
 /// providing source outputs `{"value" => hop_value}` and requested artifacts
 /// `["value"]` expands into `let mut next_value = hop_value.take();`.
-pub(super) fn prepare_move_payload(
+pub(crate) fn prepare_move_payload(
     source_outputs: &Payload,
     artifacts: &[String],
     prefix: &str,
@@ -44,7 +43,7 @@ pub(super) fn prepare_move_payload(
 /// Example:
 /// providing a shared artifact `value` for two branches expands into either
 /// `Some(clone_artifact(...))` for early branches or `.take()` for the last one.
-pub(super) fn prepare_parallel_payload(
+pub(crate) fn prepare_parallel_payload(
     incoming: &Payload,
     shape: &ExprShape,
     remaining: &mut UsageMap,
@@ -89,7 +88,7 @@ pub(super) fn prepare_parallel_payload(
 /// Example:
 /// providing artifacts `["left", "right"]` expands into declarations like
 /// `let mut __graphium_parallel_out_*_left = None;`.
-pub(super) fn prepare_output_slots(
+pub(crate) fn prepare_output_slots(
     artifacts: &[String],
     prefix: &str,
     counter: &mut usize,
@@ -114,7 +113,7 @@ pub(super) fn prepare_output_slots(
 /// Example:
 /// providing inner output `inner_left` and outer slot `outer_left` expands into
 /// `outer_left = inner_left;`.
-pub(super) fn assign_outputs_to_slots(
+pub(crate) fn assign_outputs_to_slots(
     inner_outputs: &Payload,
     outer_outputs: &Payload,
 ) -> Vec<proc_macro2::TokenStream> {
@@ -140,7 +139,7 @@ mod tests {
         assign_outputs_to_slots, prepare_move_payload, prepare_output_slots,
         prepare_parallel_payload,
     };
-    use crate::shared::{ExprShape, Payload, UsageMap};
+    use crate::ir::{ExprShape, Payload, UsageMap};
 
     #[test]
     fn prepare_move_payload_preserves_borrowed_state() {

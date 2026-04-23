@@ -5,7 +5,7 @@
 
 use quote::quote;
 
-use crate::shared::{GeneratedExpr, NodeExpr, Payload};
+use crate::ir::{GeneratedExpr, NodeExpr, Payload};
 
 use super::{
     get_loop_node_expr, get_parallel_nodes_expr, get_route_node_expr, get_sequence_nodes_expr,
@@ -59,7 +59,7 @@ pub(crate) fn get_node_expr(
 /// given inner tokens that create `inner_value` and inner outputs
 /// `{"value" => inner_value}`, this expands into outer declarations like
 /// `let mut __graphium_captured_*_value = None; { ...; outer = inner_value; }`.
-pub(super) fn capture_outputs(
+pub(crate) fn capture_outputs(
     inner_tokens: proc_macro2::TokenStream,
     inner_outputs: Payload,
     counter: &mut usize,
@@ -78,7 +78,7 @@ pub(super) fn capture_outputs(
         .owned
         .keys()
         .map(|artifact| {
-            let outer_var = crate::shared::fresh_ident(counter, "captured", artifact);
+            let outer_var = crate::ir::fresh_ident(counter, "captured", artifact);
             (artifact.clone(), outer_var)
         })
         .collect();
@@ -121,7 +121,7 @@ pub(super) fn capture_outputs(
 /// Example:
 /// given `@loop { A >> @break }`, this expands into `true`; given `A | B`, it
 /// expands into `false`.
-pub(super) fn contains_break(node: &NodeExpr) -> bool {
+pub(crate) fn contains_break(node: &NodeExpr) -> bool {
     match node {
         NodeExpr::Break => true,
         NodeExpr::Single(_) => false,
@@ -138,7 +138,7 @@ mod tests {
     use syn::{Ident, parse_quote};
 
     use super::{capture_outputs, contains_break};
-    use crate::shared::{LoopExpr, NodeExpr, Payload};
+    use crate::ir::{LoopExpr, NodeExpr, Payload};
 
     #[test]
     fn capture_outputs_rebinds_owned_payload_slots() {

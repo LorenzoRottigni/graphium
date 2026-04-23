@@ -2,21 +2,26 @@
 //
 // `graph!` emits fully inlined orchestration code.
 
-pub mod export;
+pub mod dto;
 pub mod metrics;
-pub mod visualizer;
+pub mod playground;
 
-#[cfg(feature = "serialize")]
+#[cfg(feature = "export")]
 pub use serde;
 
-pub use visualizer::{
-    CtxAccess, GraphCase, GraphDef, GraphDefProvider, GraphPlayground, GraphStep, PlaygroundParam,
-    PlaygroundSchema, Visualizer,
-};
+pub use playground::{CtxAccess, GraphPlayground, PlaygroundParam, PlaygroundSchema};
+
+/// Backwards-compatible module path; prefer `graphium::dto`.
+pub mod export {
+    pub use super::dto::*;
+}
 
 pub trait Artifact: Clone + 'static {}
 
 impl<T> Artifact for T where T: Clone + 'static {}
+
+#[cfg(feature = "macros")]
+pub use graphium_macro::{graph, graph_test, node, node_test};
 
 /// Trait implemented by macro-generated graph configuration types.
 ///
@@ -29,7 +34,7 @@ pub trait Graph<Ctx> {
 /// Trait implemented by macro-generated graphs to expose UI/admin test runners
 /// without any runtime registry/discovery.
 pub trait GraphUiTests {
-    fn graphium_ui_tests() -> Vec<export::TestRun>;
+    fn graphium_ui_tests() -> Vec<dto::TestRun>;
 }
 
 /// Clones or copies an artifact when one hop needs to fan out to more than one

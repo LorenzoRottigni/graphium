@@ -24,7 +24,7 @@ graph_test! {
     #[test]
     fn e2e_graph_test_supports_standard_test_items() {
         let mut ctx = graphium::Context::default();
-        let out = TestableGraph::__graphium_run(&mut ctx);
+        let out = TestableGraph::run(&mut ctx);
         assert_eq!(out, 42);
     }
 }
@@ -33,7 +33,7 @@ graph_test! {
     #[test]
     fn e2e_graph_test_supports_standard_test_items_second() {
         let mut ctx = graphium::Context::default();
-        let out = TestableGraph::__graphium_run(&mut ctx);
+        let out = TestableGraph::run(&mut ctx);
         assert!(out > 0);
     }
 }
@@ -42,7 +42,7 @@ graph_test! {
     #[test]
     fn e2e_graph_test_supports_args(graph: &TestableGraph, threshold: u32) {
         let mut ctx = graphium::Context::default();
-        let out = graph::__graphium_run(&mut ctx);
+        let out = graph::run(&mut ctx);
         assert!(out > threshold);
     }
 }

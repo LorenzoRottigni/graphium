@@ -1,48 +1,20 @@
-use crate::util::slugify;
-
 use super::playground::Playground;
 
 #[derive(Clone)]
 pub struct UiGraph {
     pub id: String,
     pub name: String,
-    pub export: graphium::export::GraphDto,
+    pub export: graphium::dto::GraphDto,
     pub playground: Option<Playground>,
-    pub tests: Vec<graphium::export::TestRun>,
+    pub tests: Vec<graphium::dto::TestRun>,
 }
 
 impl UiGraph {
-    pub fn from_export(export: graphium::export::GraphDto) -> Self {
+    pub fn from_export(export: graphium::dto::GraphDto) -> Self {
         Self {
             id: export.id.clone(),
             name: export.name.clone(),
             export,
-            playground: None,
-            tests: Vec::new(),
-        }
-    }
-
-    pub fn from_export_def(def: graphium::export::GraphDefDto) -> Self {
-        let id = slugify(&def.name);
-        Self {
-            id: id.clone(),
-            name: def.name.clone(),
-            export: graphium::export::GraphDto {
-                id,
-                name: def.name.clone(),
-                docs: None,
-                tags: Vec::new(),
-                deprecated: false,
-                deprecated_reason: None,
-                schema: None,
-                def,
-                raw_schema: None,
-                raw_span: None,
-                tests: Vec::new(),
-                nodes: Vec::new(),
-                subgraphs: Vec::new(),
-                playground: None,
-            },
             playground: None,
             tests: Vec::new(),
         }
@@ -55,7 +27,7 @@ impl UiGraph {
             + ::core::default::Default
             + 'static,
     >() -> Self {
-        let export: graphium::export::GraphDto = ::serde_json::from_value(
+        let export: graphium::dto::GraphDto = ::serde_json::from_value(
             ::serde_json::to_value(G::default()).expect("serialize graph"),
         )
         .expect("deserialize graph dto");

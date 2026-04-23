@@ -41,7 +41,7 @@ fn e2e_graph_parallel_branches_run_concurrently() {
     }
 
     let start = Instant::now();
-    let value = ParallelGraph::__graphium_run(&mut ctx);
+    let value = ParallelGraph::run(&mut ctx);
     let elapsed = start.elapsed();
 
     assert_eq!(value, 3);

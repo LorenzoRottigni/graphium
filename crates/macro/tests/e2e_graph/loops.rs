@@ -30,7 +30,7 @@ fn e2e_graph_while_loop() {
         }
     }
 
-    WhileGraph::__graphium_run(&mut ctx);
+    WhileGraph::run(&mut ctx);
     assert_eq!(ctx.number, 3);
 }
 
@@ -74,6 +74,6 @@ fn e2e_graph_loop_with_break() {
         }
     }
 
-    LoopBreakGraph::__graphium_run(&mut ctx);
+    LoopBreakGraph::run(&mut ctx);
     assert_eq!(ctx.number, 3);
 }

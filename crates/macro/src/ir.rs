@@ -1,10 +1,19 @@
+//! Internal representation (IR) shared by parsing and code generation.
+//!
+//! This crate implements a few procedural macros (`graph!`, `node!`, plus test
+//! helpers). While their public surface is expressed as token trees, the
+//! implementations work best with a small typed model.
+//!
+//! Parsing converts macro input into these IR structures (e.g. `GraphInput`,
+//! `NodeExpr`, `NodeDef`). The various expanders then walk the IR to generate
+//! Rust code in a deterministic, easy-to-test way.
+//!
+//! Historically this module was called `shared`; it is now named `ir` to make
+//! the "typed internal model" role explicit.
+
 use quote::format_ident;
 use std::collections::{BTreeMap, BTreeSet};
 use syn::{Expr, Ident, Path, Type};
-
-// Core syntax/data structures shared by parsing and code generation.
-// These are the macro's internal IR: first we parse the DSL into these types,
-// then the graph code generator walks them to emit Rust code.
 
 #[derive(Clone)]
 pub struct NodeDef {
@@ -157,7 +166,11 @@ pub fn doc_string_from_attrs(attrs: &[syn::Attribute]) -> Option<String> {
     } else {
         let joined = lines.join("\n");
         let trimmed = joined.trim().to_string();
-        if trimmed.is_empty() { None } else { Some(trimmed) }
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        }
     }
 }
 

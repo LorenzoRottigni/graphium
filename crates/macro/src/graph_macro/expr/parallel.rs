@@ -5,13 +5,14 @@
 
 use quote::quote;
 
-use crate::shared::{ExprShape, GeneratedExpr, NodeExpr, Payload, UsageMap};
-
 use super::{
-    analyze_expr, assign_outputs_to_slots, capture_outputs, collect_parallel_borrowed,
-    collect_parallel_outputs, contains_break, get_node_expr, prepare_move_payload,
-    prepare_output_slots, prepare_parallel_payload, required_artifacts,
+    assign_outputs_to_slots, capture_outputs, contains_break, get_node_expr, prepare_move_payload,
+    prepare_output_slots, prepare_parallel_payload,
 };
+use crate::graph_macro::analysis::{
+    analyze_expr, collect_parallel_borrowed, collect_parallel_outputs, required_artifacts,
+};
+use crate::ir::{ExprShape, GeneratedExpr, NodeExpr, Payload, UsageMap};
 
 /// Counts how many sibling branches require each artifact at the entry of a
 /// parallel expression.
@@ -19,7 +20,7 @@ use super::{
 /// Example:
 /// providing branch shapes that both need `value` expands into
 /// `{"value": 2}`.
-pub(super) fn collect_parallel_entry_usage(shapes: &[ExprShape]) -> UsageMap {
+pub(crate) fn collect_parallel_entry_usage(shapes: &[ExprShape]) -> UsageMap {
     let mut remaining = UsageMap::new();
 
     for shape in shapes {
@@ -36,7 +37,7 @@ pub(super) fn collect_parallel_entry_usage(shapes: &[ExprShape]) -> UsageMap {
 /// Example:
 /// providing `A >> B >> C` expands into sequential blocks that run `A`, move
 /// only `B`'s required artifacts into the next hop, then do the same for `C`.
-pub(super) fn get_sequence_nodes_expr(
+pub(crate) fn get_sequence_nodes_expr(
     nodes: &[NodeExpr],
     incoming: &Payload,
     counter: &mut usize,
@@ -78,7 +79,7 @@ pub(super) fn get_sequence_nodes_expr(
 /// Example:
 /// providing `A | B` expands into a `std::thread::scope(...)` block that spawns
 /// one branch per child and then joins their results into outer output slots.
-pub(super) fn get_parallel_nodes_expr(
+pub(crate) fn get_parallel_nodes_expr(
     nodes: &[NodeExpr],
     incoming: &Payload,
     counter: &mut usize,
@@ -113,10 +114,8 @@ pub(super) fn get_parallel_nodes_expr(
 
         let generated = get_node_expr(node, &child_payload, counter, in_loop, async_mode);
         let generated_tokens = generated.tokens;
-        let handle_ident =
-            crate::shared::fresh_ident(counter, "parallel_handle", &index.to_string());
-        let result_ident =
-            crate::shared::fresh_ident(counter, "parallel_result", &index.to_string());
+        let handle_ident = crate::ir::fresh_ident(counter, "parallel_handle", &index.to_string());
+        let result_ident = crate::ir::fresh_ident(counter, "parallel_result", &index.to_string());
 
         let mut branch_output_idents = Vec::new();
         let mut output_assigns = Vec::new();
@@ -239,7 +238,7 @@ mod tests {
     use syn::parse_quote;
 
     use super::collect_parallel_entry_usage;
-    use crate::shared::{ExprShape, NodeCall, NodeExpr};
+    use crate::ir::{ExprShape, NodeCall, NodeExpr};
 
     #[test]
     fn collect_parallel_entry_usage_counts_branch_consumers() {
@@ -290,7 +289,7 @@ mod tests {
                 NodeExpr::Parallel(nodes) => nodes,
                 _ => unreachable!(),
             },
-            &crate::shared::Payload::new(),
+            &crate::ir::Payload::new(),
             &mut 0,
             false,
             true,

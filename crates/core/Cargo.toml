@@ -9,7 +9,17 @@ name = "graphium"
 [dependencies]
 prometheus = "0.13"
 serde = { version = "1", features = ["derive"], optional = true }
+graphium-macro = { version = "0.1.0", path = "../macro", optional = true }
 
 [features]
-# Enables serde (de)serialization derives for DTOs.
-serialize = ["dep:serde"]
+# Enables DTO serde support (`graphium::serde` re-export + serde derives).
+export = ["dep:serde"]
+# Enables macro-generated `Graph::dto()` / `Graph::flow()` helpers (no serde).
+dto = []
+# Enables macro-generated metrics wrappers and helpers.
+metrics = []
+# Enables macro-generated `GraphPlayground` impls.
+playground = []
+# Back-compat alias (deprecated): prefer `export`.
+serialize = ["export"]
+macros = ["dep:graphium-macro"]

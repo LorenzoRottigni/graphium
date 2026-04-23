@@ -370,7 +370,7 @@ pub fn config() -> GraphiumUiConfig {
 node_test! {
     #[test]
     fn get_number_returns_42() {
-        let value = GetNumber::__graphium_run(&());
+        let value = GetNumber::run(&());
         assert_eq!(value, 42);
     }
 }
@@ -378,7 +378,7 @@ node_test! {
 node_test! {
     #[test]
     fn duplicate_clones_value() {
-        let (left, right) = Duplicate::__graphium_run(&(), 7);
+        let (left, right) = Duplicate::run(&(), 7);
         assert_eq!((left, right), (7, 7));
     }
 }
@@ -387,7 +387,7 @@ graph_test! {
     #[test]
     fn owned_graph_returns_non_zero_split(graph: &OwnedGraph, threshold: u32) {
         let mut ctx = Context::default();
-        let out = graph::__graphium_run(&mut ctx);
+        let out = graph::run(&mut ctx);
         assert!(out > threshold);
     }
 }
@@ -396,7 +396,7 @@ graph_test! {
     #[test]
     fn borrowed_graph_keeps_ownership_path() {
         let mut ctx = Context::default();
-        let out = BorrowedGraph::__graphium_run(&mut ctx);
+        let out = BorrowedGraph::run(&mut ctx);
         assert_eq!(out, 42);
     }
 }
@@ -405,7 +405,7 @@ graph_test! {
     #[test]
     fn control_flow_graph_converges_to_success_path() {
         let mut ctx = Context::default();
-        let out = ControlFlowGraph::__graphium_run(&mut ctx);
+        let out = ControlFlowGraph::run(&mut ctx);
         assert_eq!(out, 30);
     }
 }
@@ -414,7 +414,7 @@ graph_test! {
     #[test]
     fn linear_regression_graph_exports_default_model() {
         let mut ctx = Context::default();
-        let out = LinearRegressionGraph::__graphium_run(&mut ctx);
+        let out = LinearRegressionGraph::run(&mut ctx);
         assert_eq!(out, Model::default());
     }
 }

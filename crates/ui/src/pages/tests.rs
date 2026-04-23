@@ -102,9 +102,9 @@ pub(crate) fn run_test_page_html(
             let raw_value = values.get(&param.name).cloned().unwrap_or_default();
             let checked = raw_value == "true" || raw_value == "1";
             let (is_bool, input_type) = match param.kind {
-                graphium::export::TestParamKind::Bool => (true, "checkbox".to_string()),
-                graphium::export::TestParamKind::Number => (false, "number".to_string()),
-                graphium::export::TestParamKind::Text => (false, "text".to_string()),
+                graphium::dto::TestParamKind::Bool => (true, "checkbox".to_string()),
+                graphium::dto::TestParamKind::Number => (false, "number".to_string()),
+                graphium::dto::TestParamKind::Text => (false, "text".to_string()),
             };
             ParamView {
                 name: param.name.clone(),

@@ -1,3 +1,12 @@
+//! Parsing of the `graph!` DSL input tokens.
+//!
+//! This module is intentionally kept close to the `graph_macro` implementation
+//! because it defines the syntax the rest of the expander depends on.
+//!
+//! The primary output of parsing is a small internal IR (`NodeExpr` /
+//! `GraphInput`) that the code generator can traverse without needing to look
+//! back at raw tokens.
+
 use proc_macro2::TokenTree;
 use syn::parse::discouraged::Speculative;
 use syn::parse_quote;
@@ -6,13 +15,10 @@ use syn::{
     parse::{Parse, ParseStream},
 };
 
-use crate::shared::{
-    GraphInput, LoopExpr, MetricsSpec, NodeCall, NodeExpr, RouteExpr, WhileExpr, parse_metric_name,
+use crate::ir::{
+    ArtifactInputKind, GraphInput, LoopExpr, MetricsSpec, NodeCall, NodeExpr, RouteExpr, WhileExpr,
+    parse_metric_name,
 };
-
-// Parsing module for the graph DSL.
-// It turns the macro input tokens into a small IR (`NodeExpr`) that later
-// drives hop-by-hop code generation.
 
 impl Parse for NodeExpr {
     fn parse(input: ParseStream) -> Result<Self> {
@@ -183,21 +189,19 @@ impl Parse for NodeCall {
 
 /// Parses a comma-separated list of artifact names used for node inputs or
 /// outputs in the graph DSL.
-fn parse_input_ident_list(
-    input: ParseStream,
-) -> Result<(Vec<Ident>, Vec<crate::shared::ArtifactInputKind>)> {
+fn parse_input_ident_list(input: ParseStream) -> Result<(Vec<Ident>, Vec<ArtifactInputKind>)> {
     let mut idents = Vec::new();
     let mut kinds = Vec::new();
 
     while !input.is_empty() {
         let kind = if input.peek(Token![&]) {
             input.parse::<Token![&]>()?;
-            crate::shared::ArtifactInputKind::Borrowed
+            ArtifactInputKind::Borrowed
         } else if input.peek(Token![*]) {
             input.parse::<Token![*]>()?;
-            crate::shared::ArtifactInputKind::Taken
+            ArtifactInputKind::Taken
         } else {
-            crate::shared::ArtifactInputKind::Owned
+            ArtifactInputKind::Owned
         };
         idents.push(input.parse()?);
         kinds.push(kind);
@@ -505,7 +509,7 @@ fn node_expr_uses_borrowed_artifacts(node: &NodeExpr) -> bool {
         NodeExpr::Single(call) => {
             call.input_kinds
                 .iter()
-                .any(|k| *k != crate::shared::ArtifactInputKind::Owned)
+                .any(|k| *k != ArtifactInputKind::Owned)
                 || call.output_borrows.iter().any(|b| *b)
         }
         NodeExpr::Sequence(nodes) | NodeExpr::Parallel(nodes) => {
@@ -576,7 +580,10 @@ fn parse_graph_input(input: ParseStream) -> Result<GraphInput> {
         }
         if attr.path().is_ident("tags") {
             let syn::Meta::List(list) = &attr.meta else {
-                return Err(syn::Error::new_spanned(attr, "expected `#[tags(\"a\", \"b\")]`"));
+                return Err(syn::Error::new_spanned(
+                    attr,
+                    "expected `#[tags(\"a\", \"b\")]`",
+                ));
             };
             let items = syn::parse::Parser::parse2(
                 syn::punctuated::Punctuated::<syn::LitStr, Token![,]>::parse_terminated,

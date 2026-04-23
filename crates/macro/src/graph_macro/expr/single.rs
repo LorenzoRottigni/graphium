@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use quote::quote;
 
-use crate::shared::{
+use crate::ir::{
     ArtifactInputKind, GeneratedExpr, NodeCall, Payload, UsageMap, fresh_ident, is_graph_run_path,
 };
 
@@ -17,8 +17,8 @@ use crate::shared::{
 ///
 /// Example:
 /// providing `Worker`, args `[value]`, and sync mode expands into
-/// `Worker::__graphium_run(ctx, value)`, while async nested-graph mode expands
-/// into `OtherGraph::__graphium_run_async(ctx, value).await`.
+/// `Worker::run(ctx, value)`, while async nested-graph mode expands into
+/// `OtherGraph::run_async(ctx, value).await`.
 pub(super) fn node_run_call_tokens(
     node_path: &syn::Path,
     nested_graph_path: Option<&syn::Path>,
@@ -28,14 +28,14 @@ pub(super) fn node_run_call_tokens(
 ) -> proc_macro2::TokenStream {
     let call = if let Some(graph_path) = nested_graph_path {
         if async_mode {
-            quote! { #graph_path::__graphium_run_async(#ctx_arg, #( #arg_vars ),*) }
+            quote! { #graph_path::run_async(#ctx_arg, #( #arg_vars ),*) }
         } else {
-            quote! { #graph_path::__graphium_run(#ctx_arg, #( #arg_vars ),*) }
+            quote! { #graph_path::run(#ctx_arg, #( #arg_vars ),*) }
         }
     } else if async_mode {
-        quote! { #node_path::__graphium_run_async(#ctx_arg, #( #arg_vars ),*) }
+        quote! { #node_path::run_async(#ctx_arg, #( #arg_vars ),*) }
     } else {
-        quote! { #node_path::__graphium_run(#ctx_arg, #( #arg_vars ),*) }
+        quote! { #node_path::run(#ctx_arg, #( #arg_vars ),*) }
     };
 
     if async_mode {
@@ -50,8 +50,8 @@ pub(super) fn node_run_call_tokens(
 /// Example:
 /// providing `Worker(input) -> output` expands into bindings that read `input`
 /// from the incoming payload and a slot like
-/// `let mut __graphium_hop_*_output = Some(Worker::__graphium_run(...));`.
-pub(super) fn get_single_node_expr(
+/// `let mut __graphium_hop_*_output = Some(Worker::run(...));`.
+pub(crate) fn get_single_node_expr(
     call: &NodeCall,
     incoming: &Payload,
     counter: &mut usize,
@@ -376,7 +376,7 @@ pub(super) fn get_single_node_expr(
 ///
 /// Example:
 /// providing `demo::MyGraph::run` expands into the path `demo::MyGraph`.
-pub(super) fn graph_type_path(path: &syn::Path) -> syn::Path {
+pub(crate) fn graph_type_path(path: &syn::Path) -> syn::Path {
     let mut graph_path = path.clone();
     graph_path.segments.pop();
     graph_path.segments.pop_punct();
@@ -394,7 +394,7 @@ mod tests {
     use syn::{Ident, parse_quote};
 
     use super::{get_single_node_expr, graph_type_path, node_run_call_tokens};
-    use crate::shared::{NodeCall, Payload};
+    use crate::ir::{NodeCall, Payload};
 
     #[test]
     fn graph_type_path_strips_run_segment() {
@@ -413,7 +413,7 @@ mod tests {
 
         let tokens = node_run_call_tokens(&node_path, Some(&graph_path), quote!(ctx), &args, true);
 
-        assert!(tokens.to_string().contains("__graphium_run_async"));
+        assert!(tokens.to_string().contains("run_async"));
         assert!(tokens.to_string().contains(". await"));
     }
 
@@ -434,7 +434,7 @@ mod tests {
             generated
                 .tokens
                 .to_string()
-                .contains("demo :: Worker :: __graphium_run")
+                .contains("demo :: Worker :: run")
         );
         assert!(generated.outputs.is_empty());
     }

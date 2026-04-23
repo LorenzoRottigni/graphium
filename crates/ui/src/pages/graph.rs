@@ -114,12 +114,12 @@ pub(crate) async fn render_graph_fragment(
 
     let linkable_graphs: HashSet<String> = state.graphs.by_id.keys().cloned().collect();
     let mermaid = to_mermaid(
-        &graph.export.def,
+        &graph.export,
         graph.playground.map(|p| p.schema.context),
         &linkable_graphs,
     );
 
-    let metrics = fetch_metrics(&state, &graph.export.def.name).await;
+    let metrics = fetch_metrics(&state, &graph.export.name).await;
     let metrics = MetricCards {
         count: fmt_metric(metrics.count),
         errors: fmt_metric(metrics.errors),
@@ -129,7 +129,7 @@ pub(crate) async fn render_graph_fragment(
         p95: fmt_metric(metrics.p95_seconds),
     };
 
-    let node_names = collect_graph_node_names(&graph.export.def);
+    let node_names = collect_graph_node_names(&graph.export);
     let nodes = node_names
         .iter()
         .map(|name| NodeLink {
@@ -144,7 +144,7 @@ pub(crate) async fn render_graph_fragment(
         .ordered
         .iter()
         .filter(|test| {
-            matches!(test.dto.kind, graphium::export::TestKindDto::Graph)
+            matches!(test.dto.kind, graphium::dto::TestKindDto::Graph)
                 && test.dto.target_id == graph.id
         })
         .map(|test| TestLink {
@@ -159,7 +159,7 @@ pub(crate) async fn render_graph_fragment(
         .ordered
         .iter()
         .filter(|test| {
-            matches!(test.dto.kind, graphium::export::TestKindDto::Node)
+            matches!(test.dto.kind, graphium::dto::TestKindDto::Node)
                 && node_ids.contains(&test.dto.target_id)
         })
         .map(|test| TestLink {
@@ -169,8 +169,10 @@ pub(crate) async fn render_graph_fragment(
         })
         .collect::<Vec<_>>();
 
-    let raw_schema = read_source_span(graph.export.raw_span.as_ref())
-        .or_else(|| graph.export.raw_schema.clone())
+    let raw_schema = graph
+        .export
+        .raw_schema
+        .clone()
         .unwrap_or_else(|| "Raw schema not available for this graph.".to_string());
 
     let playground = graph.playground.map(|pg| {
@@ -245,25 +247,4 @@ pub(crate) async fn render_graph_fragment(
     }
     .render()
     .expect("render graph fragment"))
-}
-
-fn read_source_span(span: Option<&graphium::export::SourceSpanDto>) -> Option<String> {
-    let span = span?;
-    if span.start_line == 0 || span.end_line == 0 || span.end_line < span.start_line {
-        return None;
-    }
-    let src = std::fs::read_to_string(&span.file).ok()?;
-    let mut out = String::new();
-    for (idx, line) in src.lines().enumerate() {
-        let line_no = (idx + 1) as u32;
-        if line_no < span.start_line {
-            continue;
-        }
-        if line_no > span.end_line {
-            break;
-        }
-        use std::fmt::Write as _;
-        let _ = writeln!(out, "{line}");
-    }
-    if out.is_empty() { None } else { Some(out) }
 }

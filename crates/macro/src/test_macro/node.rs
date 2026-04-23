@@ -50,6 +50,6 @@ pub fn expand(input: TokenStream) -> TokenStream {
             #( #out_items )*
             #( #synthesized_marker_tokens )*
         }
-        #( #[cfg(feature = "serialize")] pub use #module_name::#synthesized_marker_idents; )*
+        #( #[cfg(feature = "export")] pub use #module_name::#synthesized_marker_idents; )*
     })
 }

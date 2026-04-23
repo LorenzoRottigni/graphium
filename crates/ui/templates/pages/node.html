@@ -85,10 +85,9 @@
 
     <section class="border border-dark rounded-md p-4 bg-darkest">
         <h3 class="text-lg font-semibold mb-2">Code</h3>
-        {% if source_available %}
-        <p class="text-sm text-light mb-2">{{ source_file }} · lines {{ source_start }}–{{ source_end }}</p>
+        {% if raw_schema.is_some() %}
         <pre class="overflow-x-auto bg-black/40 border border-dark rounded-md p-3"><code
-                class="language-rust">{{ source_text }}</code></pre>
+                class="language-rust">{{ raw_schema.as_ref().unwrap() }}</code></pre>
         {% else %}
         <p class="text-sm text-light">Source not available.</p>
         {% endif %}

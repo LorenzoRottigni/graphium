@@ -52,7 +52,7 @@ fn e2e_graph_branching_borrow() {
         }
     }
 
-    ConditionalGraph::__graphium_run(&mut ctx);
+    ConditionalGraph::run(&mut ctx);
 }
 
 #[test]
@@ -94,7 +94,7 @@ fn e2e_graph_branching_move() {
         }
     }
 
-    ConditionalGraph::__graphium_run(&mut ctx);
+    ConditionalGraph::run(&mut ctx);
 }
 
 #[test]
@@ -145,7 +145,7 @@ fn e2e_graph_nested_branching() {
         }
     }
 
-    NestedConditionalGraph::__graphium_run(&mut ctx);
+    NestedConditionalGraph::run(&mut ctx);
 }
 
 #[test]
@@ -187,6 +187,6 @@ fn e2e_graph_match_outputs() {
         }
     }
 
-    let result = MatchOutputGraph::__graphium_run(&mut ctx);
+    let result = MatchOutputGraph::run(&mut ctx);
     assert_eq!(result, 42);
 }

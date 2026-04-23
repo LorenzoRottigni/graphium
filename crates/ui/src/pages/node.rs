@@ -1,4 +1,3 @@
-use std::fmt::Write as _;
 use std::sync::Arc;
 
 use askama::Template;
@@ -45,11 +44,7 @@ pub(crate) struct NodeTemplate {
 
     pub(crate) tests: Vec<TestLink>,
 
-    pub(crate) source_available: bool,
-    pub(crate) source_file: String,
-    pub(crate) source_start: u32,
-    pub(crate) source_end: u32,
-    pub(crate) source_text: String,
+    pub(crate) raw_schema: Option<String>,
 }
 
 pub(crate) async fn node_page_html(
@@ -67,7 +62,7 @@ pub(crate) async fn node_page_html(
         .ordered
         .iter()
         .filter(|test| {
-            matches!(test.dto.kind, graphium::export::TestKindDto::Node)
+            matches!(test.dto.kind, graphium::dto::TestKindDto::Node)
                 && test.dto.target_id == node.dto.id
         })
         .map(|test| TestLink {
@@ -88,8 +83,6 @@ pub(crate) async fn node_page_html(
         p95: fmt_metric(metrics_view.p95_seconds),
     };
 
-    let snippet = read_source_snippet(node.dto.source.as_ref());
-
     Ok(NodeTemplate {
         title: format!("Node: {} | Graphium UI", node.dto.label),
         active: "dashboard",
@@ -104,79 +97,16 @@ pub(crate) async fn node_page_html(
         metrics_node: node.dto.metrics_node.clone(),
         metrics,
         tests,
-        source_available: snippet.available,
-        source_file: snippet.file,
-        source_start: snippet.start_line,
-        source_end: snippet.end_line,
-        source_text: snippet.text,
+        raw_schema: node.dto.raw_schema.clone(),
     }
     .render()
     .expect("render node template"))
 }
 
-fn ctx_access_label(access: graphium::export::CtxAccessDto) -> &'static str {
+fn ctx_access_label(access: graphium::dto::CtxAccessDto) -> &'static str {
     match access {
-        graphium::export::CtxAccessDto::None => "none",
-        graphium::export::CtxAccessDto::Ref => "&",
-        graphium::export::CtxAccessDto::Mut => "&mut",
-    }
-}
-
-struct SourceSnippet {
-    available: bool,
-    file: String,
-    start_line: u32,
-    end_line: u32,
-    text: String,
-}
-
-fn read_source_snippet(span: Option<&graphium::export::SourceSpanDto>) -> SourceSnippet {
-    let Some(span) = span else {
-        return SourceSnippet {
-            available: false,
-            file: String::new(),
-            start_line: 0,
-            end_line: 0,
-            text: String::new(),
-        };
-    };
-    if span.start_line == 0 || span.end_line == 0 || span.end_line < span.start_line {
-        return SourceSnippet {
-            available: false,
-            file: span.file.clone(),
-            start_line: span.start_line,
-            end_line: span.end_line,
-            text: String::new(),
-        };
-    }
-
-    let Ok(src) = std::fs::read_to_string(&span.file) else {
-        return SourceSnippet {
-            available: false,
-            file: span.file.clone(),
-            start_line: span.start_line,
-            end_line: span.end_line,
-            text: String::new(),
-        };
-    };
-
-    let mut out = String::new();
-    for (idx, line) in src.lines().enumerate() {
-        let line_no = (idx + 1) as u32;
-        if line_no < span.start_line {
-            continue;
-        }
-        if line_no > span.end_line {
-            break;
-        }
-        let _ = writeln!(out, "{line}");
-    }
-
-    SourceSnippet {
-        available: !out.is_empty(),
-        file: span.file.clone(),
-        start_line: span.start_line,
-        end_line: span.end_line,
-        text: out,
+        graphium::dto::CtxAccessDto::None => "none",
+        graphium::dto::CtxAccessDto::Ref => "&",
+        graphium::dto::CtxAccessDto::Mut => "&mut",
     }
 }

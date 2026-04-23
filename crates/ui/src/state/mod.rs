@@ -1,5 +1,5 @@
 use super::state::{graph::UiGraph, index::UiIndex, node::UiNode, test::UiTest};
-use graphium::export::{GraphDefDto, GraphStepDto};
+use graphium::dto::{GraphDto, GraphStepDto};
 
 pub(crate) mod build;
 pub mod graph;
@@ -24,21 +24,26 @@ pub(crate) struct AppState {
     pub(crate) nodes: UiIndex<UiNode>,
 }
 
-pub(crate) fn collect_graph_node_names(graph: &GraphDefDto) -> Vec<String> {
+pub(crate) fn collect_graph_node_names(graph: &GraphDto) -> Vec<String> {
     let mut out = Vec::new();
-    collect_graph_node_names_from_steps(&graph.steps, &mut out);
+    collect_graph_node_names_from_graph(graph, &mut out);
     out.sort();
     out.dedup();
     out
+}
+
+fn collect_graph_node_names_from_graph(graph: &GraphDto, out: &mut Vec<String>) {
+    collect_graph_node_names_from_steps(&graph.flow.steps, out);
+    for sub in &graph.subgraphs {
+        collect_graph_node_names_from_graph(sub, out);
+    }
 }
 
 fn collect_graph_node_names_from_steps(steps: &[GraphStepDto], out: &mut Vec<String>) {
     for step in steps {
         match step {
             GraphStepDto::Node { name, .. } => out.push(name.to_string()),
-            GraphStepDto::Nested { graph, .. } => {
-                collect_graph_node_names_from_steps(&graph.steps, out)
-            }
+            GraphStepDto::Nested { .. } => {}
             GraphStepDto::Parallel { branches, .. } => {
                 for branch in branches {
                     collect_graph_node_names_from_steps(branch, out);

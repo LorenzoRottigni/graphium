@@ -8,24 +8,24 @@ use std::collections::BTreeSet;
 
 use quote::quote;
 
-use crate::shared::{Payload, fresh_ident};
+use crate::ir::{Payload, fresh_ident};
 
 /// Describes how a selector or condition receives each parameter.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) enum SelectorParam {
+pub(crate) enum SelectorParam {
     Ctx { mutable: bool },
     Artifact { ident: syn::Ident, borrowed: bool },
 }
 
 /// Selector/condition binding plan shared by route and loop code generation.
-pub(super) struct ConditionBindings {
+pub(crate) struct ConditionBindings {
     pub bindings: Vec<proc_macro2::TokenStream>,
     pub args: Vec<proc_macro2::TokenStream>,
     pub is_empty: bool,
 }
 
 /// Selector binding plan for route expressions.
-pub(super) struct SelectorBindings {
+pub(crate) struct SelectorBindings {
     pub bindings: Vec<proc_macro2::TokenStream>,
     pub args: Vec<proc_macro2::TokenStream>,
     pub is_empty: bool,
@@ -36,7 +36,7 @@ pub(super) struct SelectorBindings {
 /// Example:
 /// providing `|ctx: &mut Ctx, value: &Value, owned| ...` expands into
 /// `[Ctx { mutable: true }, Artifact { value, borrowed: true }, Artifact { owned, borrowed: false }]`.
-pub(super) fn selector_params_for_on_expr(on: &syn::Expr) -> Vec<SelectorParam> {
+pub(crate) fn selector_params_for_on_expr(on: &syn::Expr) -> Vec<SelectorParam> {
     if let syn::Expr::Closure(_) = on {
         return parse_selector_params(on);
     }
@@ -107,7 +107,7 @@ pub(super) fn parse_selector_params(on: &syn::Expr) -> Vec<SelectorParam> {
 /// Example:
 /// providing params `[Artifact { value, borrowed: false }]` expands into a
 /// binding like `let cond_arg = clone_artifact(...);` plus call args `[cond_arg]`.
-pub(super) fn build_condition_bindings(
+pub(crate) fn build_condition_bindings(
     params: &[SelectorParam],
     incoming: &Payload,
     counter: &mut usize,
@@ -179,7 +179,7 @@ pub(super) fn build_condition_bindings(
 /// Example:
 /// providing closure `|value| value > 0` and args `[arg0]` expands into
 /// `(|value| value > 0)(arg0)`.
-pub(super) fn build_condition_call(
+pub(crate) fn build_condition_call(
     condition: &syn::Expr,
     args: &[proc_macro2::TokenStream],
     is_empty: bool,
@@ -208,7 +208,7 @@ pub(super) fn build_condition_call(
 /// Example:
 /// providing an owned selector input that branches still need expands into a
 /// `clone_artifact(...)` binding instead of a `.take()`.
-pub(super) fn build_selector_bindings(
+pub(crate) fn build_selector_bindings(
     params: &[SelectorParam],
     incoming: &Payload,
     needed_by_branches: &BTreeSet<String>,
@@ -292,7 +292,7 @@ pub(super) fn build_selector_bindings(
 /// Example:
 /// providing selector `choose_branch` and args `[value]` expands into
 /// `choose_branch(value)`, while a zero-arg closure expands into `(|| ... )()`.
-pub(super) fn build_selector_call(
+pub(crate) fn build_selector_call(
     on_expr: &syn::Expr,
     args: &[proc_macro2::TokenStream],
     is_empty: bool,
@@ -329,7 +329,7 @@ mod tests {
         SelectorParam, build_condition_bindings, build_selector_bindings, parse_selector_params,
         selector_params_for_on_expr,
     };
-    use crate::shared::Payload;
+    use crate::ir::Payload;
 
     #[test]
     fn parse_selector_params_tracks_ctx_and_borrows() {

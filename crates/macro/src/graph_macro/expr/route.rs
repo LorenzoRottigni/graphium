@@ -7,20 +7,22 @@ use std::collections::BTreeSet;
 
 use quote::quote;
 
-use crate::shared::{ExprShape, GeneratedExpr, Payload, RouteExpr};
-
 use super::{
-    analyze_expr, assign_outputs_to_slots, build_selector_bindings, build_selector_call,
-    prepare_move_payload, prepare_output_slots, required_artifacts, required_borrowed,
-    selector_params_for_on_expr,
+    assign_outputs_to_slots, build_selector_bindings, build_selector_call, prepare_move_payload,
+    prepare_output_slots, selector_params_for_on_expr,
 };
+use crate::graph_macro::analysis::{
+    analyze_expr, collect_route_borrowed, collect_route_outputs, required_artifacts,
+    required_borrowed,
+};
+use crate::ir::{ExprShape, GeneratedExpr, Payload, RouteExpr};
 
 /// Generates code for an exclusive route branch.
 ///
 /// Example:
 /// providing `@match on selector { 0 => A, 1 => B }` expands into
 /// `let selector_key = ...; match selector_key { 0 => { ... }, 1 => { ... } }`.
-pub(super) fn get_route_node_expr(
+pub(crate) fn get_route_node_expr(
     route: &RouteExpr,
     incoming: &Payload,
     counter: &mut usize,
@@ -58,7 +60,7 @@ pub(super) fn get_route_node_expr(
     let selector_call =
         build_selector_call(on_expr, &selector_tokens.args, selector_tokens.is_empty);
     let selector_bindings = &selector_tokens.bindings;
-    let selector_key_ident = crate::shared::fresh_ident(counter, "selector_key", "if");
+    let selector_key_ident = crate::ir::fresh_ident(counter, "selector_key", "if");
     let mut arms = Vec::new();
     let mut branch_borrowed: Vec<BTreeSet<String>> = Vec::new();
     for ((key, node), shape) in route.routes.iter().zip(branch_shapes.iter()) {
@@ -130,14 +132,14 @@ pub(super) fn get_route_node_expr(
 /// Example:
 /// providing declared outputs `[value, &shared]` expands into
 /// `(vec!["value"], {"shared"})`; without explicit outputs it unions branch exits.
-pub(super) fn route_exit_outputs(
+pub(crate) fn route_exit_outputs(
     route: &RouteExpr,
     shapes: &[ExprShape],
 ) -> (Vec<String>, BTreeSet<String>) {
     if route.outputs.is_empty() {
         return (
-            super::collect_route_outputs(shapes),
-            super::collect_route_borrowed(shapes),
+            collect_route_outputs(shapes),
+            collect_route_borrowed(shapes),
         );
     }
 
@@ -201,7 +203,7 @@ mod tests {
     use syn::parse_quote;
 
     use super::{route_exit_outputs, validate_route_outputs};
-    use crate::shared::{ExprShape, RouteExpr};
+    use crate::ir::{ExprShape, RouteExpr};
 
     #[test]
     fn route_exit_outputs_use_declared_signature_when_present() {

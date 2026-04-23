@@ -23,7 +23,7 @@ fn e2e_graph_async_with_sync_nodes() {
         }
     }
 
-    block_on(AsyncSyncGraph::__graphium_run_async(&mut ctx));
+    block_on(AsyncSyncGraph::run_async(&mut ctx));
     assert_eq!(ctx.number, 5);
 }
 
@@ -50,6 +50,6 @@ fn e2e_graph_async_nodes() {
         }
     }
 
-    let value = block_on(AsyncGraph::__graphium_run_async(&mut ctx));
+    let value = block_on(AsyncGraph::run_async(&mut ctx));
     assert_eq!(value, 8);
 }
