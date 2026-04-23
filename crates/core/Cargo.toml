@@ -12,6 +12,8 @@ serde = { version = "1", features = ["derive"], optional = true }
 graphium-macro = { version = "0.1.0", path = "../macro", optional = true }
 
 [features]
-# Enables serde (de)serialization derives for DTOs.
-serialize = ["dep:serde"]
+# Enables DTO serde support (`graphium::serde` re-export + serde derives).
+export = ["dep:serde"]
+# Back-compat alias (deprecated): prefer `export`.
+serialize = ["export"]
 macros = ["dep:graphium-macro"]

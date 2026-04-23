@@ -144,7 +144,7 @@ pub(crate) async fn render_graph_fragment(
         .ordered
         .iter()
         .filter(|test| {
-            matches!(test.dto.kind, graphium::export::TestKindDto::Graph)
+            matches!(test.dto.kind, graphium::dto::TestKindDto::Graph)
                 && test.dto.target_id == graph.id
         })
         .map(|test| TestLink {
@@ -159,7 +159,7 @@ pub(crate) async fn render_graph_fragment(
         .ordered
         .iter()
         .filter(|test| {
-            matches!(test.dto.kind, graphium::export::TestKindDto::Node)
+            matches!(test.dto.kind, graphium::dto::TestKindDto::Node)
                 && node_ids.contains(&test.dto.target_id)
         })
         .map(|test| TestLink {

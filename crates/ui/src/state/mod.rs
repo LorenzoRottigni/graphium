@@ -1,5 +1,5 @@
 use super::state::{graph::UiGraph, index::UiIndex, node::UiNode, test::UiTest};
-use graphium::export::{GraphDto, GraphStepDto};
+use graphium::dto::{GraphDto, GraphStepDto};
 
 pub(crate) mod build;
 pub mod graph;

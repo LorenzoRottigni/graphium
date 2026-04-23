@@ -15,5 +15,7 @@ graphium-macro = { version = "0.1.0", path = "../macro" }
 graphium-ui = { version = "0.1.0", path = "../ui" }
 
 [features]
-default = ["serialize"]
-serialize = ["graphium/serialize"]
+default = ["export"]
+export = ["graphium/export"]
+# Back-compat alias (deprecated): prefer `export`.
+serialize = ["export"]

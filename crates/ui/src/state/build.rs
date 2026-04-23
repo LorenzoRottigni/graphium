@@ -5,9 +5,9 @@ pub(crate) fn build_state(prometheus_url: String, graphs: Vec<UiGraph>) -> AppSt
 
     // Expand the configured root graphs into a fixed set of graphs/nodes
     // exported at build time by `graph!` / `node!`.
-    let root_exports: Vec<graphium::export::GraphDto> =
+    let root_exports: Vec<graphium::dto::GraphDto> =
         graphs.ordered.iter().map(|g| g.export.clone()).collect();
-    let bundle = graphium::export::GraphiumBundleDto::from_graph_roots(&root_exports);
+    let bundle = graphium::dto::GraphiumBundleDto::from_graph_roots(&root_exports);
 
     for export in bundle.graphs.iter() {
         if graphs.by_id.contains_key(&export.id) {

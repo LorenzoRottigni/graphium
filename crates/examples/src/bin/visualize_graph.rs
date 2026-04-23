@@ -72,28 +72,34 @@ graph! {
     }
 }
 
+#[cfg(feature = "export")]
 fn main() {
-    let dto = OwnedGraph::__graphium_dto();
+    let dto = OwnedGraph::dto();
     println!("{}", dto.name);
     print_steps(&dto.flow.steps, "");
 }
 
-fn print_steps(steps: &[graphium::export::GraphStepDto], prefix: &str) {
+#[cfg(not(feature = "export"))]
+fn main() {
+    eprintln!("enable the `export` feature to render graph DTOs");
+}
+
+fn print_steps(steps: &[graphium::dto::GraphStepDto], prefix: &str) {
     let count = steps.len();
     for (idx, step) in steps.iter().enumerate() {
         let is_last = idx + 1 == count;
         let branch = if is_last { "└─" } else { "├─" };
         match step {
-            graphium::export::GraphStepDto::Node {
+            graphium::dto::GraphStepDto::Node {
                 name,
                 ctx,
                 inputs,
                 outputs,
             } => {
                 let ctx_label = match ctx {
-                    graphium::export::CtxAccessDto::None => "",
-                    graphium::export::CtxAccessDto::Ref => " (ctx: &)",
-                    graphium::export::CtxAccessDto::Mut => " (ctx: &mut)",
+                    graphium::dto::CtxAccessDto::None => "",
+                    graphium::dto::CtxAccessDto::Ref => " (ctx: &)",
+                    graphium::dto::CtxAccessDto::Mut => " (ctx: &mut)",
                 };
                 println!(
                     "{}{}{}{}{}",
@@ -104,7 +110,7 @@ fn print_steps(steps: &[graphium::export::GraphStepDto], prefix: &str) {
                     format_io(inputs, outputs)
                 );
             }
-            graphium::export::GraphStepDto::Nested {
+            graphium::dto::GraphStepDto::Nested {
                 graph,
                 ctx: _,
                 inputs,
@@ -118,7 +124,7 @@ fn print_steps(steps: &[graphium::export::GraphStepDto], prefix: &str) {
                     format_io(inputs, outputs)
                 );
             }
-            graphium::export::GraphStepDto::Parallel { branches, .. } => {
+            graphium::dto::GraphStepDto::Parallel { branches, .. } => {
                 println!("{}{}@parallel", prefix, branch);
                 let next_prefix = if is_last {
                     format!("{}  ", prefix)
@@ -137,7 +143,7 @@ fn print_steps(steps: &[graphium::export::GraphStepDto], prefix: &str) {
                     print_steps(branch_steps, &branch_prefix);
                 }
             }
-            graphium::export::GraphStepDto::Route { on, cases, .. } => {
+            graphium::dto::GraphStepDto::Route { on, cases, .. } => {
                 println!("{}{}@match {}", prefix, branch, on);
                 let next_prefix = if is_last {
                     format!("{}  ", prefix)
@@ -156,7 +162,7 @@ fn print_steps(steps: &[graphium::export::GraphStepDto], prefix: &str) {
                     print_steps(&case.steps, &case_prefix);
                 }
             }
-            graphium::export::GraphStepDto::While {
+            graphium::dto::GraphStepDto::While {
                 condition, body, ..
             } => {
                 println!("{}{}@while {}", prefix, branch, condition);
@@ -167,7 +173,7 @@ fn print_steps(steps: &[graphium::export::GraphStepDto], prefix: &str) {
                 };
                 print_steps(body, &next_prefix);
             }
-            graphium::export::GraphStepDto::Loop { body, .. } => {
+            graphium::dto::GraphStepDto::Loop { body, .. } => {
                 println!("{}{}@loop", prefix, branch);
                 let next_prefix = if is_last {
                     format!("{}  ", prefix)
@@ -176,7 +182,7 @@ fn print_steps(steps: &[graphium::export::GraphStepDto], prefix: &str) {
                 };
                 print_steps(body, &next_prefix);
             }
-            graphium::export::GraphStepDto::Break => {
+            graphium::dto::GraphStepDto::Break => {
                 println!("{}{}@break", prefix, branch);
             }
         }

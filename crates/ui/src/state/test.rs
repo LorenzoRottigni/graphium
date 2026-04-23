@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 #[derive(Clone)]
 pub(crate) struct UiTest {
-    pub(crate) dto: graphium::export::TestDto,
-    pub(crate) schema: graphium::export::TestSchema,
+    pub(crate) dto: graphium::dto::TestDto,
+    pub(crate) schema: graphium::dto::TestSchema,
     pub(crate) default_values: HashMap<String, String>,
     pub(crate) run: fn(&HashMap<String, String>) -> Result<(), String>,
     pub(crate) graph_name: String,
@@ -13,8 +13,8 @@ pub(crate) struct UiTest {
 impl UiTest {
     pub(crate) fn kind_label(&self) -> &'static str {
         match self.dto.kind {
-            graphium::export::TestKindDto::Node => "Node",
-            graphium::export::TestKindDto::Graph => "Graph",
+            graphium::dto::TestKindDto::Node => "Node",
+            graphium::dto::TestKindDto::Graph => "Graph",
         }
     }
 

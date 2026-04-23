@@ -22,7 +22,7 @@ pub(super) fn build_graph_dto(
         .iter()
         .map(|(ident, ty)| {
             quote! {
-                ::graphium::export::IoParamDto {
+                ::graphium::dto::IoParamDto {
                     name: stringify!(#ident).to_string(),
                     ty: stringify!(#ty).to_string(),
                 }
@@ -33,7 +33,7 @@ pub(super) fn build_graph_dto(
         .iter()
         .map(|(ident, ty)| {
             quote! {
-                ::graphium::export::IoParamDto {
+                ::graphium::dto::IoParamDto {
                     name: stringify!(#ident).to_string(),
                     ty: stringify!(#ty).to_string(),
                 }
@@ -46,37 +46,38 @@ pub(super) fn build_graph_dto(
     let export_nodes: Vec<_> = export_paths
         .node_paths
         .iter()
-        .map(|path| quote! { #path::__graphium_dto() })
+        .map(|path| quote! { #path::dto() })
         .collect();
     let export_subgraphs: Vec<_> = export_paths
         .graph_paths
         .iter()
-        .map(|path| quote! { #path::__graphium_dto() })
+        .map(|path| quote! { #path::dto() })
         .collect();
 
     let subgraphs_runs: Vec<_> = export_paths
         .graph_paths
         .iter()
-        .map(|path| quote! { out.extend(#path::__graphium_test_runs()); })
+        .map(|path| quote! { out.extend(#path::test_runs()); })
         .collect();
     let nodes_runs: Vec<_> = export_paths
         .node_paths
         .iter()
-        .map(|path| quote! { out.extend(#path::__graphium_test_runs()); })
+        .map(|path| quote! { out.extend(#path::test_runs()); })
         .collect();
 
     quote! {
+        #[cfg(feature = "export")]
         impl #name {
-            pub fn __graphium_dto() -> ::graphium::export::GraphDto {
-                let flow = Self::__graphium_flow();
-                ::graphium::export::GraphDto {
-                    id: ::graphium::export::slugify(stringify!(#name)),
+            pub fn dto() -> ::graphium::dto::GraphDto {
+                let flow = Self::flow();
+                ::graphium::dto::GraphDto {
+                    id: ::graphium::dto::slugify(stringify!(#name)),
                     name: stringify!(#name).to_string(),
                     docs: #docs_tokens,
                     tags: vec![ #( #tags_tokens.to_string() ),* ],
                     deprecated: #deprecated_token,
                     deprecated_reason: #deprecated_reason_tokens,
-                    schema: ::std::option::Option::Some(::graphium::export::GraphSchemaDto {
+                    schema: ::std::option::Option::Some(::graphium::dto::GraphSchemaDto {
                         context: stringify!(#context).to_string(),
                         inputs: vec![ #( #export_inputs ),* ],
                         outputs: vec![ #( #export_outputs ),* ],
@@ -87,39 +88,37 @@ pub(super) fn build_graph_dto(
                     tests: Vec::new(),
                     nodes: vec![ #( #export_nodes ),* ],
                     subgraphs: vec![ #( #export_subgraphs ),* ],
-                    playground: ::std::option::Option::Some(::graphium::export::PlaygroundDto {
+                    playground: ::std::option::Option::Some(::graphium::dto::PlaygroundDto {
                         supported: <Self as ::graphium::GraphPlayground>::PLAYGROUND_SUPPORTED,
-                        schema: ::graphium::export::PlaygroundSchemaDto::from_schema(
+                        schema: ::graphium::dto::PlaygroundSchemaDto::from_schema(
                             &<Self as ::graphium::GraphPlayground>::playground_schema(),
                         ),
                     }),
                 }
             }
 
-            pub fn __graphium_test_runs() -> ::std::vec::Vec<::graphium::export::TestRun> {
-                let mut out: ::std::vec::Vec<::graphium::export::TestRun> = ::std::vec::Vec::new();
-                #[cfg(feature = "serialize")]
-                {
-                    #( #subgraphs_runs )*
-                    #( #nodes_runs )*
-                }
+            pub fn test_runs() -> ::std::vec::Vec<::graphium::dto::TestRun> {
+                let mut out: ::std::vec::Vec<::graphium::dto::TestRun> = ::std::vec::Vec::new();
+                #( #subgraphs_runs )*
+                #( #nodes_runs )*
                 out
             }
         }
 
+        #[cfg(feature = "export")]
         impl ::graphium::GraphUiTests for #name {
-            fn graphium_ui_tests() -> ::std::vec::Vec<::graphium::export::TestRun> {
-                Self::__graphium_test_runs()
+            fn graphium_ui_tests() -> ::std::vec::Vec<::graphium::dto::TestRun> {
+                Self::test_runs()
             }
         }
 
-        #[cfg(feature = "serialize")]
+        #[cfg(feature = "export")]
         impl ::graphium::serde::Serialize for #name {
             fn serialize<S>(&self, serializer: S) -> ::std::result::Result<S::Ok, S::Error>
             where
                 S: ::graphium::serde::Serializer,
             {
-                let dto = Self::__graphium_dto();
+                let dto = Self::dto();
                 ::graphium::serde::Serialize::serialize(&dto, serializer)
             }
         }

@@ -1,4 +1,4 @@
-//! Export DTOs for Graphium graphs and nodes.
+//! DTOs for Graphium graphs and nodes.
 //!
 //! These types are intended for tooling (e.g. graphium-ui) and are designed to
 //! be stable, serde-serializable data structures.
@@ -10,7 +10,7 @@ pub const EXPORT_SCHEMA_VERSION: u32 = 2;
 
 
 
-#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "export", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct GraphiumBundleDto {
     pub schema_version: u32,
@@ -55,7 +55,7 @@ impl GraphiumBundleDto {
     }
 }
 
-#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "export", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct GraphDto {
     pub id: String,
@@ -77,7 +77,7 @@ pub struct GraphDto {
     pub playground: Option<PlaygroundDto>,
 }
 
-#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "export", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct GraphSchemaDto {
     pub context: String,
@@ -86,7 +86,7 @@ pub struct GraphSchemaDto {
     pub metrics: Vec<String>,
 }
 
-#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "export", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct GraphFlowDto {
     pub inputs: Vec<String>,
@@ -94,21 +94,21 @@ pub struct GraphFlowDto {
     pub steps: Vec<GraphStepDto>,
 }
 
-#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "export", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct IoParamDto {
     pub name: String,
     pub ty: String,
 }
 
-#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "export", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PlaygroundDto {
     pub supported: bool,
     pub schema: PlaygroundSchemaDto,
 }
 
-#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "export", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PlaygroundSchemaDto {
     pub inputs: Vec<IoParamDto>,
@@ -140,7 +140,7 @@ impl PlaygroundSchemaDto {
     }
 }
 
-#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "export", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct NodeDto {
     pub id: String,
@@ -161,7 +161,7 @@ pub struct NodeDto {
     pub playground_schema: PlaygroundSchemaDto,
 }
 
-#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "export", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum TestKindDto {
     #[default]
@@ -169,7 +169,7 @@ pub enum TestKindDto {
     Graph,
 }
 
-#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "export", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct TestDto {
     pub id: String,
@@ -233,7 +233,7 @@ pub fn panic_payload_to_string(payload: Box<dyn std::any::Any + Send>) -> String
     "panic while running test".to_string()
 }
 
-#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "export", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum CtxAccessDto {
     #[default]
@@ -252,21 +252,21 @@ impl From<CtxAccess> for CtxAccessDto {
     }
 }
 
-#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "export", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct GraphCaseDto {
     pub label: String,
     pub steps: Vec<GraphStepDto>,
 }
 
-#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "export", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GraphRefDto {
     pub id: String,
     pub name: String,
 }
 
-#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "export", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GraphStepDto {
     Node {

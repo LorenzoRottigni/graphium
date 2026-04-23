@@ -4,13 +4,13 @@ use super::playground::Playground;
 pub struct UiGraph {
     pub id: String,
     pub name: String,
-    pub export: graphium::export::GraphDto,
+    pub export: graphium::dto::GraphDto,
     pub playground: Option<Playground>,
-    pub tests: Vec<graphium::export::TestRun>,
+    pub tests: Vec<graphium::dto::TestRun>,
 }
 
 impl UiGraph {
-    pub fn from_export(export: graphium::export::GraphDto) -> Self {
+    pub fn from_export(export: graphium::dto::GraphDto) -> Self {
         Self {
             id: export.id.clone(),
             name: export.name.clone(),
@@ -27,7 +27,7 @@ impl UiGraph {
             + ::core::default::Default
             + 'static,
     >() -> Self {
-        let export: graphium::export::GraphDto = ::serde_json::from_value(
+        let export: graphium::dto::GraphDto = ::serde_json::from_value(
             ::serde_json::to_value(G::default()).expect("serialize graph"),
         )
         .expect("deserialize graph dto");

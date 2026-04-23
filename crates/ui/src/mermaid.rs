@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use graphium::export::{CtxAccessDto, GraphCaseDto, GraphDto, GraphStepDto};
+use graphium::dto::{CtxAccessDto, GraphCaseDto, GraphDto, GraphStepDto};
 
 use crate::util::{
     ArtifactAccess, escape_label, next_id, normalize_symbol, parse_artifact, slugify,

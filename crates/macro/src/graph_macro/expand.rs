@@ -140,7 +140,8 @@ pub fn expand(input: TokenStream) -> TokenStream {
                 #async_graph_body
             }
 
-            pub fn __graphium_flow() -> ::graphium::export::GraphFlowDto {
+            #[cfg(feature = "export")]
+            pub fn flow() -> ::graphium::dto::GraphFlowDto {
                 #graph_flow_tokens
             }
         }

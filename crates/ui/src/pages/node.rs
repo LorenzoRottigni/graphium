@@ -62,7 +62,7 @@ pub(crate) async fn node_page_html(
         .ordered
         .iter()
         .filter(|test| {
-            matches!(test.dto.kind, graphium::export::TestKindDto::Node)
+            matches!(test.dto.kind, graphium::dto::TestKindDto::Node)
                 && test.dto.target_id == node.dto.id
         })
         .map(|test| TestLink {
@@ -103,10 +103,10 @@ pub(crate) async fn node_page_html(
     .expect("render node template"))
 }
 
-fn ctx_access_label(access: graphium::export::CtxAccessDto) -> &'static str {
+fn ctx_access_label(access: graphium::dto::CtxAccessDto) -> &'static str {
     match access {
-        graphium::export::CtxAccessDto::None => "none",
-        graphium::export::CtxAccessDto::Ref => "&",
-        graphium::export::CtxAccessDto::Mut => "&mut",
+        graphium::dto::CtxAccessDto::None => "none",
+        graphium::dto::CtxAccessDto::Ref => "&",
+        graphium::dto::CtxAccessDto::Mut => "&mut",
     }
 }

@@ -1,6 +1,6 @@
 //! Code generation for `graph_test!` and `node_test!` procedural macros.
 //!
-//! These macros expand test suites and (when `feature="serialize"` is enabled in
+//! These macros expand test suites and (when `feature="export"` is enabled in
 //! the destination crate) generate marker types that can be referenced by
 //! `graph!` / `node!` via `#[tests(...)]`.
 

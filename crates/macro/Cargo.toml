@@ -19,5 +19,8 @@ futures = "0.3"
 
 [features]
 # This feature is intentionally mirrored by downstream crates that want
-# macro-generated graph/node types to implement serde `Serialize`.
-serialize = []
+# macro-generated graph/node types to export DTO helpers and implement serde
+# `Serialize`.
+export = []
+# Back-compat alias (deprecated): prefer `export`.
+serialize = ["export"]
