@@ -4,15 +4,12 @@
 
 pub mod export;
 pub mod metrics;
-pub mod visualizer;
+pub mod playground;
 
 #[cfg(feature = "serialize")]
 pub use serde;
 
-pub use visualizer::{
-    CtxAccess, GraphCase, GraphDef, GraphDefProvider, GraphPlayground, GraphStep, PlaygroundParam,
-    PlaygroundSchema, Visualizer,
-};
+pub use playground::{CtxAccess, GraphPlayground, PlaygroundParam, PlaygroundSchema};
 
 pub trait Artifact: Clone + 'static {}
 

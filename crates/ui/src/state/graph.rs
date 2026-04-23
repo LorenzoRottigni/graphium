@@ -1,5 +1,3 @@
-use crate::util::slugify;
-
 use super::playground::Playground;
 
 #[derive(Clone)]
@@ -17,31 +15,6 @@ impl UiGraph {
             id: export.id.clone(),
             name: export.name.clone(),
             export,
-            playground: None,
-            tests: Vec::new(),
-        }
-    }
-
-    pub fn from_export_def(def: graphium::export::GraphDefDto) -> Self {
-        let id = slugify(&def.name);
-        Self {
-            id: id.clone(),
-            name: def.name.clone(),
-            export: graphium::export::GraphDto {
-                id,
-                name: def.name.clone(),
-                docs: None,
-                tags: Vec::new(),
-                deprecated: false,
-                deprecated_reason: None,
-                schema: None,
-                def,
-                raw_schema: None,
-                tests: Vec::new(),
-                nodes: Vec::new(),
-                subgraphs: Vec::new(),
-                playground: None,
-            },
             playground: None,
             tests: Vec::new(),
         }

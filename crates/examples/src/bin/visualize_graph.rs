@@ -1,4 +1,3 @@
-use graphium::Visualizer;
 use graphium_macro::{graph, node};
 
 #[derive(Default)]
@@ -74,6 +73,129 @@ graph! {
 }
 
 fn main() {
-    let visualizer = Visualizer::new();
-    visualizer.print(OwnedGraph);
+    let dto = OwnedGraph::__graphium_dto();
+    println!("{}", dto.name);
+    print_steps(&dto.flow.steps, "");
+}
+
+fn print_steps(steps: &[graphium::export::GraphStepDto], prefix: &str) {
+    let count = steps.len();
+    for (idx, step) in steps.iter().enumerate() {
+        let is_last = idx + 1 == count;
+        let branch = if is_last { "└─" } else { "├─" };
+        match step {
+            graphium::export::GraphStepDto::Node {
+                name,
+                ctx,
+                inputs,
+                outputs,
+            } => {
+                let ctx_label = match ctx {
+                    graphium::export::CtxAccessDto::None => "",
+                    graphium::export::CtxAccessDto::Ref => " (ctx: &)",
+                    graphium::export::CtxAccessDto::Mut => " (ctx: &mut)",
+                };
+                println!(
+                    "{}{}{}{}{}",
+                    prefix,
+                    branch,
+                    name,
+                    ctx_label,
+                    format_io(inputs, outputs)
+                );
+            }
+            graphium::export::GraphStepDto::Nested {
+                graph,
+                ctx: _,
+                inputs,
+                outputs,
+            } => {
+                println!(
+                    "{}{}{}{}",
+                    prefix,
+                    branch,
+                    graph.name,
+                    format_io(inputs, outputs)
+                );
+            }
+            graphium::export::GraphStepDto::Parallel { branches, .. } => {
+                println!("{}{}@parallel", prefix, branch);
+                let next_prefix = if is_last {
+                    format!("{}  ", prefix)
+                } else {
+                    format!("{}│ ", prefix)
+                };
+                for (b_idx, branch_steps) in branches.iter().enumerate() {
+                    let b_last = b_idx + 1 == branches.len();
+                    let branch_label = if b_last { "└─" } else { "├─" };
+                    println!("{}{}branch", next_prefix, branch_label);
+                    let branch_prefix = if b_last {
+                        format!("{}  ", next_prefix)
+                    } else {
+                        format!("{}│ ", next_prefix)
+                    };
+                    print_steps(branch_steps, &branch_prefix);
+                }
+            }
+            graphium::export::GraphStepDto::Route { on, cases, .. } => {
+                println!("{}{}@match {}", prefix, branch, on);
+                let next_prefix = if is_last {
+                    format!("{}  ", prefix)
+                } else {
+                    format!("{}│ ", prefix)
+                };
+                for (c_idx, case) in cases.iter().enumerate() {
+                    let c_last = c_idx + 1 == cases.len();
+                    let case_label = if c_last { "└─" } else { "├─" };
+                    println!("{}{}{}", next_prefix, case_label, case.label);
+                    let case_prefix = if c_last {
+                        format!("{}  ", next_prefix)
+                    } else {
+                        format!("{}│ ", next_prefix)
+                    };
+                    print_steps(&case.steps, &case_prefix);
+                }
+            }
+            graphium::export::GraphStepDto::While {
+                condition, body, ..
+            } => {
+                println!("{}{}@while {}", prefix, branch, condition);
+                let next_prefix = if is_last {
+                    format!("{}  ", prefix)
+                } else {
+                    format!("{}│ ", prefix)
+                };
+                print_steps(body, &next_prefix);
+            }
+            graphium::export::GraphStepDto::Loop { body, .. } => {
+                println!("{}{}@loop", prefix, branch);
+                let next_prefix = if is_last {
+                    format!("{}  ", prefix)
+                } else {
+                    format!("{}│ ", prefix)
+                };
+                print_steps(body, &next_prefix);
+            }
+            graphium::export::GraphStepDto::Break => {
+                println!("{}{}@break", prefix, branch);
+            }
+        }
+    }
+}
+
+fn format_io(inputs: &[String], outputs: &[String]) -> String {
+    if inputs.is_empty() && outputs.is_empty() {
+        return String::new();
+    }
+    let ins = if inputs.is_empty() {
+        String::new()
+    } else {
+        format!(" in: {}", inputs.join(", "))
+    };
+    let outs = if outputs.is_empty() {
+        String::new()
+    } else {
+        format!(" out: {}", outputs.join(", "))
+    };
+    format!("{}{}", ins, outs)
 }

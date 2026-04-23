@@ -68,10 +68,10 @@ pub(super) fn build_graph_dto(
     quote! {
         impl #name {
             pub fn __graphium_dto() -> ::graphium::export::GraphDto {
-                let def = Self::graph_def();
+                let flow = Self::__graphium_flow();
                 ::graphium::export::GraphDto {
-                    id: ::graphium::export::slugify(def.name),
-                    name: def.name.to_string(),
+                    id: ::graphium::export::slugify(stringify!(#name)),
+                    name: stringify!(#name).to_string(),
                     docs: #docs_tokens,
                     tags: vec![ #( #tags_tokens.to_string() ),* ],
                     deprecated: #deprecated_token,
@@ -82,7 +82,7 @@ pub(super) fn build_graph_dto(
                         outputs: vec![ #( #export_outputs ),* ],
                         metrics: vec![ #( #export_metrics ),* ],
                     }),
-                    def: ::graphium::export::GraphDefDto::from_def(&def),
+                    flow,
                     raw_schema: ::std::option::Option::Some(#raw_schema_lit.to_string()),
                     tests: Vec::new(),
                     nodes: vec![ #( #export_nodes ),* ],

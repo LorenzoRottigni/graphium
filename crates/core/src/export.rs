@@ -3,10 +3,10 @@
 //! These types are intended for tooling (e.g. graphium-ui) and are designed to
 //! be stable, serde-serializable data structures.
 
-use crate::{CtxAccess, GraphCase, GraphDef, GraphStep, PlaygroundSchema};
+use crate::{CtxAccess, PlaygroundSchema};
 use std::collections::HashMap;
 
-pub const EXPORT_SCHEMA_VERSION: u32 = 1;
+pub const EXPORT_SCHEMA_VERSION: u32 = 2;
 
 
 
@@ -65,7 +65,7 @@ pub struct GraphDto {
     pub deprecated: bool,
     pub deprecated_reason: Option<String>,
     pub schema: Option<GraphSchemaDto>,
-    pub def: GraphDefDto,
+    pub flow: GraphFlowDto,
     /// Raw schema definition text (typically the `graph! { ... }` tokens).
     pub raw_schema: Option<String>,
     /// Tests explicitly attached to this graph (UI/admin build only).
@@ -84,6 +84,14 @@ pub struct GraphSchemaDto {
     pub inputs: Vec<IoParamDto>,
     pub outputs: Vec<IoParamDto>,
     pub metrics: Vec<String>,
+}
+
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct GraphFlowDto {
+    pub inputs: Vec<String>,
+    pub outputs: Vec<String>,
+    pub steps: Vec<GraphStepDto>,
 }
 
 #[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
@@ -246,38 +254,16 @@ impl From<CtxAccess> for CtxAccessDto {
 
 #[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct GraphDefDto {
-    pub name: String,
-    pub inputs: Vec<String>,
-    pub outputs: Vec<String>,
-    pub steps: Vec<GraphStepDto>,
-}
-
-impl GraphDefDto {
-    pub fn from_def(def: &GraphDef) -> Self {
-        Self {
-            name: def.name.to_string(),
-            inputs: def.inputs.iter().map(|s| (*s).to_string()).collect(),
-            outputs: def.outputs.iter().map(|s| (*s).to_string()).collect(),
-            steps: def.steps.iter().map(GraphStepDto::from_step).collect(),
-        }
-    }
-}
-
-#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct GraphCaseDto {
     pub label: String,
     pub steps: Vec<GraphStepDto>,
 }
 
-impl GraphCaseDto {
-    fn from_case(value: &GraphCase) -> Self {
-        Self {
-            label: value.label.to_string(),
-            steps: value.steps.iter().map(GraphStepDto::from_step).collect(),
-        }
-    }
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GraphRefDto {
+    pub id: String,
+    pub name: String,
 }
 
 #[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
@@ -290,7 +276,7 @@ pub enum GraphStepDto {
         outputs: Vec<String>,
     },
     Nested {
-        graph: Box<GraphDefDto>,
+        graph: GraphRefDto,
         ctx: CtxAccessDto,
         inputs: Vec<String>,
         outputs: Vec<String>,
@@ -323,83 +309,6 @@ pub enum GraphStepDto {
 impl Default for GraphStepDto {
     fn default() -> Self {
         Self::Break
-    }
-}
-
-impl GraphStepDto {
-    fn strings(values: &[&'static str]) -> Vec<String> {
-        values.iter().map(|s| (*s).to_string()).collect()
-    }
-
-    fn from_step(step: &GraphStep) -> Self {
-        match step {
-            GraphStep::Node {
-                name,
-                ctx,
-                inputs,
-                outputs,
-            } => Self::Node {
-                name: (*name).to_string(),
-                ctx: (*ctx).into(),
-                inputs: Self::strings(inputs),
-                outputs: Self::strings(outputs),
-            },
-            GraphStep::Nested {
-                graph,
-                ctx,
-                inputs,
-                outputs,
-            } => Self::Nested {
-                graph: Box::new(GraphDefDto::from_def(graph)),
-                ctx: (*ctx).into(),
-                inputs: Self::strings(inputs),
-                outputs: Self::strings(outputs),
-            },
-            GraphStep::Parallel {
-                branches,
-                inputs,
-                outputs,
-            } => Self::Parallel {
-                branches: branches
-                    .iter()
-                    .map(|branch| branch.iter().map(GraphStepDto::from_step).collect())
-                    .collect(),
-                inputs: Self::strings(inputs),
-                outputs: Self::strings(outputs),
-            },
-            GraphStep::Route {
-                on,
-                cases,
-                inputs,
-                outputs,
-            } => Self::Route {
-                on: (*on).to_string(),
-                cases: cases.iter().map(GraphCaseDto::from_case).collect(),
-                inputs: Self::strings(inputs),
-                outputs: Self::strings(outputs),
-            },
-            GraphStep::While {
-                condition,
-                body,
-                inputs,
-                outputs,
-            } => Self::While {
-                condition: (*condition).to_string(),
-                body: body.iter().map(GraphStepDto::from_step).collect(),
-                inputs: Self::strings(inputs),
-                outputs: Self::strings(outputs),
-            },
-            GraphStep::Loop {
-                body,
-                inputs,
-                outputs,
-            } => Self::Loop {
-                body: body.iter().map(GraphStepDto::from_step).collect(),
-                inputs: Self::strings(inputs),
-                outputs: Self::strings(outputs),
-            },
-            GraphStep::Break => Self::Break,
-        }
     }
 }
 

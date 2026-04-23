@@ -20,7 +20,6 @@ use super::{
 /// - `pub struct GraphName;`
 /// - inherent `run` / `run_async` / `__graphium_run*` methods
 /// - an optional `impl ::graphium::Graph<_> for GraphName`
-/// - `impl ::graphium::GraphDefProvider for GraphName`
 ///
 /// Example:
 /// providing `graph!(Demo, Ctx => A >> B)` expands into a `Demo` type with
@@ -88,7 +87,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
     );
     let trait_run_body = build_trait_run_body(&name, &graph_inputs, &graph_outputs, false);
     let async_trait_run_body = build_trait_run_body(&name, &graph_inputs, &graph_outputs, true);
-    let graph_def_tokens = super::graph_definition_tokens(&name, &graph_inputs, &graph_outputs, &nodes);
+    let graph_flow_tokens = super::graph_flow_tokens(&graph_inputs, &graph_outputs, &nodes);
     let playground_impl = build_playground_impl(
         &name,
         &context,
@@ -150,17 +149,11 @@ pub fn expand(input: TokenStream) -> TokenStream {
                 #async_graph_body
             }
 
-            pub fn graph_def() -> ::graphium::GraphDef {
-                #graph_def_tokens
+            pub fn __graphium_flow() -> ::graphium::export::GraphFlowDto {
+                #graph_flow_tokens
             }
         }
         #graph_impl
-
-        impl ::graphium::GraphDefProvider for #name {
-            fn graph_def() -> ::graphium::GraphDef {
-                Self::graph_def()
-            }
-        }
 
         #playground_impl
 

@@ -1,7 +1,7 @@
-//! Graph definition rendering.
+//! Graph flow rendering.
 //!
-//! Besides executable code, the macro also emits a structural `GraphDef`
-//! description for UI and inspection features.
+//! Besides executable code, the macro also emits a structural, DTO-friendly
+//! representation of the graph's step tree for UI and inspection features.
 
 use quote::quote;
 
@@ -9,13 +9,8 @@ use crate::shared::{NodeCall, NodeExpr, is_graph_run_path};
 
 use super::graph_type_path;
 
-/// Builds the `GraphDef` literal returned by generated graph types.
-///
-/// Example:
-/// providing `name = DemoGraph` and `A >> B` expands into
-/// `::graphium::GraphDef { name: "DemoGraph", steps: vec![...] }`.
-pub(super) fn graph_definition_tokens(
-    name: &syn::Ident,
+/// Builds the `GraphFlowDto` literal returned by generated graph types.
+pub(super) fn graph_flow_tokens(
     inputs: &[(syn::Ident, syn::Type)],
     outputs: &[(syn::Ident, syn::Type)],
     nodes: &NodeExpr,
@@ -30,20 +25,19 @@ pub(super) fn graph_definition_tokens(
         .map(|(ident, _)| quote! { stringify!(#ident) })
         .collect();
     quote! {
-        ::graphium::GraphDef {
-            name: stringify!(#name),
-            inputs: vec![ #( #input_names ),* ],
-            outputs: vec![ #( #output_names ),* ],
+        ::graphium::export::GraphFlowDto {
+            inputs: vec![ #( #input_names.to_string() ),* ],
+            outputs: vec![ #( #output_names.to_string() ),* ],
             steps: vec![ #( #steps ),* ],
         }
     }
 }
 
-/// Flattens a graph expression into the UI-oriented `GraphStep` tree.
+/// Flattens a graph expression into the UI-oriented `GraphStepDto` tree.
 ///
 /// Example:
-/// providing `A >> (B | C)` expands into a `Vec<GraphStep>` containing a node
-/// step for `A` followed by a `GraphStep::Parallel { ... }`.
+/// providing `A >> (B | C)` expands into a `Vec<GraphStepDto>` containing a
+/// node step for `A` followed by a `GraphStepDto::Parallel { ... }`.
 fn node_expr_steps_tokens(node: &NodeExpr) -> Vec<proc_macro2::TokenStream> {
     match node {
         NodeExpr::Single(call) => vec![node_call_step_tokens(call)],
@@ -75,10 +69,10 @@ fn node_expr_steps_tokens(node: &NodeExpr) -> Vec<proc_macro2::TokenStream> {
                 })
                 .collect();
             vec![quote! {
-                ::graphium::GraphStep::Parallel {
+                ::graphium::export::GraphStepDto::Parallel {
                     branches: vec![ #( #branches ),* ],
-                    inputs: vec![ #( #input_tokens ),* ],
-                    outputs: vec![ #( #output_tokens ),* ],
+                    inputs: vec![ #( #input_tokens.to_string() ),* ],
+                    outputs: vec![ #( #output_tokens.to_string() ),* ],
                 }
             }]
         }
@@ -116,19 +110,19 @@ fn node_expr_steps_tokens(node: &NodeExpr) -> Vec<proc_macro2::TokenStream> {
                 .map(|(key, node)| {
                     let steps = node_expr_steps_tokens(node);
                     quote! {
-                        ::graphium::GraphCase {
-                            label: stringify!(#key),
+                        ::graphium::export::GraphCaseDto {
+                            label: stringify!(#key).to_string(),
                             steps: vec![ #( #steps ),* ],
                         }
                     }
                 })
                 .collect();
             vec![quote! {
-                ::graphium::GraphStep::Route {
-                    on: stringify!(#on),
+                ::graphium::export::GraphStepDto::Route {
+                    on: stringify!(#on).to_string(),
                     cases: vec![ #( #cases ),* ],
-                    inputs: vec![ #( #input_tokens ),* ],
-                    outputs: vec![ #( #output_tokens ),* ],
+                    inputs: vec![ #( #input_tokens.to_string() ),* ],
+                    outputs: vec![ #( #output_tokens.to_string() ),* ],
                 }
             }]
         }
@@ -162,11 +156,11 @@ fn node_expr_steps_tokens(node: &NodeExpr) -> Vec<proc_macro2::TokenStream> {
             let condition = &while_expr.condition;
             let body_steps = node_expr_steps_tokens(&while_expr.body);
             vec![quote! {
-                ::graphium::GraphStep::While {
-                    condition: stringify!(#condition),
+                ::graphium::export::GraphStepDto::While {
+                    condition: stringify!(#condition).to_string(),
                     body: vec![ #( #body_steps ),* ],
-                    inputs: vec![ #( #input_tokens ),* ],
-                    outputs: vec![ #( #output_tokens ),* ],
+                    inputs: vec![ #( #input_tokens.to_string() ),* ],
+                    outputs: vec![ #( #output_tokens.to_string() ),* ],
                 }
             }]
         }
@@ -189,14 +183,14 @@ fn node_expr_steps_tokens(node: &NodeExpr) -> Vec<proc_macro2::TokenStream> {
 
             let body_steps = node_expr_steps_tokens(&loop_expr.body);
             vec![quote! {
-                ::graphium::GraphStep::Loop {
+                ::graphium::export::GraphStepDto::Loop {
                     body: vec![ #( #body_steps ),* ],
-                    inputs: vec![ #( #input_tokens ),* ],
-                    outputs: vec![ #( #output_tokens ),* ],
+                    inputs: vec![ #( #input_tokens.to_string() ),* ],
+                    outputs: vec![ #( #output_tokens.to_string() ),* ],
                 }
             }]
         }
-        NodeExpr::Break => vec![quote! { ::graphium::GraphStep::Break }],
+        NodeExpr::Break => vec![quote! { ::graphium::export::GraphStepDto::Break }],
     }
 }
 
@@ -214,8 +208,8 @@ fn static_str_list_tokens(values: &[String]) -> Vec<proc_macro2::TokenStream> {
 ///
 /// Example:
 /// providing `Worker(input) -> output` expands into
-/// `::graphium::GraphStep::Node { name: "Worker", ... }`, while
-/// `OtherGraph::run(...)` expands into `GraphStep::Nested { ... }`.
+/// `::graphium::export::GraphStepDto::Node { name: "Worker", ... }`, while
+/// `OtherGraph::run(...)` expands into `GraphStepDto::Nested { ... }`.
 fn node_call_step_tokens(call: &NodeCall) -> proc_macro2::TokenStream {
     let node_path = &call.path;
     let nested_graph_path = is_graph_run_path(node_path).then(|| graph_type_path(node_path));
@@ -223,21 +217,29 @@ fn node_call_step_tokens(call: &NodeCall) -> proc_macro2::TokenStream {
     let output_tokens = artifact_output_list_tokens(&call.outputs, &call.output_borrows);
 
     if let Some(graph_path) = nested_graph_path {
+        let graph_name = graph_path
+            .segments
+            .last()
+            .map(|seg| seg.ident.clone())
+            .unwrap_or_else(|| syn::Ident::new("Graph", proc_macro2::Span::call_site()));
         quote! {
-            ::graphium::GraphStep::Nested {
-                graph: Box::new(<#graph_path as ::graphium::GraphDefProvider>::graph_def()),
-                ctx: ::graphium::CtxAccess::Mut,
-                inputs: vec![ #( #input_tokens ),* ],
-                outputs: vec![ #( #output_tokens ),* ],
+            ::graphium::export::GraphStepDto::Nested {
+                graph: ::graphium::export::GraphRefDto {
+                    id: ::graphium::export::slugify(stringify!(#graph_name)),
+                    name: stringify!(#graph_name).to_string(),
+                },
+                ctx: ::graphium::export::CtxAccessDto::Mut,
+                inputs: vec![ #( #input_tokens.to_string() ),* ],
+                outputs: vec![ #( #output_tokens.to_string() ),* ],
             }
         }
     } else {
         quote! {
-            ::graphium::GraphStep::Node {
-                name: stringify!(#node_path),
-                ctx: #node_path::CTX_ACCESS,
-                inputs: vec![ #( #input_tokens ),* ],
-                outputs: vec![ #( #output_tokens ),* ],
+            ::graphium::export::GraphStepDto::Node {
+                name: stringify!(#node_path).to_string(),
+                ctx: ::graphium::export::CtxAccessDto::from(#node_path::CTX_ACCESS),
+                inputs: vec![ #( #input_tokens.to_string() ),* ],
+                outputs: vec![ #( #output_tokens.to_string() ),* ],
             }
         }
     }
@@ -289,11 +291,11 @@ fn artifact_output_list_tokens(
 mod tests {
     use syn::parse_quote;
 
-    use super::graph_definition_tokens;
+    use super::graph_flow_tokens;
     use crate::shared::{NodeCall, NodeExpr};
 
     #[test]
-    fn graph_definition_tokens_render_parallel_step_tree() {
+    fn graph_flow_tokens_render_parallel_step_tree() {
         let nodes = NodeExpr::Parallel(vec![
             NodeExpr::Single(NodeCall {
                 path: parse_quote!(demo::A),
@@ -313,10 +315,9 @@ mod tests {
             }),
         ]);
 
-        let tokens =
-            graph_definition_tokens(&parse_quote!(DemoGraph), &[], &[], &nodes).to_string();
+        let tokens = graph_flow_tokens(&[], &[], &nodes).to_string();
 
-        assert!(tokens.contains("GraphStep :: Parallel"));
+        assert!(tokens.contains("GraphStepDto :: Parallel"));
         assert!(tokens.contains("demo :: A"));
         assert!(tokens.contains("demo :: B"));
     }

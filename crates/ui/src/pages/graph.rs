@@ -114,12 +114,12 @@ pub(crate) async fn render_graph_fragment(
 
     let linkable_graphs: HashSet<String> = state.graphs.by_id.keys().cloned().collect();
     let mermaid = to_mermaid(
-        &graph.export.def,
+        &graph.export,
         graph.playground.map(|p| p.schema.context),
         &linkable_graphs,
     );
 
-    let metrics = fetch_metrics(&state, &graph.export.def.name).await;
+    let metrics = fetch_metrics(&state, &graph.export.name).await;
     let metrics = MetricCards {
         count: fmt_metric(metrics.count),
         errors: fmt_metric(metrics.errors),
@@ -129,7 +129,7 @@ pub(crate) async fn render_graph_fragment(
         p95: fmt_metric(metrics.p95_seconds),
     };
 
-    let node_names = collect_graph_node_names(&graph.export.def);
+    let node_names = collect_graph_node_names(&graph.export);
     let nodes = node_names
         .iter()
         .map(|name| NodeLink {

@@ -1,13 +1,13 @@
 use std::collections::{HashMap, HashSet};
 
-use graphium::export::{CtxAccessDto, GraphCaseDto, GraphDefDto, GraphStepDto};
+use graphium::export::{CtxAccessDto, GraphCaseDto, GraphDto, GraphStepDto};
 
 use crate::util::{
     ArtifactAccess, escape_label, next_id, normalize_symbol, parse_artifact, slugify,
 };
 
 pub(crate) fn to_mermaid(
-    graph: &GraphDefDto,
+    graph: &GraphDto,
     context_label: Option<&str>,
     linkable_graphs: &HashSet<String>,
 ) -> String {
@@ -48,18 +48,18 @@ pub(crate) fn to_mermaid(
         escape_label(&graph.name)
     ));
 
-    let inputs_node = if graph.inputs.is_empty() {
+    let inputs_node = if graph.flow.inputs.is_empty() {
         None
     } else {
         let node_id = next_id(&mut counter);
         lines.push(format!(
             r#"{node_id}(["{}"]):::io"#,
-            escape_label(&format!("in: {}", graph.inputs.join(", ")))
+            escape_label(&format!("in: {}", graph.flow.inputs.join(", ")))
         ));
         Some(node_id)
     };
 
-    let ctx_node = if graph_uses_ctx(graph) {
+    let ctx_node = if graph_uses_ctx(&graph.flow.steps) {
         let node_id = next_id(&mut counter);
         let label = context_label
             .map(|ctx| format!("ctx: {ctx}"))
@@ -83,17 +83,17 @@ pub(crate) fn to_mermaid(
         ..Default::default()
     };
     if let Some(inputs_node) = &tracker.inputs_node {
-        for input in &graph.inputs {
+        for input in &graph.flow.inputs {
             tracker.owned.insert(input.clone(), inputs_node.clone());
         }
     }
 
-    if graph.steps.is_empty() {
+    if graph.flow.steps.is_empty() {
         return lines.join("\n");
     }
 
     let rendered = append_steps(
-        &graph.steps,
+        &graph.flow.steps,
         &mut tracker,
         linkable_graphs,
         &mut lines,
@@ -101,13 +101,13 @@ pub(crate) fn to_mermaid(
     );
     lines.push(format!("{root} --> {}", rendered.head));
 
-    let outputs_node = if graph.outputs.is_empty() {
+    let outputs_node = if graph.flow.outputs.is_empty() {
         None
     } else {
         let node_id = next_id(&mut counter);
         lines.push(format!(
             r#"{node_id}(["{}"]):::io"#,
-            escape_label(&format!("out: {}", graph.outputs.join(", ")))
+            escape_label(&format!("out: {}", graph.flow.outputs.join(", ")))
         ));
         Some(node_id)
     };
@@ -115,7 +115,7 @@ pub(crate) fn to_mermaid(
     if let Some(outputs_node) = &outputs_node {
         lines.push(format!("{} --> {outputs_node}", rendered.tail));
         // Add explicit data edges for declared graph outputs.
-        for output in graph.outputs.iter() {
+        for output in graph.flow.outputs.iter() {
             if let Some(src) = tracker.owned.get(output) {
                 lines.push(format!(
                     r#"{src} -. "{}" .-> {outputs_node}"#,
@@ -234,10 +234,10 @@ fn render_step(
                 escape_label(&format!("{}{}", graph.name, ctx_label))
             ));
             emit_artifact_edges(tracker, &node_id, *ctx, inputs, outputs, None, lines);
-            let nested_id = slugify(&graph.name);
-            if linkable_graphs.contains(&nested_id) {
+            if linkable_graphs.contains(&graph.id) {
                 lines.push(format!(
-                    r#"click {node_id} "/graph/{nested_id}" "Open {}" _self"#,
+                    r#"click {node_id} "/graph/{}" "Open {}" _self"#,
+                    graph.id,
                     escape_label(&graph.name)
                 ));
                 lines.push(format!(r#"style {node_id} cursor:pointer"#));
@@ -481,11 +481,7 @@ fn render_step(
     }
 }
 
-fn graph_uses_ctx(graph: &GraphDefDto) -> bool {
-    steps_use_ctx(&graph.steps)
-}
-
-fn steps_use_ctx(steps: &[GraphStepDto]) -> bool {
+fn graph_uses_ctx(steps: &[GraphStepDto]) -> bool {
     for step in steps {
         match step {
             GraphStepDto::Node {
@@ -527,17 +523,17 @@ fn steps_use_ctx(steps: &[GraphStepDto]) -> bool {
                 }
             }
             GraphStepDto::Parallel { branches, .. } => {
-                if branches.iter().any(|b| steps_use_ctx(b)) {
+                if branches.iter().any(|b| graph_uses_ctx(b)) {
                     return true;
                 }
             }
             GraphStepDto::Route { cases, .. } => {
-                if cases.iter().any(|c| steps_use_ctx(&c.steps)) {
+                if cases.iter().any(|c| graph_uses_ctx(&c.steps)) {
                     return true;
                 }
             }
             GraphStepDto::While { body, .. } | GraphStepDto::Loop { body, .. } => {
-                if steps_use_ctx(body) {
+                if graph_uses_ctx(body) {
                     return true;
                 }
             }

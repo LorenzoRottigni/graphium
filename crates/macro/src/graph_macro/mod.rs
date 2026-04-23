@@ -8,7 +8,7 @@ mod dispatch;
 mod dto;
 mod expand;
 mod execution;
-mod graph_def;
+mod flow;
 mod loops;
 mod metrics;
 mod parallel;
@@ -29,7 +29,7 @@ use dto::build_graph_dto;
 use execution::{
     build_root_setup, build_run_body, build_run_return_sig, build_trait_run_body, generate_execution,
 };
-use graph_def::graph_definition_tokens;
+use flow::graph_flow_tokens;
 use loops::{get_loop_node_expr, get_while_node_expr, loop_exit_outputs};
 use metrics::{
     build_graph_impl, build_metrics_defs, build_sync_impl, metric_config_tokens, wrap_async_graph_body,
