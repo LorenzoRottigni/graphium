@@ -106,6 +106,7 @@ pub(super) fn build_playground_impl(
     };
 
     quote! {
+        #[cfg(feature = "playground")]
         impl ::graphium::GraphPlayground for #name {
             const PLAYGROUND_SUPPORTED: bool = #supported;
 
@@ -144,3 +145,4 @@ fn playground_parse_kind(ty: &syn::Type) -> Option<PlaygroundParseKind> {
         _ => None,
     }
 }
+

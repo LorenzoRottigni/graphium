@@ -8,8 +8,6 @@ use std::collections::HashMap;
 
 pub const EXPORT_SCHEMA_VERSION: u32 = 2;
 
-
-
 #[cfg_attr(feature = "export", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct GraphiumBundleDto {

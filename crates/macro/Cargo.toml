@@ -22,5 +22,11 @@ futures = "0.3"
 # macro-generated graph/node types to export DTO helpers and implement serde
 # `Serialize`.
 export = []
+# Enables macro-generated graph DTO helpers (`flow()` / `dto()`), without serde.
+dto = []
+# Enables macro-generated graph metrics wrappers and helpers.
+metrics = []
+# Enables macro-generated playground helpers.
+playground = []
 # Back-compat alias (deprecated): prefer `export`.
 serialize = ["export"]

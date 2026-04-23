@@ -1,28 +1,25 @@
 //! Top-level `graph!` expansion.
 //!
-//! This module owns the macro entrypoint and assembles the generated impl from
-//! the lower-level graph-expression helpers.
+//! The expander is organized so this `mod.rs` is responsible for producing the
+//! generated graph "class" (`pub struct GraphName;`). Submodules then append
+//! feature-gated impl blocks and helper trait impls.
 
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::parse_macro_input;
 
-use crate::shared::GraphInput;
-use crate::shared::doc_string_from_attrs;
+use crate::shared::{GraphInput, doc_string_from_attrs};
 
-use super::{
-    build_graph_dto, build_metrics_defs, build_playground_impl, build_root_setup, build_run_body,
-    build_run_return_sig, build_sync_impl, generate_execution, metric_config_tokens,
-    wrap_async_graph_body, wrap_sync_graph_body,
-};
+mod dto;
+mod metrics;
+mod playground;
+mod r#async;
+mod sync;
 
 /// Expands a `graph!` definition into:
 /// - `pub struct GraphName;`
 /// - inherent `run` / `run_async` methods
-///
-/// Example:
-/// providing `graph!(Demo, Ctx => A >> B)` expands into a `Demo` type with
-/// generated runner methods and graph-definition helpers.
+/// - optional feature-gated helpers (DTO, metrics, playground)
 pub fn expand(input: TokenStream) -> TokenStream {
     let raw_schema_string = input.to_string();
     let raw_schema_lit = syn::LitStr::new(&raw_schema_string, proc_macro2::Span::call_site());
@@ -35,7 +32,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
         outputs: graph_outputs,
         nodes,
         async_enabled,
-        metrics,
+        metrics: metrics_spec,
         tests: _tests,
         tags,
         deprecated,
@@ -64,60 +61,71 @@ pub fn expand(input: TokenStream) -> TokenStream {
     };
 
     let mut counter = 0usize;
-    let root_setup = build_root_setup(&graph_inputs, &mut counter);
-    let execution = generate_execution(
+    let root_setup = super::execution::build_root_setup(&graph_inputs, &mut counter);
+    let execution = super::execution::generate_execution(
         &nodes,
         &root_setup.root_incoming,
         &mut counter,
         async_enabled,
     );
-    let run_return_sig = build_run_return_sig(&graph_outputs);
-    let run_body = build_run_body(
+    let run_return_sig = super::execution::build_run_return_sig(&graph_outputs);
+    let run_body = super::execution::build_run_body(
         execution.generated_sync.as_ref(),
         &root_setup.root_input_bindings,
         &graph_outputs,
         async_enabled,
     );
-    let run_body_async = build_run_body(
+    let run_body_async = super::execution::build_run_body(
         Some(&execution.generated_async),
         &root_setup.root_input_bindings,
         &graph_outputs,
         false,
     );
-    let graph_flow_tokens = super::graph_flow_tokens(&graph_inputs, &graph_outputs, &nodes);
-    let playground_impl = build_playground_impl(
+
+    let metrics_enabled = metrics_spec.enabled();
+    let metrics_config_tokens = metrics::metric_config_tokens(&metrics_spec);
+    let sync_graph_body = metrics::wrap_sync_graph_body(&run_body, &metrics_spec);
+    let async_graph_body = metrics::wrap_async_graph_body(&run_body_async, metrics_enabled);
+
+    let metrics_impl = metrics::build_metrics_impl(&name, metrics_enabled, &metrics_config_tokens);
+    let sync_impl = sync::build_sync_impl(
         &name,
-        &context,
-        &graph_inputs,
-        &graph_outputs,
-        async_enabled,
-    );
-    let metrics_enabled = metrics.enabled();
-    let metrics_config_tokens = metric_config_tokens(&metrics);
-    let sync_graph_body = wrap_sync_graph_body(&run_body, &metrics);
-    let async_graph_body = wrap_async_graph_body(&run_body_async, metrics_enabled);
-    let metrics_defs = build_metrics_defs(&name, metrics_enabled, &metrics_config_tokens);
-    let sync_impl = build_sync_impl(
         &context,
         async_enabled,
         &root_setup.run_params,
         &run_return_sig,
         &sync_graph_body,
     );
-    let async_run_params = &root_setup.run_params;
+    let async_impl = r#async::build_async_impl(
+        &name,
+        &context,
+        &root_setup.run_params,
+        &run_return_sig,
+        &async_graph_body,
+    );
 
-    let dto_impl = build_graph_dto(
+    let graph_flow_tokens = super::flow::graph_flow_tokens(&graph_inputs, &graph_outputs, &nodes);
+    let dto_impl = dto::build_graph_dto(
         &name,
         &context,
         &graph_inputs,
         &graph_outputs,
         &nodes,
-        &metrics,
+        &metrics_spec,
         &raw_schema_lit,
-        graph_docs_tokens.clone(),
+        graph_docs_tokens,
         graph_tag_tokens,
         graph_deprecated_token,
         graph_deprecated_reason_tokens,
+    );
+    let flow_impl = dto::build_flow_impl(&name, &graph_flow_tokens);
+
+    let playground_impl = playground::build_playground_impl(
+        &name,
+        &context,
+        &graph_inputs,
+        &graph_outputs,
+        async_enabled,
     );
 
     let expanded = quote! {
@@ -129,27 +137,14 @@ pub fn expand(input: TokenStream) -> TokenStream {
             }
         }
 
-        impl #name {
-            #metrics_defs
-            #sync_impl
-
-            pub async fn run_async(
-                ctx: &mut #context,
-                #( #async_run_params ),*
-            ) #run_return_sig {
-                #async_graph_body
-            }
-
-            #[cfg(feature = "export")]
-            pub fn flow() -> ::graphium::dto::GraphFlowDto {
-                #graph_flow_tokens
-            }
-        }
-
+        #metrics_impl
+        #sync_impl
+        #async_impl
+        #flow_impl
         #playground_impl
-
         #dto_impl
     };
 
     TokenStream::from(expanded)
 }
+

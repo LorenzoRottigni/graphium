@@ -30,10 +30,20 @@ fn e2e_graph_metrics_api_emits_prometheus_metrics() {
     assert_eq!(result, 3);
 
     let exported = graphium::metrics::render_prometheus();
-    assert!(exported.contains("graphium_graph_count_total"));
-    assert!(exported.contains("graphium_graph_success_total"));
-    assert!(exported.contains("graphium_graph_latency_seconds"));
-    assert!(exported.contains("graphium_node_count_total"));
-    assert!(exported.contains("graphium_node_success_by_caller_total"));
-    assert!(exported.contains("graphium_node_latency_by_caller_seconds"));
+
+    #[cfg(feature = "metrics")]
+    {
+        assert!(exported.contains("graphium_graph_count_total"));
+        assert!(exported.contains("graphium_graph_success_total"));
+        assert!(exported.contains("graphium_graph_latency_seconds"));
+        assert!(exported.contains("graphium_node_count_total"));
+        assert!(exported.contains("graphium_node_success_by_caller_total"));
+        assert!(exported.contains("graphium_node_latency_by_caller_seconds"));
+    }
+
+    #[cfg(not(feature = "metrics"))]
+    {
+        assert!(!exported.contains("graphium_graph_count_total"));
+        assert!(exported.contains("graphium_node_count_total"));
+    }
 }

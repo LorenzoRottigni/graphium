@@ -5,6 +5,17 @@ use syn::Ident;
 
 use crate::shared::{MetricsSpec, NodeExpr};
 
+pub(super) fn build_flow_impl(name: &Ident, graph_flow_tokens: &TokenStream) -> TokenStream {
+    quote! {
+        #[cfg(any(feature = "dto", feature = "export"))]
+        impl #name {
+            pub fn flow() -> ::graphium::dto::GraphFlowDto {
+                #graph_flow_tokens
+            }
+        }
+    }
+}
+
 pub(super) fn build_graph_dto(
     name: &Ident,
     context: &syn::Path,
@@ -66,7 +77,7 @@ pub(super) fn build_graph_dto(
         .collect();
 
     quote! {
-        #[cfg(feature = "export")]
+        #[cfg(any(feature = "dto", feature = "export"))]
         impl #name {
             pub fn dto() -> ::graphium::dto::GraphDto {
                 let flow = Self::flow();
@@ -88,12 +99,21 @@ pub(super) fn build_graph_dto(
                     tests: Vec::new(),
                     nodes: vec![ #( #export_nodes ),* ],
                     subgraphs: vec![ #( #export_subgraphs ),* ],
-                    playground: ::std::option::Option::Some(::graphium::dto::PlaygroundDto {
-                        supported: <Self as ::graphium::GraphPlayground>::PLAYGROUND_SUPPORTED,
-                        schema: ::graphium::dto::PlaygroundSchemaDto::from_schema(
-                            &<Self as ::graphium::GraphPlayground>::playground_schema(),
-                        ),
-                    }),
+                    playground: {
+                        #[cfg(feature = "playground")]
+                        {
+                            ::std::option::Option::Some(::graphium::dto::PlaygroundDto {
+                                supported: <Self as ::graphium::GraphPlayground>::PLAYGROUND_SUPPORTED,
+                                schema: ::graphium::dto::PlaygroundSchemaDto::from_schema(
+                                    &<Self as ::graphium::GraphPlayground>::playground_schema(),
+                                ),
+                            })
+                        }
+                        #[cfg(not(feature = "playground"))]
+                        {
+                            ::std::option::Option::None
+                        }
+                    },
                 }
             }
 
@@ -105,7 +125,7 @@ pub(super) fn build_graph_dto(
             }
         }
 
-        #[cfg(feature = "export")]
+        #[cfg(any(feature = "dto", feature = "export"))]
         impl ::graphium::GraphUiTests for #name {
             fn graphium_ui_tests() -> ::std::vec::Vec<::graphium::dto::TestRun> {
                 Self::test_runs()
@@ -175,7 +195,7 @@ fn collect_paths_inner(
         NodeExpr::Single(call) => {
             let path = &call.path;
             if crate::shared::is_graph_run_path(path) {
-                let graph_path = super::single::graph_type_path(path);
+                let graph_path = super::super::single::graph_type_path(path);
                 graphs
                     .entry(graph_path.to_token_stream().to_string())
                     .or_insert(graph_path);
@@ -204,3 +224,4 @@ fn collect_paths_inner(
         NodeExpr::Break => {}
     }
 }
+
