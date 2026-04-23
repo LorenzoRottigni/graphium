@@ -132,32 +132,3 @@ fn build_return_expr(
         quote! { ( #( #output_values ),* ) }
     }
 }
-
-pub(super) fn build_trait_run_body(
-    name: &Ident,
-    graph_inputs: &[(Ident, syn::Type)],
-    graph_outputs: &[(Ident, syn::Type)],
-    async_mode: bool,
-) -> TokenStream {
-    if graph_inputs.is_empty() && graph_outputs.is_empty() {
-        if async_mode {
-            quote! {
-                Self::__graphium_run_async(ctx).await;
-            }
-        } else {
-            quote! {
-                Self::__graphium_run(ctx);
-            }
-        }
-    } else {
-        quote! {
-            panic!(concat!(
-                "graph `",
-                stringify!(#name),
-                "` has explicit inputs/outputs; call it as a nested step: `",
-                stringify!(#name),
-                "(...) -> (...)`"
-            ));
-        }
-    }
-}

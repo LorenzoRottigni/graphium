@@ -91,34 +91,11 @@ pub(super) fn build_sync_impl(
     }
 
     quote! {
-        pub fn run(ctx: &mut #context) {
-            <Self as ::graphium::Graph<#context>>::run(ctx);
-        }
-
-        pub fn __graphium_run(
+        pub fn run(
             ctx: &mut #context,
             #( #run_params ),*
         ) #run_return_sig {
             #sync_graph_body
-        }
-    }
-}
-
-pub(super) fn build_graph_impl(
-    name: &Ident,
-    context: &syn::Path,
-    async_enabled: bool,
-    trait_run_body: &TokenStream,
-) -> TokenStream {
-    if async_enabled {
-        return quote! {};
-    }
-
-    quote! {
-        impl ::graphium::Graph<#context> for #name {
-            fn run(ctx: &mut #context) {
-                #trait_run_body
-            }
         }
     }
 }

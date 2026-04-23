@@ -30,7 +30,7 @@ pub fn main() {
         }
     }
 
-    let duplicated = OwnedGraph::__graphium_run(&mut ctx);
+    let duplicated = OwnedGraph::run(&mut ctx);
     assert_eq!(duplicated, 42);
 }
 

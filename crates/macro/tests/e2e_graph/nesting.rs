@@ -165,7 +165,7 @@ graph! {
 #[test]
 fn e2e_nested_graph_passthrough_preserves_values() {
     let mut ctx = TestContext::default();
-    let (a, b) = InnerPassthrough::__graphium_run(&mut ctx, 5, 10);
+    let (a, b) = InnerPassthrough::run(&mut ctx, 5, 10);
     assert_eq!(a, 5);
     assert_eq!(b, 10);
 }
@@ -173,14 +173,14 @@ fn e2e_nested_graph_passthrough_preserves_values() {
 #[test]
 fn e2e_nested_graph_with_single_output() {
     let mut ctx = TestContext::default();
-    let sum = InnerSum::__graphium_run(&mut ctx, 3, 7);
+    let sum = InnerSum::run(&mut ctx, 3, 7);
     assert_eq!(sum, 10);
 }
 
 #[test]
 fn e2e_outer_graph_calls_inner_graph() {
     let mut ctx = TestContext::default();
-    let (a, b) = OuterGraphWithPassthrough::__graphium_run(&mut ctx, 42);
+    let (a, b) = OuterGraphWithPassthrough::run(&mut ctx, 42);
     assert_eq!(a, 42);
     assert_eq!(b, 42);
 }
@@ -188,21 +188,21 @@ fn e2e_outer_graph_calls_inner_graph() {
 #[test]
 fn e2e_outer_graph_transforms_via_inner() {
     let mut ctx = TestContext::default();
-    let sum = OuterGraphWithNestedSum::__graphium_run(&mut ctx, 15);
+    let sum = OuterGraphWithNestedSum::run(&mut ctx, 15);
     assert_eq!(sum, 30);
 }
 
 #[test]
 fn e2e_outer_graph_uses_inner_product() {
     let mut ctx = TestContext::default();
-    let result = OuterGraphWithNestedProduct::__graphium_run(&mut ctx, 4, 5);
+    let result = OuterGraphWithNestedProduct::run(&mut ctx, 4, 5);
     assert_eq!(result, 40);
 }
 
 #[test]
 fn e2e_inner_add_both_transforms_both() {
     let mut ctx = TestContext::default();
-    let (a, b) = OuterGraphWithAddBoth::__graphium_run(&mut ctx, 3, 7);
+    let (a, b) = OuterGraphWithAddBoth::run(&mut ctx, 3, 7);
     assert_eq!(a, 13);
     assert_eq!(b, 17);
 }
@@ -210,7 +210,7 @@ fn e2e_inner_add_both_transforms_both() {
 #[test]
 fn e2e_inner_add_both_direct_call() {
     let mut ctx = TestContext::default();
-    let (a, b) = InnerAddBoth::__graphium_run(&mut ctx, 3, 7);
+    let (a, b) = InnerAddBoth::run(&mut ctx, 3, 7);
     assert_eq!(a, 13);
     assert_eq!(b, 17);
 }
@@ -218,7 +218,7 @@ fn e2e_inner_add_both_direct_call() {
 #[test]
 fn e2e_inner_split_sum_returns_all_values() {
     let mut ctx = TestContext::default();
-    let (a, b, sum) = OuterGraphWithSplitSum::__graphium_run(&mut ctx, 6, 9);
+    let (a, b, sum) = OuterGraphWithSplitSum::run(&mut ctx, 6, 9);
     assert_eq!(a, 6);
     assert_eq!(b, 9);
     assert_eq!(sum, 15);
@@ -227,28 +227,28 @@ fn e2e_inner_split_sum_returns_all_values() {
 #[test]
 fn e2e_deep_nesting_level_1() {
     let mut ctx = TestContext::default();
-    let sum = DeepNestingLevel1::__graphium_run(&mut ctx, 20);
+    let sum = DeepNestingLevel1::run(&mut ctx, 20);
     assert_eq!(sum, 40);
 }
 
 #[test]
 fn e2e_deep_nesting_level_2() {
     let mut ctx = TestContext::default();
-    let sum = DeepNestingLevel2::__graphium_run(&mut ctx, 20);
+    let sum = DeepNestingLevel2::run(&mut ctx, 20);
     assert_eq!(sum, 80);
 }
 
 #[test]
 fn e2e_triple_nesting() {
     let mut ctx = TestContext::default();
-    let sum = TripleNesting::__graphium_run(&mut ctx, 10);
+    let sum = TripleNesting::run(&mut ctx, 10);
     assert_eq!(sum, 400);
 }
 
 #[test]
 fn e2e_chained_nested_graphs() {
     let mut ctx = TestContext::default();
-    let (a, b) = ChainedNestedGraphs::__graphium_run(&mut ctx, 7, 14);
+    let (a, b) = ChainedNestedGraphs::run(&mut ctx, 7, 14);
     assert_eq!(a, 7);
     assert_eq!(b, 14);
 }
@@ -256,9 +256,9 @@ fn e2e_chained_nested_graphs() {
 #[test]
 fn e2e_nested_graph_multiple_calls_in_sequence() {
     let mut ctx = TestContext::default();
-    let (a1, b1) = InnerPassthrough::__graphium_run(&mut ctx, 1, 2);
-    let (a2, b2) = InnerPassthrough::__graphium_run(&mut ctx, a1, b1);
-    let (a3, b3) = InnerPassthrough::__graphium_run(&mut ctx, a2, b2);
+    let (a1, b1) = InnerPassthrough::run(&mut ctx, 1, 2);
+    let (a2, b2) = InnerPassthrough::run(&mut ctx, a1, b1);
+    let (a3, b3) = InnerPassthrough::run(&mut ctx, a2, b2);
     assert_eq!(a3, 1);
     assert_eq!(b3, 2);
 }
@@ -266,14 +266,14 @@ fn e2e_nested_graph_multiple_calls_in_sequence() {
 #[test]
 fn e2e_nested_graph_with_zero_inputs() {
     let mut ctx = TestContext::default();
-    let value = InnerConstant::__graphium_run(&mut ctx);
+    let value = InnerConstant::run(&mut ctx);
     assert_eq!(value, 42);
 }
 
 #[test]
 fn e2e_nested_graph_with_four_outputs() {
     let mut ctx = TestContext::default();
-    let (a, b, c, d) = InnerQuad::__graphium_run(&mut ctx, 7);
+    let (a, b, c, d) = InnerQuad::run(&mut ctx, 7);
     assert_eq!(a, 7);
     assert_eq!(b, 7);
     assert_eq!(c, 7);
@@ -283,7 +283,7 @@ fn e2e_nested_graph_with_four_outputs() {
 #[test]
 fn e2e_nested_graph_with_partial_output_usage() {
     let mut ctx = TestContext::default();
-    let (a, _b, sum) = OuterGraphWithSplitSum::__graphium_run(&mut ctx, 8, 12);
+    let (a, _b, sum) = OuterGraphWithSplitSum::run(&mut ctx, 8, 12);
     assert_eq!(a, 8);
     assert_eq!(sum, 20);
 }

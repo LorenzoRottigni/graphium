@@ -2,7 +2,7 @@
 //!
 //! Node expansion is intentionally simple now. A node macro only validates the
 //! user function and generates a thin wrapper exposing a uniform
-//! `__graphium_run` entry point. Artifact propagation is handled entirely by
+//! `run` entry point. Artifact propagation is handled entirely by
 //! `graph!`.
 
 mod expand;

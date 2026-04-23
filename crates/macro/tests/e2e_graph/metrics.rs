@@ -26,7 +26,7 @@ fn e2e_graph_metrics_api_emits_prometheus_metrics() {
         }
     }
 
-    let result = MetricsGraph::__graphium_run(&mut ctx);
+    let result = MetricsGraph::run(&mut ctx);
     assert_eq!(result, 3);
 
     let exported = graphium::metrics::render_prometheus();

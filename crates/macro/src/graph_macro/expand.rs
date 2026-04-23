@@ -11,15 +11,14 @@ use crate::shared::GraphInput;
 use crate::shared::doc_string_from_attrs;
 
 use super::{
-    build_graph_dto, build_graph_impl, build_metrics_defs, build_playground_impl, build_root_setup,
-    build_run_body, build_run_return_sig, build_sync_impl, build_trait_run_body,
-    generate_execution, metric_config_tokens, wrap_async_graph_body, wrap_sync_graph_body,
+    build_graph_dto, build_metrics_defs, build_playground_impl, build_root_setup, build_run_body,
+    build_run_return_sig, build_sync_impl, generate_execution, metric_config_tokens,
+    wrap_async_graph_body, wrap_sync_graph_body,
 };
 
 /// Expands a `graph!` definition into:
 /// - `pub struct GraphName;`
-/// - inherent `run` / `run_async` / `__graphium_run*` methods
-/// - an optional `impl ::graphium::Graph<_> for GraphName`
+/// - inherent `run` / `run_async` methods
 ///
 /// Example:
 /// providing `graph!(Demo, Ctx => A >> B)` expands into a `Demo` type with
@@ -85,8 +84,6 @@ pub fn expand(input: TokenStream) -> TokenStream {
         &graph_outputs,
         false,
     );
-    let trait_run_body = build_trait_run_body(&name, &graph_inputs, &graph_outputs, false);
-    let async_trait_run_body = build_trait_run_body(&name, &graph_inputs, &graph_outputs, true);
     let graph_flow_tokens = super::graph_flow_tokens(&graph_inputs, &graph_outputs, &nodes);
     let playground_impl = build_playground_impl(
         &name,
@@ -107,7 +104,6 @@ pub fn expand(input: TokenStream) -> TokenStream {
         &run_return_sig,
         &sync_graph_body,
     );
-    let graph_impl = build_graph_impl(&name, &context, async_enabled, &trait_run_body);
     let async_run_params = &root_setup.run_params;
 
     let dto_impl = build_graph_dto(
@@ -137,12 +133,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
             #metrics_defs
             #sync_impl
 
-            /// Convenience async entry point that executes the graph directly.
-            pub async fn run_async(ctx: &mut #context) {
-                #async_trait_run_body
-            }
-
-            pub async fn __graphium_run_async(
+            pub async fn run_async(
                 ctx: &mut #context,
                 #( #async_run_params ),*
             ) #run_return_sig {
@@ -153,7 +144,6 @@ pub fn expand(input: TokenStream) -> TokenStream {
                 #graph_flow_tokens
             }
         }
-        #graph_impl
 
         #playground_impl
 

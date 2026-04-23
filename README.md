@@ -137,7 +137,7 @@ graph! {
 node_test! {
     #[test]
     fn e2e_node_test_supports_standard_test_items() {
-        let out = TestableAdd::__graphium_run(&(), 20, 22);
+        let out = TestableAdd::run(&(), 20, 22);
         assert_eq!(out, 42);
     }
 }
@@ -151,7 +151,7 @@ graph_test! {
     #[for_graph(TestableGraph)]
     fn e2e_graph_test_supports_standard_test_items() {
         let mut ctx = Context::default();
-        let out = TestableGraph::__graphium_run(&mut ctx);
+        let out = TestableGraph::run(&mut ctx);
         assert_eq!(out, 42);
     }
 }

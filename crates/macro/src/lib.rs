@@ -7,7 +7,7 @@ mod shared;
 mod test_macro;
 
 /// Expands a `node! { ... }` item into a wrapper type plus a uniform
-/// `__graphium_run` entry point used by generated graphs.
+/// `run` entry point used by generated graphs.
 #[proc_macro]
 pub fn node(input: TokenStream) -> TokenStream {
     node_macro::expand(input)

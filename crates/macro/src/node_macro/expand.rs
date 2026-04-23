@@ -2,7 +2,7 @@
 //!
 //! This module contains the top-level `expand` function that orchestrates
 //! the transformation of a user-defined node function into a wrapper type
-//! with the standard `__graphium_run` entry point.
+//! with the standard `run` entry point.
 
 use proc_macro::TokenStream;
 use quote::quote;
@@ -100,7 +100,7 @@ fn output_supported(return_ty: &Option<Type>, returns_result: bool) -> bool {
 /// - A wrapper struct with the same name in PascalCase
 /// - A `NAME` constant for introspection
 /// - Optional `__graphium_node_metrics` function if metrics are enabled
-/// - `__graphium_run` for sync nodes or `__graphium_run_async` for async nodes
+/// - `run` for sync nodes and `run_async` for async nodes
 pub fn expand(input: TokenStream) -> TokenStream {
     let raw_schema_string = input.to_string();
     let raw_schema_lit = syn::LitStr::new(&raw_schema_string, proc_macro2::Span::call_site());
@@ -268,18 +268,18 @@ pub fn expand(input: TokenStream) -> TokenStream {
         let ctx_setup = match &node_def.ctx_type {
             None => quote! {
                 let ctx = ();
-                let __graphium_result = #struct_name::__graphium_run::<()>(&ctx, #( #args ),* );
+                let __graphium_result = #struct_name::run::<()>(&ctx, #( #args ),* );
             },
             Some(ctx_ty) => {
                 if node_def.ctx_mut {
                     quote! {
                         let mut ctx: #ctx_ty = ::core::default::Default::default();
-                        let __graphium_result = #struct_name::__graphium_run(&mut ctx, #( #args ),* );
+                        let __graphium_result = #struct_name::run(&mut ctx, #( #args ),* );
                     }
                 } else {
                     quote! {
                         let ctx: #ctx_ty = ::core::default::Default::default();
-                        let __graphium_result = #struct_name::__graphium_run(&ctx, #( #args ),* );
+                        let __graphium_result = #struct_name::run(&ctx, #( #args ),* );
                     }
                 }
             }
@@ -430,7 +430,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
         };
 
         quote! {
-            pub fn __graphium_run #ctx_generic(
+            pub fn run #ctx_generic(
                 ctx: #ctx_param,
                 #( #input_idents: #input_types ),*
             ) #return_sig {
@@ -467,7 +467,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
             quote! { #fn_name(#( #call_args ),*).await }
         };
         quote! {
-            pub async fn __graphium_run_async #ctx_generic(
+            pub async fn run_async #ctx_generic(
                 ctx: #ctx_param,
                 #( #input_idents: #input_types ),*
             ) #return_sig {
@@ -502,7 +502,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
             quote! { #fn_name(#( #call_args ),*) }
         };
         quote! {
-            pub async fn __graphium_run_async #ctx_generic(
+            pub async fn run_async #ctx_generic(
                 ctx: #ctx_param,
                 #( #input_idents: #input_types ),*
             ) #return_sig {

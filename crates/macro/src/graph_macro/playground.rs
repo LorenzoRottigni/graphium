@@ -95,7 +95,7 @@ pub(super) fn build_playground_impl(
         quote! {{
             let mut ctx: #context = ::core::default::Default::default();
             #( #parse_bindings )*
-            let result = #name::__graphium_run(&mut ctx, #( #args ),* );
+            let result = #name::run(&mut ctx, #( #args ),* );
             #output_format
         }}
     } else {

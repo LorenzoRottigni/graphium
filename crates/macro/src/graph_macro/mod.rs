@@ -27,13 +27,12 @@ use analysis::{
 use dispatch::{capture_outputs, contains_break, get_node_expr};
 use dto::build_graph_dto;
 use execution::{
-    build_root_setup, build_run_body, build_run_return_sig, build_trait_run_body, generate_execution,
+    build_root_setup, build_run_body, build_run_return_sig, generate_execution,
 };
 use flow::graph_flow_tokens;
 use loops::{get_loop_node_expr, get_while_node_expr, loop_exit_outputs};
 use metrics::{
-    build_graph_impl, build_metrics_defs, build_sync_impl, metric_config_tokens, wrap_async_graph_body,
-    wrap_sync_graph_body,
+    build_metrics_defs, build_sync_impl, metric_config_tokens, wrap_async_graph_body, wrap_sync_graph_body,
 };
 use parallel::{collect_parallel_entry_usage, get_parallel_nodes_expr, get_sequence_nodes_expr};
 use playground::build_playground_impl;

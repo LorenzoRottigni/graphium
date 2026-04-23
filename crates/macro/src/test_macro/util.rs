@@ -250,7 +250,7 @@ pub(crate) fn synthesize_ui_test_case(mut item_fn: ItemFn) -> syn::Result<UiTest
     wrapper_call_args.extend(all_params.clone());
 
     // If the first parameter is `graph: &T` / `node: &T`, inject a type alias (`type graph = T;`)
-    // so the test body can call `graph::__graphium_run(...)` without adding methods to `T`.
+    // so the test body can call `graph::run(...)` without adding methods to `T`.
     if let Some((ident, inner_ty, _is_mut)) = injected.as_ref() {
         let mut stmts: Vec<syn::Stmt> = Vec::new();
         let ignore_stmt: syn::Stmt = parse_quote! { let _ = #ident; };

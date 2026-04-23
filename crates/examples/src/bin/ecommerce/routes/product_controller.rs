@@ -34,7 +34,7 @@ pub async fn create_product(
         .await
         .unwrap();
     let mut ctx = state.graphium_ctx.lock().await;
-    CreateProductGraph::__graphium_run_async(&mut ctx, name, price).await
+    CreateProductGraph::run_async(&mut ctx, name, price).await
 }
 
 #[axum::debug_handler]
@@ -43,7 +43,7 @@ pub async fn get_product(
     Path(product_id): Path<i64>,
 ) -> Json<crate::models::Product> {
     let mut ctx = state.graphium_ctx.lock().await;
-    GetProductGraph::__graphium_run_async(&mut ctx, product_id).await
+    GetProductGraph::run_async(&mut ctx, product_id).await
 }
 
 #[axum::debug_handler]
@@ -54,7 +54,7 @@ pub async fn list_products(
     let limit = query.limit.unwrap_or(50).clamp(1, 200);
     let offset = query.offset.unwrap_or(0).max(0);
     let mut ctx = state.graphium_ctx.lock().await;
-    ListProductsGraph::__graphium_run_async(&mut ctx, limit, offset).await
+    ListProductsGraph::run_async(&mut ctx, limit, offset).await
 }
 
 #[axum::debug_handler]
@@ -64,7 +64,7 @@ pub async fn update_product(
     Json(update): Json<UpdateProduct>,
 ) -> Json<crate::models::Product> {
     let mut ctx = state.graphium_ctx.lock().await;
-    UpdateProductGraph::__graphium_run_async(&mut ctx, product_id, update).await
+    UpdateProductGraph::run_async(&mut ctx, product_id, update).await
 }
 
 #[axum::debug_handler]
@@ -73,5 +73,5 @@ pub async fn delete_product(
     Path(product_id): Path<i64>,
 ) -> Json<crate::models::DeleteResult> {
     let mut ctx = state.graphium_ctx.lock().await;
-    DeleteProductGraph::__graphium_run_async(&mut ctx, product_id).await
+    DeleteProductGraph::run_async(&mut ctx, product_id).await
 }

@@ -52,7 +52,7 @@ fn e2e_graph_if_elif_else_outputs() {
         }
     }
 
-    let result = IfGraph::__graphium_run(&mut ctx);
+    let result = IfGraph::run(&mut ctx);
     assert_eq!(result, 10);
 }
 
@@ -104,7 +104,7 @@ fn e2e_graph_if_elif_else_borrow() {
         }
     }
 
-    IfBorrowGraph::__graphium_run(&mut ctx);
+    IfBorrowGraph::run(&mut ctx);
 }
 
 #[test]
@@ -150,7 +150,7 @@ fn e2e_graph_if_elif_else_move() {
         }
     }
 
-    IfMoveGraph::__graphium_run(&mut ctx);
+    IfMoveGraph::run(&mut ctx);
 }
 
 #[test]
@@ -209,7 +209,7 @@ fn e2e_graph_if_elif_else_nested() {
         }
     }
 
-    IfNestedGraph::__graphium_run(&mut ctx);
+    IfNestedGraph::run(&mut ctx);
 }
 
 #[test]
@@ -247,5 +247,5 @@ fn e2e_graph_if_multiple_params() {
         }
     }
 
-    IfMultiParamGraph::__graphium_run(&mut ctx);
+    IfMultiParamGraph::run(&mut ctx);
 }
