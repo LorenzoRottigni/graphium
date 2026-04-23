@@ -8,13 +8,7 @@ use std::collections::HashMap;
 
 pub const EXPORT_SCHEMA_VERSION: u32 = 1;
 
-#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct SourceSpanDto {
-    pub file: String,
-    pub start_line: u32,
-    pub end_line: u32,
-}
+
 
 #[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -74,8 +68,6 @@ pub struct GraphDto {
     pub def: GraphDefDto,
     /// Raw schema definition text (typically the `graph! { ... }` tokens).
     pub raw_schema: Option<String>,
-    /// Source span that can be used to render the original multiline schema.
-    pub raw_span: Option<SourceSpanDto>,
     /// Tests explicitly attached to this graph (UI/admin build only).
     pub tests: Vec<TestDto>,
     /// Nodes referenced directly by this graph.
@@ -150,7 +142,8 @@ pub struct NodeDto {
     pub tags: Vec<String>,
     pub deprecated: bool,
     pub deprecated_reason: Option<String>,
-    pub source: Option<SourceSpanDto>,
+    /// Raw node definition text (typically the `node! { ... }` tokens).
+    pub raw_schema: Option<String>,
     /// Tests explicitly attached to this node (UI/admin build only).
     pub tests: Vec<TestDto>,
     pub ctx_access: CtxAccessDto,

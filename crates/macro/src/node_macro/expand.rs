@@ -6,7 +6,6 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::spanned::Spanned as _;
 use syn::{Ident, Path, Type, parse_macro_input};
 
 use crate::shared::ParamKind;
@@ -103,6 +102,9 @@ fn output_supported(return_ty: &Option<Type>, returns_result: bool) -> bool {
 /// - Optional `__graphium_node_metrics` function if metrics are enabled
 /// - `__graphium_run` for sync nodes or `__graphium_run_async` for async nodes
 pub fn expand(input: TokenStream) -> TokenStream {
+    let raw_schema_string = input.to_string();
+    let raw_schema_lit = syn::LitStr::new(&raw_schema_string, proc_macro2::Span::call_site());
+
     let mut func = parse_macro_input!(input as syn::ItemFn);
     let name_override = extract_name_from_attrs(&mut func.attrs);
     let tags = extract_tags_from_attrs(&mut func.attrs);
@@ -178,11 +180,6 @@ pub fn expand(input: TokenStream) -> TokenStream {
         Some(ty) => quote! { stringify!(#ty) },
         None => quote! { "()" },
     };
-
-    let span = func.span().unwrap();
-    let start_line: u32 = span.start().line() as u32;
-    let end_span = func.block.span().unwrap();
-    let end_line: u32 = end_span.end().line() as u32;
 
     let playground_inputs: Vec<_> = node_def
         .inputs
@@ -578,11 +575,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
                     tags: vec![ #( #tag_tokens.to_string() ),* ],
                     deprecated: #deprecated_token,
                     deprecated_reason: #deprecated_reason_tokens,
-                    source: ::std::option::Option::Some(::graphium::export::SourceSpanDto {
-                        file: file!().to_string(),
-                        start_line: #start_line,
-                        end_line: #end_line,
-                    }),
+                    raw_schema: ::std::option::Option::Some(#raw_schema_lit.to_string()),
                     tests: {
                         #[cfg(feature = "serialize")]
                         {

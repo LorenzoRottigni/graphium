@@ -169,8 +169,7 @@ pub(crate) async fn render_graph_fragment(
         })
         .collect::<Vec<_>>();
 
-    let raw_schema = read_source_span(graph.export.raw_span.as_ref())
-        .or_else(|| graph.export.raw_schema.clone())
+    let raw_schema = graph.export.raw_schema.clone()
         .unwrap_or_else(|| "Raw schema not available for this graph.".to_string());
 
     let playground = graph.playground.map(|pg| {
@@ -245,25 +244,4 @@ pub(crate) async fn render_graph_fragment(
     }
     .render()
     .expect("render graph fragment"))
-}
-
-fn read_source_span(span: Option<&graphium::export::SourceSpanDto>) -> Option<String> {
-    let span = span?;
-    if span.start_line == 0 || span.end_line == 0 || span.end_line < span.start_line {
-        return None;
-    }
-    let src = std::fs::read_to_string(&span.file).ok()?;
-    let mut out = String::new();
-    for (idx, line) in src.lines().enumerate() {
-        let line_no = (idx + 1) as u32;
-        if line_no < span.start_line {
-            continue;
-        }
-        if line_no > span.end_line {
-            break;
-        }
-        use std::fmt::Write as _;
-        let _ = writeln!(out, "{line}");
-    }
-    if out.is_empty() { None } else { Some(out) }
 }

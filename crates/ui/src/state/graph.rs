@@ -37,7 +37,6 @@ impl UiGraph {
                 schema: None,
                 def,
                 raw_schema: None,
-                raw_span: None,
                 tests: Vec::new(),
                 nodes: Vec::new(),
                 subgraphs: Vec::new(),

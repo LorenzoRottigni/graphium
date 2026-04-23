@@ -22,25 +22,13 @@ use super::{get_node_expr, graph_definition_tokens};
 /// providing `graph!(Demo, Ctx => A >> B)` expands into a `Demo` type with
 /// generated runner methods and graph-definition helpers.
 pub fn expand(input: TokenStream) -> TokenStream {
-    let raw_span = input_span(&input);
-    let raw_span_tokens = match raw_span {
-        Some((start, end)) => {
-            let start_line = start;
-            let end_line = end;
-            quote! {
-                ::std::option::Option::Some(::graphium::export::SourceSpanDto {
-                    file: file!().to_string(),
-                    start_line: #start_line,
-                    end_line: #end_line,
-                })
-            }
-        }
-        None => quote! { ::std::option::Option::None },
-    };
-
     let raw_schema_string = input.to_string();
-    let raw_schema_lit = syn::LitStr::new(&raw_schema_string, proc_macro2::Span::call_site());
 
+    // Rust string literal (AST node) for runtime.
+    let raw_schema_lit =
+        syn::LitStr::new(&raw_schema_string, proc_macro2::Span::call_site());
+
+    // Syn parses token stream into GraphInput through GraphInput::parse
     let GraphInput {
         attrs,
         name,
@@ -253,7 +241,6 @@ pub fn expand(input: TokenStream) -> TokenStream {
                     }),
                     def: ::graphium::export::GraphDefDto::from_def(&def),
                     raw_schema: ::std::option::Option::Some(#raw_schema_lit.to_string()),
-                    raw_span: #raw_span_tokens,
                     tests: {
                         #[cfg(feature = "serialize")]
                         {
@@ -393,19 +380,6 @@ fn collect_export_paths_inner(
         }
         NodeExpr::Break => {}
     }
-}
-
-fn input_span(input: &proc_macro::TokenStream) -> Option<(u32, u32)> {
-    let mut it = input.clone().into_iter();
-    let first = it.next()?;
-    let mut start = first.span().start().line() as u32;
-    let mut end = first.span().end().line() as u32;
-    for token in it {
-        let span = token.span();
-        start = start.min(span.start().line() as u32);
-        end = end.max(span.end().line() as u32);
-    }
-    Some((start, end))
 }
 
 fn playground_parse_kind(ty: &syn::Type) -> Option<PlaygroundParseKind> {
