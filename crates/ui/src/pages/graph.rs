@@ -169,7 +169,10 @@ pub(crate) async fn render_graph_fragment(
         })
         .collect::<Vec<_>>();
 
-    let raw_schema = graph.export.raw_schema.clone()
+    let raw_schema = graph
+        .export
+        .raw_schema
+        .clone()
         .unwrap_or_else(|| "Raw schema not available for this graph.".to_string());
 
     let playground = graph.playground.map(|pg| {

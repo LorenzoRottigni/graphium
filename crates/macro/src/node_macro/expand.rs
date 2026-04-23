@@ -8,7 +8,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{Ident, Path, Type, parse_macro_input};
 
-use crate::shared::ParamKind;
+use crate::ir::ParamKind;
 
 use super::metrics::metric_config_tokens;
 use super::parse::parse_node_def;

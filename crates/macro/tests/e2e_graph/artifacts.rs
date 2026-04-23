@@ -1,6 +1,6 @@
+use futures::executor::block_on;
 use graphium;
 use graphium_macro::{graph, node};
-use futures::executor::block_on;
 
 node! {
     fn get_number() -> u32 {

@@ -165,4 +165,3 @@ fn playground_parse_kind(ty: &syn::Type) -> Option<PlaygroundParseKind> {
         _ => None,
     }
 }
-

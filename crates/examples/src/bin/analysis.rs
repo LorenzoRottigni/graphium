@@ -33,4 +33,3 @@ pub fn main() {
     let duplicated = OwnedGraph::run(&mut ctx);
     assert_eq!(duplicated, 42);
 }
-

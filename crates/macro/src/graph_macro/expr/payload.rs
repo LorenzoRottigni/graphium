@@ -5,8 +5,8 @@
 
 use quote::quote;
 
-use crate::shared::{ExprShape, Payload, UsageMap, fresh_ident};
-use crate::graph_macro::required_artifacts;
+use crate::graph_macro::analysis::required_artifacts;
+use crate::ir::{ExprShape, Payload, UsageMap, fresh_ident};
 
 /// Builds a fresh hop payload by moving the requested artifacts out of the
 /// current expression outputs.
@@ -139,7 +139,7 @@ mod tests {
         assign_outputs_to_slots, prepare_move_payload, prepare_output_slots,
         prepare_parallel_payload,
     };
-    use crate::shared::{ExprShape, Payload, UsageMap};
+    use crate::ir::{ExprShape, Payload, UsageMap};
 
     #[test]
     fn prepare_move_payload_preserves_borrowed_state() {

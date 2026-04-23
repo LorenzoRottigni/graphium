@@ -8,12 +8,11 @@ use std::collections::BTreeSet;
 
 use quote::quote;
 
-use crate::shared::{ExprShape, GeneratedExpr, LoopExpr, Payload, WhileExpr};
-use crate::graph_macro::{analyze_expr, required_artifacts, required_borrowed};
+use crate::graph_macro::analysis::{analyze_expr, required_artifacts, required_borrowed};
+use crate::ir::{ExprShape, GeneratedExpr, LoopExpr, Payload, WhileExpr};
 
 use super::{
-    assign_outputs_to_slots, build_condition_bindings, build_condition_call,
-    prepare_output_slots,
+    assign_outputs_to_slots, build_condition_bindings, build_condition_call, prepare_output_slots,
 };
 
 /// Generates code for an `@while` expression.
@@ -58,7 +57,7 @@ pub(crate) fn get_while_node_expr(
         let source = incoming
             .get_owned(artifact)
             .unwrap_or_else(|| panic!("missing artifact `{artifact}` for @while body"));
-        let stored = crate::shared::fresh_ident(counter, "while_seed", artifact);
+        let stored = crate::ir::fresh_ident(counter, "while_seed", artifact);
         loop_payload_inits.push(quote! {
             let #stored = #source
                 .as_ref()
@@ -73,7 +72,7 @@ pub(crate) fn get_while_node_expr(
         let stored = loop_payload
             .get_owned(artifact)
             .unwrap_or_else(|| panic!("missing artifact `{artifact}` for @while body"));
-        let iter_var = crate::shared::fresh_ident(counter, "while_in", artifact);
+        let iter_var = crate::ir::fresh_ident(counter, "while_in", artifact);
         iter_payload_bindings.push(quote! {
             let mut #iter_var = ::std::option::Option::Some(::graphium::clone_artifact(#stored));
         });
@@ -144,7 +143,7 @@ pub(crate) fn get_loop_node_expr(
         let source = incoming
             .get_owned(artifact)
             .unwrap_or_else(|| panic!("missing artifact `{artifact}` for @loop body"));
-        let stored = crate::shared::fresh_ident(counter, "loop_seed", artifact);
+        let stored = crate::ir::fresh_ident(counter, "loop_seed", artifact);
         loop_payload_inits.push(quote! {
             let #stored = #source
                 .as_ref()
@@ -159,7 +158,7 @@ pub(crate) fn get_loop_node_expr(
         let stored = loop_payload
             .get_owned(artifact)
             .unwrap_or_else(|| panic!("missing artifact `{artifact}` for @loop body"));
-        let iter_var = crate::shared::fresh_ident(counter, "loop_in", artifact);
+        let iter_var = crate::ir::fresh_ident(counter, "loop_in", artifact);
         iter_payload_bindings.push(quote! {
             let mut #iter_var = ::std::option::Option::Some(::graphium::clone_artifact(#stored));
         });
@@ -273,7 +272,7 @@ mod tests {
     use syn::parse_quote;
 
     use super::{loop_exit_outputs, validate_loop_outputs};
-    use crate::shared::ExprShape;
+    use crate::ir::ExprShape;
 
     #[test]
     fn loop_exit_outputs_default_to_body_shape() {

@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use quote::quote;
 
-use crate::shared::{
+use crate::ir::{
     ArtifactInputKind, GeneratedExpr, NodeCall, Payload, UsageMap, fresh_ident, is_graph_run_path,
 };
 
@@ -394,7 +394,7 @@ mod tests {
     use syn::{Ident, parse_quote};
 
     use super::{get_single_node_expr, graph_type_path, node_run_call_tokens};
-    use crate::shared::{NodeCall, Payload};
+    use crate::ir::{NodeCall, Payload};
 
     #[test]
     fn graph_type_path_strips_run_segment() {

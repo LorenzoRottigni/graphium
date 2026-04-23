@@ -1,9 +1,21 @@
+//! Shared helpers for `graph_test!` and `node_test!`.
+//!
+//! The test macros do two jobs at once:
+//! - forward normal Rust test items unchanged, so the user's test code remains
+//!   idiomatic and works with the standard test harness
+//! - optionally synthesize additional "marker" items (behind features) that
+//!   UI tooling can discover and render
+//!
+//! This module contains the small utilities both macros need: suite id
+//! generation, attribute extraction, and the IR-to-token conversion for the
+//! synthesized UI test cases.
+
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use quote::{format_ident, quote};
 use syn::{Attribute, Expr, FnArg, Ident, ItemFn, Pat, PatIdent, ReturnType, Type, parse_quote};
 
-use crate::shared::pascal_case;
+use crate::ir::pascal_case;
 
 static NEXT_SUITE_ID: AtomicUsize = AtomicUsize::new(0);
 

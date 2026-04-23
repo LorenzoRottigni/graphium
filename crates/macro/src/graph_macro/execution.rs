@@ -1,9 +1,24 @@
+//! Runtime method synthesis for `graph!`.
+//!
+//! The `graph!` expander ultimately emits inherent methods on the generated
+//! graph type (e.g. `run(...)`, `run_async(...)`).
+//!
+//! This module is responsible for the pieces that are *specific to the outer
+//! graph wrapper*, not the inner expression tree:
+//! - turning declared graph inputs into stable runtime parameters
+//! - building the "root payload" that seeds the expression expander
+//! - choosing between sync/async execution paths
+//! - shaping the return signature and return expression
+//!
+//! The heavy lifting of expanding `NodeExpr` into executable code lives in
+//! `graph_macro::expr`.
+
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::Ident;
 
-use crate::shared::{GeneratedExpr, NodeExpr, Payload, fresh_ident};
-use crate::graph_macro::get_node_expr;
+use super::expr::get_node_expr;
+use crate::ir::{GeneratedExpr, NodeExpr, Payload, fresh_ident};
 
 pub(super) struct RootSetup {
     pub root_incoming: Payload,
@@ -62,9 +77,7 @@ pub(super) fn generate_execution(
     }
 }
 
-pub(super) fn build_run_return_sig(
-    graph_outputs: &[(Ident, syn::Type)],
-) -> TokenStream {
+pub(super) fn build_run_return_sig(graph_outputs: &[(Ident, syn::Type)]) -> TokenStream {
     if graph_outputs.is_empty() {
         quote! {}
     } else if graph_outputs.len() == 1 {

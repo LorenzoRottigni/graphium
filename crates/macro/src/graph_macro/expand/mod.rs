@@ -16,7 +16,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::parse_macro_input;
 
-use crate::shared::{GraphInput, doc_string_from_attrs};
+use crate::ir::{GraphInput, doc_string_from_attrs};
 
 mod flow;
 mod metadata;
@@ -167,4 +167,3 @@ pub fn expand(input: TokenStream) -> TokenStream {
 
     TokenStream::from(expanded)
 }
-

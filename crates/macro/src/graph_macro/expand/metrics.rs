@@ -7,7 +7,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::Ident;
 
-use crate::shared::MetricsSpec;
+use crate::ir::MetricsSpec;
 
 /// Wrap synchronous graph execution in metrics instrumentation when enabled.
 ///
@@ -66,7 +66,10 @@ pub(super) fn wrap_sync_graph_body(run_body: &TokenStream, metrics: &MetricsSpec
 ///
 /// Async graphs do not support panic tracking in the same way as sync graphs,
 /// but they still record success metrics if enabled.
-pub(super) fn wrap_async_graph_body(run_body_async: &TokenStream, metrics_enabled: bool) -> TokenStream {
+pub(super) fn wrap_async_graph_body(
+    run_body_async: &TokenStream,
+    metrics_enabled: bool,
+) -> TokenStream {
     if !metrics_enabled {
         return run_body_async.clone();
     }
@@ -143,4 +146,3 @@ pub(super) fn metric_config_tokens(metrics: &MetricsSpec) -> TokenStream {
         }
     }
 }
-

@@ -7,14 +7,15 @@ use std::collections::BTreeSet;
 
 use quote::quote;
 
-use crate::shared::{ExprShape, GeneratedExpr, Payload, RouteExpr};
-use crate::graph_macro::{analyze_expr, required_artifacts, required_borrowed};
-
-use crate::graph_macro::{collect_route_borrowed, collect_route_outputs};
 use super::{
-    assign_outputs_to_slots, build_selector_bindings, build_selector_call,
-    prepare_move_payload, prepare_output_slots, selector_params_for_on_expr,
+    assign_outputs_to_slots, build_selector_bindings, build_selector_call, prepare_move_payload,
+    prepare_output_slots, selector_params_for_on_expr,
 };
+use crate::graph_macro::analysis::{
+    analyze_expr, collect_route_borrowed, collect_route_outputs, required_artifacts,
+    required_borrowed,
+};
+use crate::ir::{ExprShape, GeneratedExpr, Payload, RouteExpr};
 
 /// Generates code for an exclusive route branch.
 ///
@@ -59,7 +60,7 @@ pub(crate) fn get_route_node_expr(
     let selector_call =
         build_selector_call(on_expr, &selector_tokens.args, selector_tokens.is_empty);
     let selector_bindings = &selector_tokens.bindings;
-    let selector_key_ident = crate::shared::fresh_ident(counter, "selector_key", "if");
+    let selector_key_ident = crate::ir::fresh_ident(counter, "selector_key", "if");
     let mut arms = Vec::new();
     let mut branch_borrowed: Vec<BTreeSet<String>> = Vec::new();
     for ((key, node), shape) in route.routes.iter().zip(branch_shapes.iter()) {
@@ -202,7 +203,7 @@ mod tests {
     use syn::parse_quote;
 
     use super::{route_exit_outputs, validate_route_outputs};
-    use crate::shared::{ExprShape, RouteExpr};
+    use crate::ir::{ExprShape, RouteExpr};
 
     #[test]
     fn route_exit_outputs_use_declared_signature_when_present() {

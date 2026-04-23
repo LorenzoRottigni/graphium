@@ -7,11 +7,11 @@
 //! The generated DTO is intended for tooling and serialization, not execution.
 
 use proc_macro2::TokenStream;
-use quote::quote;
 use quote::ToTokens as _;
+use quote::quote;
 use syn::Ident;
 
-use crate::shared::{MetricsSpec, NodeExpr};
+use crate::ir::{MetricsSpec, NodeExpr};
 
 /// Generate a small helper impl that exposes the graph flow structure.
 ///
@@ -221,8 +221,8 @@ fn collect_paths_inner(
     match expr {
         NodeExpr::Single(call) => {
             let path = &call.path;
-            if crate::shared::is_graph_run_path(path) {
-                let graph_path = super::super::graph_type_path(path);
+            if crate::ir::is_graph_run_path(path) {
+                let graph_path = super::super::expr::graph_type_path(path);
                 graphs
                     .entry(graph_path.to_token_stream().to_string())
                     .or_insert(graph_path);
@@ -251,4 +251,3 @@ fn collect_paths_inner(
         NodeExpr::Break => {}
     }
 }
-

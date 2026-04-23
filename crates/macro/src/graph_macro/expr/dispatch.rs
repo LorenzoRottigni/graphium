@@ -5,7 +5,7 @@
 
 use quote::quote;
 
-use crate::shared::{GeneratedExpr, NodeExpr, Payload};
+use crate::ir::{GeneratedExpr, NodeExpr, Payload};
 
 use super::{
     get_loop_node_expr, get_parallel_nodes_expr, get_route_node_expr, get_sequence_nodes_expr,
@@ -78,7 +78,7 @@ pub(crate) fn capture_outputs(
         .owned
         .keys()
         .map(|artifact| {
-            let outer_var = crate::shared::fresh_ident(counter, "captured", artifact);
+            let outer_var = crate::ir::fresh_ident(counter, "captured", artifact);
             (artifact.clone(), outer_var)
         })
         .collect();
@@ -138,7 +138,7 @@ mod tests {
     use syn::{Ident, parse_quote};
 
     use super::{capture_outputs, contains_break};
-    use crate::shared::{LoopExpr, NodeExpr, Payload};
+    use crate::ir::{LoopExpr, NodeExpr, Payload};
 
     #[test]
     fn capture_outputs_rebinds_owned_payload_slots() {

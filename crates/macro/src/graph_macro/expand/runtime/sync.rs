@@ -34,4 +34,3 @@ pub fn build_sync_impl(
         }
     }
 }
-

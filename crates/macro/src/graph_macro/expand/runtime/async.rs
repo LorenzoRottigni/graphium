@@ -30,4 +30,3 @@ pub fn build_async_impl(
         }
     }
 }
-

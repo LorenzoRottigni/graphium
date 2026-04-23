@@ -4,15 +4,10 @@
 //! representation of the graph's step tree for UI and inspection features.
 
 use quote::quote;
-use crate::graph_macro::{
-    analyze_expr,
-    graph_type_path,
-    required_artifacts,
-    required_borrowed,
-    selector_params_for_on_expr,
-    SelectorParam,
-};
-use crate::shared::{NodeCall, NodeExpr, is_graph_run_path};
+
+use crate::graph_macro::analysis::{analyze_expr, required_artifacts, required_borrowed};
+use crate::graph_macro::expr::{SelectorParam, graph_type_path, selector_params_for_on_expr};
+use crate::ir::{ArtifactInputKind, NodeCall, NodeExpr, is_graph_run_path};
 
 /// Builds the `GraphFlowDto` literal returned by generated graph types.
 pub(super) fn graph_flow_tokens(
@@ -259,17 +254,17 @@ fn node_call_step_tokens(call: &NodeCall) -> proc_macro2::TokenStream {
 /// `["value", "&shared", "*moved"]`.
 fn artifact_input_list_tokens(
     idents: &[syn::Ident],
-    kinds: &[crate::shared::ArtifactInputKind],
+    kinds: &[ArtifactInputKind],
 ) -> Vec<proc_macro2::TokenStream> {
     idents
         .iter()
         .zip(kinds.iter())
         .map(|(ident, kind)| match kind {
-            crate::shared::ArtifactInputKind::Owned => quote! { stringify!(#ident) },
-            crate::shared::ArtifactInputKind::Borrowed => {
+            ArtifactInputKind::Owned => quote! { stringify!(#ident) },
+            ArtifactInputKind::Borrowed => {
                 quote! { concat!("&", stringify!(#ident)) }
             }
-            crate::shared::ArtifactInputKind::Taken => quote! { concat!("*", stringify!(#ident)) },
+            ArtifactInputKind::Taken => quote! { concat!("*", stringify!(#ident)) },
         })
         .collect()
 }
@@ -297,7 +292,7 @@ mod tests {
     use syn::parse_quote;
 
     use super::graph_flow_tokens;
-    use crate::shared::{NodeCall, NodeExpr};
+    use crate::ir::{NodeCall, NodeExpr};
 
     #[test]
     fn graph_flow_tokens_render_parallel_step_tree() {

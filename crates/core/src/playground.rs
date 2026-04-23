@@ -29,4 +29,3 @@ pub trait GraphPlayground {
 
     fn playground_run(form: &std::collections::HashMap<String, String>) -> Result<String, String>;
 }
-
