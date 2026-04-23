@@ -9,10 +9,11 @@ use std::collections::BTreeSet;
 use quote::quote;
 
 use crate::shared::{ExprShape, GeneratedExpr, LoopExpr, Payload, WhileExpr};
+use crate::graph_macro::{analyze_expr, required_artifacts, required_borrowed};
 
 use super::{
-    analyze_expr, assign_outputs_to_slots, build_condition_bindings, build_condition_call,
-    prepare_output_slots, required_artifacts, required_borrowed,
+    assign_outputs_to_slots, build_condition_bindings, build_condition_call,
+    prepare_output_slots,
 };
 
 /// Generates code for an `@while` expression.
@@ -20,7 +21,7 @@ use super::{
 /// Example:
 /// providing `@while cond { A >> B } -> out` expands into a Rust `while { ... }`
 /// block that seeds iteration payloads, runs the body, and stores `out`.
-pub(super) fn get_while_node_expr(
+pub(crate) fn get_while_node_expr(
     while_expr: &WhileExpr,
     incoming: &Payload,
     counter: &mut usize,
@@ -115,7 +116,7 @@ pub(super) fn get_while_node_expr(
 /// Example:
 /// providing `@loop { A >> B } -> out` expands into a Rust `loop { ... }` block
 /// that clones the seed payload on each iteration and assigns `out`.
-pub(super) fn get_loop_node_expr(
+pub(crate) fn get_loop_node_expr(
     loop_expr: &LoopExpr,
     incoming: &Payload,
     counter: &mut usize,
@@ -198,7 +199,7 @@ pub(super) fn get_loop_node_expr(
 /// Example:
 /// providing declared outputs `[value, &shared]` expands into
 /// `(vec!["value"], {"shared"})`; with no explicit outputs it reuses the body shape.
-pub(super) fn loop_exit_outputs(
+pub(crate) fn loop_exit_outputs(
     outputs: &[syn::Ident],
     output_borrows: &[bool],
     body_shape: &ExprShape,

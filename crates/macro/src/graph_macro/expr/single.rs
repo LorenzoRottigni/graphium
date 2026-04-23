@@ -51,7 +51,7 @@ pub(super) fn node_run_call_tokens(
 /// providing `Worker(input) -> output` expands into bindings that read `input`
 /// from the incoming payload and a slot like
 /// `let mut __graphium_hop_*_output = Some(Worker::run(...));`.
-pub(super) fn get_single_node_expr(
+pub(crate) fn get_single_node_expr(
     call: &NodeCall,
     incoming: &Payload,
     counter: &mut usize,
@@ -376,7 +376,7 @@ pub(super) fn get_single_node_expr(
 ///
 /// Example:
 /// providing `demo::MyGraph::run` expands into the path `demo::MyGraph`.
-pub(super) fn graph_type_path(path: &syn::Path) -> syn::Path {
+pub(crate) fn graph_type_path(path: &syn::Path) -> syn::Path {
     let mut graph_path = path.clone();
     graph_path.segments.pop();
     graph_path.segments.pop_punct();

@@ -222,7 +222,7 @@ fn collect_paths_inner(
         NodeExpr::Single(call) => {
             let path = &call.path;
             if crate::shared::is_graph_run_path(path) {
-                let graph_path = super::super::single::graph_type_path(path);
+                let graph_path = super::super::graph_type_path(path);
                 graphs
                     .entry(graph_path.to_token_stream().to_string())
                     .or_insert(graph_path);

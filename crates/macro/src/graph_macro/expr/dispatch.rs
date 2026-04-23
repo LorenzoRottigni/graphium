@@ -59,7 +59,7 @@ pub(crate) fn get_node_expr(
 /// given inner tokens that create `inner_value` and inner outputs
 /// `{"value" => inner_value}`, this expands into outer declarations like
 /// `let mut __graphium_captured_*_value = None; { ...; outer = inner_value; }`.
-pub(super) fn capture_outputs(
+pub(crate) fn capture_outputs(
     inner_tokens: proc_macro2::TokenStream,
     inner_outputs: Payload,
     counter: &mut usize,
@@ -121,7 +121,7 @@ pub(super) fn capture_outputs(
 /// Example:
 /// given `@loop { A >> @break }`, this expands into `true`; given `A | B`, it
 /// expands into `false`.
-pub(super) fn contains_break(node: &NodeExpr) -> bool {
+pub(crate) fn contains_break(node: &NodeExpr) -> bool {
     match node {
         NodeExpr::Break => true,
         NodeExpr::Single(_) => false,

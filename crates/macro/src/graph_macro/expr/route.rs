@@ -8,11 +8,12 @@ use std::collections::BTreeSet;
 use quote::quote;
 
 use crate::shared::{ExprShape, GeneratedExpr, Payload, RouteExpr};
+use crate::graph_macro::{analyze_expr, required_artifacts, required_borrowed};
 
+use crate::graph_macro::{collect_route_borrowed, collect_route_outputs};
 use super::{
-    analyze_expr, assign_outputs_to_slots, build_selector_bindings, build_selector_call,
-    prepare_move_payload, prepare_output_slots, required_artifacts, required_borrowed,
-    selector_params_for_on_expr,
+    assign_outputs_to_slots, build_selector_bindings, build_selector_call,
+    prepare_move_payload, prepare_output_slots, selector_params_for_on_expr,
 };
 
 /// Generates code for an exclusive route branch.
@@ -20,7 +21,7 @@ use super::{
 /// Example:
 /// providing `@match on selector { 0 => A, 1 => B }` expands into
 /// `let selector_key = ...; match selector_key { 0 => { ... }, 1 => { ... } }`.
-pub(super) fn get_route_node_expr(
+pub(crate) fn get_route_node_expr(
     route: &RouteExpr,
     incoming: &Payload,
     counter: &mut usize,
@@ -130,14 +131,14 @@ pub(super) fn get_route_node_expr(
 /// Example:
 /// providing declared outputs `[value, &shared]` expands into
 /// `(vec!["value"], {"shared"})`; without explicit outputs it unions branch exits.
-pub(super) fn route_exit_outputs(
+pub(crate) fn route_exit_outputs(
     route: &RouteExpr,
     shapes: &[ExprShape],
 ) -> (Vec<String>, BTreeSet<String>) {
     if route.outputs.is_empty() {
         return (
-            super::collect_route_outputs(shapes),
-            super::collect_route_borrowed(shapes),
+            collect_route_outputs(shapes),
+            collect_route_borrowed(shapes),
         );
     }
 
