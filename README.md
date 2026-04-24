@@ -3,7 +3,19 @@
 
 <img src="https://s3.rottigni.tech/public/github/graphium/graphium_logo.png" alt="graphium" width="250px" height="250px" />
 
-A Rust framework for defining observable DAG-based computation workflows through declarative procedural macros.
+Graphium is a Rust framework for defining observable DAG-based computation workflows through a declarative, Rust-friendly DSL.
+
+It enables developers to construct algorithmic graphs that represent computation pipelines in a declarative and composable way.
+
+Graphium models computation as directed acyclic graphs (DAGs) defined through a custom DSL that is expanded into Rust code at compile time.
+
+The framework is designed for minimal abstraction overhead. DSL parsing and graph expansion happen at compile time, while LLVM performs aggressive optimizations on the generated code.
+
+Runtime behavior is entirely optional and controlled via feature flags. Using Graphium with only the "macro" feature results in near-zero runtime overhead, as all logic is resolved at compile time.
+
+## How it works
+
+Graphium provides a Graph-based DSL low abstraction costs
 
 ## The Idea
 
@@ -22,7 +34,7 @@ graph! {
     #[metrics("performance", "errors", "count", "caller", "success_rate", "fail_rate")]
     LinearRegressionGraph<Context> -> (model: Model) {
         GetDataset() -> (&dataset) >>
-        ParseInputFeatures(&dataset) -> (input_features) & ParseOutputFeatures(&dataset) -> (output_features) >>
+        ParseInputFeatures(&dataset) -> (input_features) && ParseOutputFeatures(&dataset) -> (output_features) >>
         TrainTestSplit(input_features, output_features) -> (&X_train, &X_test, &y_train, &y_test) >>
         Preprocessing(&X_train, &X_test, &y_train) -> (&X_train, &X_test, &y_train) >>
         InitModel(&X_train, &y_train) -> (&model, &X_train, &y_train) >>
