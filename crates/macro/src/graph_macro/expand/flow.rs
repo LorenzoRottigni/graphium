@@ -36,7 +36,7 @@ pub(super) fn graph_flow_tokens(
 /// Flattens a graph expression into the UI-oriented `GraphStepDto` tree.
 ///
 /// Example:
-/// providing `A >> (B | C)` expands into a `Vec<GraphStepDto>` containing a
+/// providing `A >> (B && C)` expands into a `Vec<GraphStepDto>` containing a
 /// node step for `A` followed by a `GraphStepDto::Parallel { ... }`.
 fn node_expr_steps_tokens(node: &NodeExpr) -> Vec<proc_macro2::TokenStream> {
     match node {

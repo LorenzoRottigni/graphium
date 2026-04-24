@@ -43,12 +43,12 @@ fn parse_sequence(input: ParseStream) -> Result<NodeExpr> {
     }
 }
 
-/// Parses a parallel group, splitting sibling nodes on `&`.
+/// Parses a parallel group, splitting sibling nodes on `&&`.
 fn parse_parallel(input: ParseStream) -> Result<NodeExpr> {
     let mut nodes = vec![parse_primary(input)?];
 
-    while input.peek(Token![&]) {
-        input.parse::<Token![&]>()?;
+    while input.peek(Token![&&]) {
+        input.parse::<Token![&&]>()?;
         nodes.push(parse_primary(input)?);
     }
 
