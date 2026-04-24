@@ -19,3 +19,4 @@
 - should ctx be split in a static ctx provided at the beginning and a dynamic one for artifacts references?
 - should graph become Result<> based? adding tokens like ! ? for managing them?
 - graphium-ui use wasm to load config at runtime (Docker build compile rust and wasm is provided to rust at runtime)
+- Logs API: allow graph and nodes to scope their logs and visualize grouped and ordered logs from within the UI
