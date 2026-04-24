@@ -188,3 +188,11 @@ node! {
 ```
 
 - TypeScript integration using DTO contracts as a bridge with `graphium-ui`
+
+## Graphium UI
+
+<img src="https://s3.rottigni.tech/public/github/graphium/graphium_graph_hero.png" alt="graphium" width="800px" />
+
+<img src="https://s3.rottigni.tech/public/github/graphium/graphium_graph_body.png" alt="graphium" width="800px" />
+
+<img src="https://s3.rottigni.tech/public/github/graphium/graphium_graph_footer.png" alt="graphium" width="800px" />
