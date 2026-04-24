@@ -7,7 +7,7 @@ use graphium_macro::graph;
 graph! {
     async CreateProductGraph<Context>(name: String, price: String) -> (product_dto: Json<Product>) {
         GetProductInput(name, price) -> &product_input >>
-        ValidateProductInputData(&product_input) &
+        ValidateProductInputData(&product_input) &&
         CheckProductDoesNotExist(&product_input) >>
         ProductCreate(&product_input) -> product >>
         SerializeProduct(product) -> product_dto

@@ -1,33 +1,99 @@
-
 # GRAPHIUM
 
 <img src="https://s3.rottigni.tech/public/github/graphium/graphium_logo.png" alt="graphium" width="250px" height="250px" />
 
 Graphium is a Rust framework for defining observable DAG-based computation workflows through a declarative, Rust-friendly DSL.
 
-It enables developers to construct algorithmic graphs that represent computation pipelines in a declarative and composable way.
+It allows developers to express computation as composable algorithmic graphs, where logic is modeled as directed acyclic graphs (DAGs) and expanded into Rust code at compile time.
 
-Graphium models computation as directed acyclic graphs (DAGs) defined through a custom DSL that is expanded into Rust code at compile time.
+The framework focuses on **zero-cost abstractions**: DSL parsing and graph expansion happen entirely at compile time, and the generated code is further optimized by LLVM.
 
-The framework is designed for minimal abstraction overhead. DSL parsing and graph expansion happen at compile time, while LLVM performs aggressive optimizations on the generated code.
+Runtime behavior is optional and controlled via feature flags. Using Graphium with only the `"macro"` feature results in near-zero runtime overhead, since all computation is resolved at compile time.
 
-Runtime behavior is entirely optional and controlled via feature flags. Using Graphium with only the "macro" feature results in near-zero runtime overhead, as all logic is resolved at compile time.
+---
 
-## How it works
+## Architecture
 
-Graphium provides a Graph-based DSL low abstraction costs
+Graphium separates concerns into two phases:
 
-## The Idea
+- **Compile time**
+  - DSL parsing
+  - Graph expansion
+  - Code generation
 
-Represent any algorithm as a workflow graph using an ergonomic API, maintaining low abstraction costs.
-The example above shows how Graphium, in a few lines, allows you to:
+- **Runtime (optional)**
+  - Graph and node metrics via the `"metrics"` feature flag
+  - Graph and node serialization via the `"export"` feature flag, using a `DTO` contract (required by `graphium-ui`)
+  - Interactive graph playground via the `"playground"` feature flag, enabling execution of graphs directly from `graphium-ui`
+  - Additional runtime features planned
 
-- Define the procedural flow of a linear regression model training pipeline in a childproof syntax.
-- Define the propagation strategy of artifacts produced by nodes through a Rust-friendly syntax (smartly managing value borrowing, moving, cloning, and copying).
-- Define sequential and parallel execution strategies for nodes using the `>>` and `&` tokens.
-- Provide a custom Context struct that nodes can use.
-- Define the output type of the graph.
-- Define the set of metrics to be tracked for the graph or for specific nodes.
+The goal of this design is to clearly separate a zero-cost production core from optional runtime capabilities.
+
+A minimal production deployment can rely only on the `"macro"` feature flag, resulting in near-zero runtime overhead. Additional features can then be enabled selectively to introduce observability, serialization, or interactive tooling as needed.
+
+---
+
+## Crates
+
+Graphium is organized into multiple crates, each responsible for a specific layer of the system:
+
+- **core**
+  - Contains runtime contracts, primitives, and shared abstractions
+  - Defines DTOs, metrics, and execution-related types
+  - Provides foundational types used by macro-generated code
+
+- **macro**
+  - Implements the DSL and procedural macros
+  - Responsible for parsing Graphium DSL constructs (`graph! {}`, `node! {}`, `graph_test! {}`, `node_test! {}`)
+  - Generates Rust code at compile time based on graph definitions and feature flags
+
+- **ui**
+  - Web-based visualization and interaction layer built with Axum, HTMX, and Alpine.js
+  - Allows inspection of graphs, nodes, and tests
+  - Supports on-demand execution of graphs
+
+- **examples**
+  - Internal crate containing reference implementations and usage examples
+  - Demonstrates how Graphium is intended to be used in real-world scenarios
+
+---
+
+## Use cases
+
+Graphium can be used to model computation at different levels of abstraction, depending on application needs:
+
+### Low-level graphs
+
+Nodes represent primitive functions:
+
+```rust
+add(a: u32, b: u32) -> u32
+```
+
+At this level, graphs act as explicit function pipelines:
+
+```rust
+graph! {
+    TransformGraph(a: u32, b: u32) -> u32 {
+        Add(a, b) -> (c),
+        Pow(c) -> (d)
+    }
+}
+```
+
+---
+
+### Mid-level graphs
+
+Nodes represent domain-specific operations:
+
+```rust
+fit_model(model: &LinearRegressionModel)
+```
+
+Graphs such as `LinearRegressionGraph` orchestrate training and evaluation pipelines.
+
+DSL definition:
 
 ```rust
 graph! {
@@ -45,133 +111,72 @@ graph! {
 }
 ```
 
-### Result
+---
 
-- Visual representation of the graph workflow and its artifacts propagation:
+### High-level graphs
 
-<img src="https://s3.rottigni.tech/public/github/graphium/graphium_graph_hero.png" alt="graphium" width="800px" />
-
-- Manually execute the graph, visualize graph configured metrics and its raw provided schema:
-
-<img src="https://s3.rottigni.tech/public/github/graphium/graphium_graph_body.png" alt="graphium" width="800px" />
-
-- Inspect graph's nodes in depth, run graph and nodes tests created using graph_test!{} and node_test!{} macros:
-
-<img src="https://s3.rottigni.tech/public/github/graphium/graphium_graph_footer.png" alt="graphium" width="800px" />
-
-
-### What else you can do?
-
-- Graphs nesting by wiring inputs/outputs:
+Entire applications can be expressed as graphs:
 
 ```rust
-InnerGraph::run(a_split, b_split) -> (a_split, b_split)
+AxumEcommerce
 ```
 
-- Rust-idiomatic conditional branching (and nested conditional branching):
+Where nested graphs handle application workflows such as:
+
+- `CreateProduct`
+  - `validate_product(dto: &CreateProductDto)`
+  - `check_product_exists(dto: &CreateProductDto)`
+
+Application-level DSL:
 
 ```rust
 graph! {
-    ConditionalGraph<Context> {
-        GetOperationStatus() -> (&status) >>
-        @match ctx.status {
-            Status::Success => OnSuccess(&status),
-            Status::Fail => OnFail(),
-            Status::Retry => OnRetry(),
-        }
+    AxumEcommerce<Context> {
+        RouterInit >>
+        RegisterProductController >>
+        RegisterUserController >>
+        RegisterOrderController
     }
 }
 ```
 
-- Conditional nodes execution:
+Nested execution graphs:
 
 ```rust
 graph! {
-    IfGraph<Context> -> (result: u32) {
-        GetOperationStatus() -> (status) >>
-        @if |status: Status| status == Status::Success -> (result) {
-            OnSuccess() -> (result)
-        }
-        @elif |status: Status| status == Status::Fail {
-            OnFail() -> (result)
-        }
-        @else {
-            OnRetry() -> (result)
-        }
+    async CreateProductGraph<Context>(name: String, price: String) -> (product_dto: Json<Product>) {
+        GetProductInput(name, price) -> (&product_input) >>
+        ValidateProductInputData(&product_input) &&
+        CheckProductDoesNotExist(&product_input) >>
+        ProductCreate(&product_input) -> product >>
+        SerializeProduct(product) -> product_dto
     }
 }
 ```
 
-- Loops:
+This allows a developer to define end-to-end application flows that can be executed directly or exposed through the UI.
 
-```rust
-graph! {
-    WhileGraph<Context> {
-        InitCtx() >>
-        @while |ctx: &Context| ctx.a_number < 3 {
-            IncCtx()
-        }
-    }
-}
-```
+---
 
-```rust
-graph! {
-    LoopBreakGraph<Context> {
-        InitCtx() >>
-        @loop {
-            IncCtx() >>
-            @if |ctx: &Context| ctx.a_number >= 3 {
-                @break
-            }
-            @else {
-                Noop()
-            }
-        }
-    }
-}
-```
+Graphium is designed to be flexible: it adapts to the level of abstraction that best fits the application, from low-level computation pipelines to full application systems and hybrid architectures combining multiple execution layers.
 
-- Async graphs:
+---
 
-```rust
-graph! {
-    async AsyncGraph<Context> -> (a_number: u32) {
-        GetNumber() -> (a_number) >>
-        AddOne(a_number) -> (a_number)
-    }
-}
-```
+## Execution Model
 
-- Node-scoped testing with test-related information available in the UI, along with a real-time playground.
+Graphium executes graphs as compile-time expanded pipelines of nodes, where:
 
-```rust
-node_test! {
-    #[test]
-    fn e2e_node_test_supports_standard_test_items() {
-        let out = TestableAdd::run(&(), 20, 22);
-        assert_eq!(out, 42);
-    }
-}
-```
+- Nodes define computation units
+- Edges define data propagation
+- Operators (`>>`, `&&`) define execution strategy
 
-- Graph-scoped testing with test-related information available in the UI, along with a real-time playground.
+All execution logic is resolved at compile time unless runtime features are explicitly enabled.
 
-```rust
-graph_test! {
-    #[test]
-    #[for_graph(TestableGraph)]
-    fn e2e_graph_test_supports_standard_test_items() {
-        let mut ctx = Context::default();
-        let out = TestableGraph::run(&mut ctx);
-        assert_eq!(out, 42);
-    }
-}
-```
+---
 
-### What's planned for the future?
+## What's planned for the future?
 
-- Provide an event-driven API:
+- Event-driven API:
 
 ```rust
 node! {
@@ -182,20 +187,4 @@ node! {
 }
 ```
 
-- Allow explicit node naming:
-
-```rust
-node! {
-    #[name = GetNumber]
-    async fn get_number() -> u32 {
-        7
-    }
-}
-```
-
-- Allow unpacking references to remove them from the context after they are read (once "Preprocessing" takes in X_train and X_test, it consumes them from the context):
-
-```text
-TrainTestSplit(input_features, output_features) -> (&X_train, &X_test, &y_train, &y_test) >>
-Preprocessing(*X_train, *X_test) -> (X_train, X_test)
-```
+- TypeScript integration using DTO contracts as a bridge with `graphium-ui`
