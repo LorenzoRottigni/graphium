@@ -119,6 +119,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
         &context,
         async_enabled,
         &root_setup.run_params,
+        &root_setup.run_args,
         &run_return_sig,
         &sync_graph_body,
     );
@@ -126,6 +127,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
         &name,
         &context,
         &root_setup.run_params,
+        &root_setup.run_args,
         &run_return_sig,
         &async_graph_body,
     );

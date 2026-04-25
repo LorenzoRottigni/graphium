@@ -23,6 +23,7 @@ use crate::ir::{GeneratedExpr, NodeExpr, Payload, fresh_ident};
 pub(super) struct RootSetup {
     pub root_incoming: Payload,
     pub run_params: Vec<TokenStream>,
+    pub run_args: Vec<Ident>,
     pub root_input_bindings: Vec<TokenStream>,
 }
 
@@ -37,6 +38,7 @@ pub(super) fn build_root_setup(
 ) -> RootSetup {
     let mut root_incoming = Payload::new();
     let mut run_params = Vec::with_capacity(graph_inputs.len());
+    let mut run_args = Vec::with_capacity(graph_inputs.len());
     let mut root_input_bindings = Vec::with_capacity(graph_inputs.len());
 
     for (artifact, ty) in graph_inputs {
@@ -46,6 +48,7 @@ pub(super) fn build_root_setup(
         run_params.push(quote! {
             #param_ident: #ty
         });
+        run_args.push(param_ident.clone());
         root_input_bindings.push(quote! {
             let mut #payload_ident = ::std::option::Option::Some(#param_ident);
         });
@@ -54,6 +57,7 @@ pub(super) fn build_root_setup(
     RootSetup {
         root_incoming,
         run_params,
+        run_args,
         root_input_bindings,
     }
 }
