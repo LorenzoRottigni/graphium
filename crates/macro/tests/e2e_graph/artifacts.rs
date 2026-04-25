@@ -102,9 +102,7 @@ fn e2e_node_macro_supports_explicit_name_override() {
 #[test]
 fn e2e_graph_macro_borrows_artifacts() {
     #[derive(Default)]
-    pub struct Context {
-        pub number: u32,
-    }
+    pub struct Context {}
 
     let mut ctx = Context::default();
 
@@ -134,21 +132,19 @@ fn e2e_graph_macro_borrows_artifacts() {
 #[test]
 fn e2e_graph_macro_borrowed_ctx_values_persist() {
     #[derive(Default)]
-    pub struct Context {
-        pub number: u32,
-    }
+    pub struct Context {}
 
     let mut ctx = Context::default();
 
     node! {
-        fn check_number(ctx: &Context, number: &u32) {
-            assert_eq!(ctx.number, *number);
+        fn check_number(number: &u32) {
+            assert_eq!(*number, 42);
         }
     }
 
     node! {
-        fn check_reference_expiration(ctx: &Context) {
-            assert_eq!(ctx.number, 42);
+        fn check_reference_still_available(number: &u32) {
+            assert_eq!(*number, 42);
         }
     }
 
@@ -156,7 +152,7 @@ fn e2e_graph_macro_borrowed_ctx_values_persist() {
         ReferenceGraph<Context> {
             GetNumber() -> (&number) >>
             CheckNumber(&number) >>
-            CheckReferenceExpiration()
+            CheckReferenceStillAvailable(&number)
         }
     }
 
@@ -166,21 +162,19 @@ fn e2e_graph_macro_borrowed_ctx_values_persist() {
 #[test]
 fn e2e_graph_macro_reference_can_be_forwarded() {
     #[derive(Default)]
-    pub struct Context {
-        pub number: u32,
-    }
+    pub struct Context {}
 
     let mut ctx = Context::default();
 
     node! {
-        fn check_number(ctx: &Context, number: &u32) {
-            assert_eq!(ctx.number, *number);
+        fn check_number(number: &u32) {
+            assert_eq!(*number, 42);
         }
     }
 
     node! {
-        fn check_reference_expiration(ctx: &Context) {
-            assert_eq!(ctx.number, 42);
+        fn check_reference_still_available(number: &u32) {
+            assert_eq!(*number, 42);
         }
     }
 
@@ -188,7 +182,7 @@ fn e2e_graph_macro_reference_can_be_forwarded() {
         ReferenceGraphForwarded<Context> {
             GetNumber() -> (&number) >>
             CheckNumber(&number) -> &number >>
-            CheckReferenceExpiration()
+            CheckReferenceStillAvailable(&number)
         }
     }
 
@@ -198,31 +192,24 @@ fn e2e_graph_macro_reference_can_be_forwarded() {
 #[test]
 fn e2e_graph_macro_can_take_ownership_from_ctx() {
     #[derive(Default)]
-    pub struct Context {
-        pub number: u32,
-    }
+    pub struct Context {}
 
     let mut ctx = Context::default();
 
     node! {
-        fn take_number(number: u32) {
+        fn take_number(number: u32) -> u32 {
             assert_eq!(number, 42);
-        }
-    }
-
-    node! {
-        fn assert_taken_clears_ctx(ctx: &Context) {
-            assert_eq!(ctx.number, 0);
+            number
         }
     }
 
     graph! {
-        TakeGraph<Context> {
+        TakeGraph<Context> -> (out: u32) {
             GetNumber() -> (&number) >>
-            TakeNumber(*number) >>
-            AssertTakenClearsCtx()
+            TakeNumber(*number) -> (out)
         }
     }
 
-    TakeGraph::run(&mut ctx);
+    let out = TakeGraph::run(&mut ctx);
+    assert_eq!(out, 42);
 }

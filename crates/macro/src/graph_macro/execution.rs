@@ -92,6 +92,7 @@ pub(super) fn build_run_return_sig(graph_outputs: &[(Ident, syn::Type)]) -> Toke
 pub(super) fn build_run_body(
     generated: Option<&GeneratedExpr>,
     root_input_bindings: &[TokenStream],
+    borrowed_slot_idents: &[syn::Ident],
     graph_outputs: &[(Ident, syn::Type)],
     disabled: bool,
 ) -> TokenStream {
@@ -102,15 +103,22 @@ pub(super) fn build_run_body(
     let generated = generated.expect("generated graph body");
     let generated_tokens = generated.tokens.clone();
     let return_expr = build_return_expr(generated, graph_outputs);
+    let borrowed_slot_decls = borrowed_slot_idents.iter().map(|ident| {
+        quote! {
+            let mut #ident = ::std::option::Option::None;
+        }
+    });
 
     if graph_outputs.is_empty() {
         quote! {{
             #( #root_input_bindings )*
+            #( #borrowed_slot_decls )*
             #generated_tokens
         }}
     } else {
         quote! {{
             #( #root_input_bindings )*
+            #( #borrowed_slot_decls )*
             #generated_tokens
             #return_expr
         }}

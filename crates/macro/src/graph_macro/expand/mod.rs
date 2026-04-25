@@ -17,6 +17,7 @@ use quote::quote;
 use syn::parse_macro_input;
 
 use crate::ir::{GraphInput, doc_string_from_attrs};
+use std::collections::BTreeSet;
 
 mod flow;
 mod metadata;
@@ -50,6 +51,12 @@ pub fn expand(input: TokenStream) -> TokenStream {
         deprecated,
         deprecated_reason,
     } = parse_macro_input!(input as GraphInput);
+
+    let borrowed_slot_names = collect_borrowed_slot_names(&nodes);
+    let borrowed_slot_idents: Vec<syn::Ident> = borrowed_slot_names
+        .iter()
+        .map(|name| crate::ir::borrowed_slot_ident(name))
+        .collect();
 
     let graph_docs = doc_string_from_attrs(&attrs);
     let graph_docs_tokens = match graph_docs {
@@ -87,12 +94,14 @@ pub fn expand(input: TokenStream) -> TokenStream {
     let run_body = super::execution::build_run_body(
         execution.generated_sync.as_ref(),
         &root_setup.root_input_bindings,
+        &borrowed_slot_idents,
         &graph_outputs,
         async_enabled,
     );
     let run_body_async = super::execution::build_run_body(
         Some(&execution.generated_async),
         &root_setup.root_input_bindings,
+        &borrowed_slot_idents,
         &graph_outputs,
         false,
     );
@@ -166,4 +175,67 @@ pub fn expand(input: TokenStream) -> TokenStream {
     };
 
     TokenStream::from(expanded)
+}
+
+fn collect_borrowed_slot_names(nodes: &crate::ir::NodeExpr) -> BTreeSet<String> {
+    fn walk(expr: &crate::ir::NodeExpr, out: &mut BTreeSet<String>) {
+        use crate::ir::NodeExpr;
+        match expr {
+            NodeExpr::Single(call) => {
+                for (ident, kind) in call.inputs.iter().zip(call.input_kinds.iter()) {
+                    if matches!(
+                        kind,
+                        crate::ir::ArtifactInputKind::Borrowed | crate::ir::ArtifactInputKind::Taken
+                    ) {
+                        out.insert(ident.to_string());
+                    }
+                }
+                for (ident, is_borrowed) in call.outputs.iter().zip(call.output_borrows.iter()) {
+                    if *is_borrowed {
+                        out.insert(ident.to_string());
+                    }
+                }
+            }
+            NodeExpr::Sequence(nodes) | NodeExpr::Parallel(nodes) => {
+                for node in nodes {
+                    walk(node, out);
+                }
+            }
+            NodeExpr::Route(route) => {
+                for (ident, is_borrowed) in route.outputs.iter().zip(route.output_borrows.iter()) {
+                    if *is_borrowed {
+                        out.insert(ident.to_string());
+                    }
+                }
+                for (_, node) in &route.routes {
+                    walk(node, out);
+                }
+            }
+            NodeExpr::While(while_expr) => {
+                for (ident, is_borrowed) in while_expr
+                    .outputs
+                    .iter()
+                    .zip(while_expr.output_borrows.iter())
+                {
+                    if *is_borrowed {
+                        out.insert(ident.to_string());
+                    }
+                }
+                walk(&while_expr.body, out);
+            }
+            NodeExpr::Loop(loop_expr) => {
+                for (ident, is_borrowed) in loop_expr.outputs.iter().zip(loop_expr.output_borrows.iter()) {
+                    if *is_borrowed {
+                        out.insert(ident.to_string());
+                    }
+                }
+                walk(&loop_expr.body, out);
+            }
+            NodeExpr::Break => {}
+        }
+    }
+
+    let mut out = BTreeSet::new();
+    walk(nodes, &mut out);
+    out
 }

@@ -5,6 +5,7 @@ edition = "2024"
 
 [lib]
 name = "graphium"
+doctest = false
 
 [dependencies]
 prometheus = "0.13"

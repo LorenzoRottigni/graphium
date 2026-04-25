@@ -262,6 +262,14 @@ pub fn fresh_ident(counter: &mut usize, prefix: &str, name: &str) -> Ident {
     ident
 }
 
+/// Builds a stable identifier used for graph-scoped borrowed artifact storage.
+///
+/// These locals are declared once in the generated `Graph::run{_async}` body
+/// and are shared across all hops/branches within that graph execution.
+pub fn borrowed_slot_ident(name: &str) -> Ident {
+    format_ident!("__graphium_borrowed_{}", name)
+}
+
 // `FooGraph::run()` is treated specially inside the DSL: it executes another
 // graph directly instead of behaving like a node call with hop-managed artifacts.
 /// Returns `true` when a path refers to another graph's `run` function instead

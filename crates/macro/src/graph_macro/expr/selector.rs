@@ -114,25 +114,27 @@ pub(crate) fn build_condition_bindings(
 ) -> ConditionBindings {
     let mut bindings = Vec::new();
     let mut args = Vec::new();
-    let mut has_borrowed = false;
-    let mut wants_mut_ctx = false;
 
     for param in params {
         match param {
             SelectorParam::Ctx { mutable } => {
-                if *mutable {
-                    wants_mut_ctx = true;
-                    args.push(quote! { ctx });
-                } else {
-                    args.push(quote! { &*ctx });
-                }
+                let _ = mutable;
+                // `ctx` is always `&mut Ctx` in generated runners, and will
+                // coerce to `&Ctx` for read-only selectors automatically.
+                args.push(quote! { ctx });
             }
             SelectorParam::Artifact { ident, borrowed } => {
                 let artifact_name = ident.to_string();
                 if *borrowed {
-                    has_borrowed = true;
                     if incoming.has_borrowed(&artifact_name) {
-                        args.push(quote! { &ctx.#ident });
+                        let slot_ident = crate::ir::borrowed_slot_ident(&artifact_name);
+                        let arg_ident = fresh_ident(counter, "cond_borrow", &artifact_name);
+                        bindings.push(quote! {
+                            let #arg_ident = #slot_ident
+                                .as_ref()
+                                .unwrap_or_else(|| panic!(concat!("missing artifact `", #artifact_name, "`")));
+                        });
+                        args.push(quote! { #arg_ident });
                     } else {
                         let source = incoming.get_owned(&artifact_name).unwrap_or_else(|| {
                             panic!("missing artifact `{artifact_name}` for @while condition")
@@ -161,10 +163,6 @@ pub(crate) fn build_condition_bindings(
                 }
             }
         }
-    }
-
-    if has_borrowed && wants_mut_ctx {
-        panic!("@while condition cannot take `&mut ctx` and borrowed artifacts at the same time");
     }
 
     ConditionBindings {
@@ -216,27 +214,27 @@ pub(crate) fn build_selector_bindings(
 ) -> SelectorBindings {
     let mut bindings = Vec::new();
     let mut args = Vec::new();
-    let mut has_borrowed = false;
-    let mut wants_mut_ctx = false;
 
     for param in params {
         match param {
             SelectorParam::Ctx { mutable } => {
-                if *mutable {
-                    wants_mut_ctx = true;
-                }
-                if *mutable {
-                    args.push(quote! { ctx });
-                } else {
-                    args.push(quote! { &*ctx });
-                }
+                let _ = mutable;
+                // `ctx` is always `&mut Ctx` in generated runners, and will
+                // coerce to `&Ctx` for read-only selectors automatically.
+                args.push(quote! { ctx });
             }
             SelectorParam::Artifact { ident, borrowed } => {
                 let artifact_name = ident.to_string();
                 if *borrowed {
                     if incoming.has_borrowed(&artifact_name) {
-                        has_borrowed = true;
-                        args.push(quote! { &ctx.#ident });
+                        let slot_ident = crate::ir::borrowed_slot_ident(&artifact_name);
+                        let arg_ident = fresh_ident(counter, "selector_borrow", &artifact_name);
+                        bindings.push(quote! {
+                            let #arg_ident = #slot_ident
+                                .as_ref()
+                                .unwrap_or_else(|| panic!(concat!("missing artifact `", #artifact_name, "`")));
+                        });
+                        args.push(quote! { #arg_ident });
                     } else {
                         let source = incoming.get_owned(&artifact_name).unwrap_or_else(|| {
                             panic!("missing artifact `{artifact_name}` for @match selector")
@@ -273,10 +271,6 @@ pub(crate) fn build_selector_bindings(
                 }
             }
         }
-    }
-
-    if has_borrowed && wants_mut_ctx {
-        panic!("@match selector cannot take `&mut ctx` and borrowed artifacts at the same time");
     }
 
     let is_empty = params.is_empty();
@@ -367,7 +361,7 @@ mod tests {
     }
 
     #[test]
-    fn build_condition_bindings_rejects_mut_ctx_with_borrowed_artifacts() {
+    fn build_condition_bindings_allows_mut_ctx_with_borrowed_artifacts() {
         let params = vec![
             SelectorParam::Ctx { mutable: true },
             SelectorParam::Artifact {
@@ -380,7 +374,7 @@ mod tests {
 
         let result =
             std::panic::catch_unwind(|| build_condition_bindings(&params, &payload, &mut 0));
-        assert!(result.is_err());
+        assert!(result.is_ok());
     }
 
     #[test]

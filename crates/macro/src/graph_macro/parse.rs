@@ -504,36 +504,6 @@ impl Parse for GraphInput {
     }
 }
 
-fn node_expr_uses_borrowed_artifacts(node: &NodeExpr) -> bool {
-    match node {
-        NodeExpr::Single(call) => {
-            call.input_kinds
-                .iter()
-                .any(|k| *k != ArtifactInputKind::Owned)
-                || call.output_borrows.iter().any(|b| *b)
-        }
-        NodeExpr::Sequence(nodes) | NodeExpr::Parallel(nodes) => {
-            nodes.iter().any(node_expr_uses_borrowed_artifacts)
-        }
-        NodeExpr::Route(route) => {
-            route.output_borrows.iter().any(|b| *b)
-                || route
-                    .routes
-                    .iter()
-                    .any(|(_, node)| node_expr_uses_borrowed_artifacts(node))
-        }
-        NodeExpr::While(while_expr) => {
-            while_expr.output_borrows.iter().any(|b| *b)
-                || node_expr_uses_borrowed_artifacts(&while_expr.body)
-        }
-        NodeExpr::Loop(loop_expr) => {
-            loop_expr.output_borrows.iter().any(|b| *b)
-                || node_expr_uses_borrowed_artifacts(&loop_expr.body)
-        }
-        NodeExpr::Break => false,
-    }
-}
-
 /// Parses the current graph syntax:
 /// `#[metrics(...)] #[tests(...)] async MyGraph<Ctx>(inputs...) -> (outputs...) { ... }`
 fn parse_graph_input(input: ParseStream) -> Result<GraphInput> {
@@ -689,11 +659,6 @@ fn parse_graph_input(input: ParseStream) -> Result<GraphInput> {
     let context = match context {
         Some(ctx) => ctx,
         None => {
-            if node_expr_uses_borrowed_artifacts(&nodes) {
-                return Err(input.error(
-                    "missing context type; graphs that borrow artifacts (e.g. `(&x)` or `-> (&x)`) must declare a context type like `MyGraph<Context>` that stores borrowed artifacts as fields",
-                ));
-            }
             parse_quote!(::graphium::Context)
         }
     };
