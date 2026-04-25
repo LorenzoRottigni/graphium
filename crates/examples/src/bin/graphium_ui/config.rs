@@ -261,8 +261,8 @@ node! {
 graph! {
     #[metrics("performance", "count", "success_rate")]
     InnerGraph<Context>(left: u32, right: u32) -> (left: u32, right: u32) {
-        PipeNumber(left) -> (left) & PipeNumber(right) -> (right) >>
-        LeftBranch(left) -> (left) & RightBranch(right) -> (right)
+        PipeNumber(left) -> (left) && PipeNumber(right) -> (right) >>
+        LeftBranch(left) -> (left) && RightBranch(right) -> (right)
     }
 }
 
@@ -270,7 +270,7 @@ graph! {
     #[metrics("performance", "count", "success_rate")]
     DeepInnerGraph<Context>(left: u32, right: u32) -> (left: u32, right: u32) {
         InnerGraph::run(left, right) -> (left, right) >>
-        PipeNumber(left) -> (left) & PipeNumber(right) -> (right)
+        PipeNumber(left) -> (left) && PipeNumber(right) -> (right)
     }
 }
 
@@ -280,7 +280,7 @@ graph! {
     OwnedGraph<Context> -> (a_split: u32) {
         GetNumber() -> (a_number) >>
         Duplicate(a_number) -> (left, right) >>
-        LeftBranch(left) -> (left) & RightBranch(right) -> (right) >>
+        LeftBranch(left) -> (left) && RightBranch(right) -> (right) >>
         DeepInnerGraph::run(left, right) -> (left, right) >>
         Combine(left, right) -> (sum) >>
         DecideStatus(sum) -> (status, sum) >>
@@ -338,7 +338,7 @@ graph! {
     #[tags("ml", "demo")]
     LinearRegressionGraph<Context> -> (model: Model) {
         GetDataset() -> (&dataset) >>
-        ParseInputFeatures(&dataset) -> (input_features) & ParseOutputFeatures(&dataset) -> (output_features) >>
+        ParseInputFeatures(&dataset) -> (input_features) && ParseOutputFeatures(&dataset) -> (output_features) >>
         TrainTestSplit(input_features, output_features) -> (&X_train, &X_test, &y_train, &y_test) >>
         Preprocessing(&X_train, &X_test, &y_train) -> (&X_train, &X_test, &y_train) >>
         InitModel(&X_train, &y_train) -> (&model, &X_train, &y_train) >>
