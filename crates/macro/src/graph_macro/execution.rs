@@ -23,6 +23,7 @@ use crate::ir::{GeneratedExpr, NodeExpr, Payload, fresh_ident};
 pub(super) struct RootSetup {
     pub root_incoming: Payload,
     pub run_params: Vec<TokenStream>,
+    pub run_args: Vec<Ident>,
     pub root_input_bindings: Vec<TokenStream>,
 }
 
@@ -37,6 +38,7 @@ pub(super) fn build_root_setup(
 ) -> RootSetup {
     let mut root_incoming = Payload::new();
     let mut run_params = Vec::with_capacity(graph_inputs.len());
+    let mut run_args = Vec::with_capacity(graph_inputs.len());
     let mut root_input_bindings = Vec::with_capacity(graph_inputs.len());
 
     for (artifact, ty) in graph_inputs {
@@ -46,6 +48,7 @@ pub(super) fn build_root_setup(
         run_params.push(quote! {
             #param_ident: #ty
         });
+        run_args.push(param_ident.clone());
         root_input_bindings.push(quote! {
             let mut #payload_ident = ::std::option::Option::Some(#param_ident);
         });
@@ -54,6 +57,7 @@ pub(super) fn build_root_setup(
     RootSetup {
         root_incoming,
         run_params,
+        run_args,
         root_input_bindings,
     }
 }
@@ -92,6 +96,7 @@ pub(super) fn build_run_return_sig(graph_outputs: &[(Ident, syn::Type)]) -> Toke
 pub(super) fn build_run_body(
     generated: Option<&GeneratedExpr>,
     root_input_bindings: &[TokenStream],
+    borrowed_slot_idents: &[syn::Ident],
     graph_outputs: &[(Ident, syn::Type)],
     disabled: bool,
 ) -> TokenStream {
@@ -102,15 +107,22 @@ pub(super) fn build_run_body(
     let generated = generated.expect("generated graph body");
     let generated_tokens = generated.tokens.clone();
     let return_expr = build_return_expr(generated, graph_outputs);
+    let borrowed_slot_decls = borrowed_slot_idents.iter().map(|ident| {
+        quote! {
+            let mut #ident = ::std::option::Option::None;
+        }
+    });
 
     if graph_outputs.is_empty() {
         quote! {{
             #( #root_input_bindings )*
+            #( #borrowed_slot_decls )*
             #generated_tokens
         }}
     } else {
         quote! {{
             #( #root_input_bindings )*
+            #( #borrowed_slot_decls )*
             #generated_tokens
             #return_expr
         }}

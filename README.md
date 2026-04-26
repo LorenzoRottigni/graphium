@@ -174,9 +174,87 @@ All execution logic is resolved at compile time unless runtime features are expl
 
 ---
 
-## What's planned for the future?
+## Big plans on the way
 
-- Event-driven API:
+### Increasing flexibility by simplifying architecture
+
+#### Current status
+
+`graphium-macro` parses the procedural macro DSL into an internal representation (IR) based on tokens, relying on compile-time dependencies such as `syn`.
+
+Based on this IR, the macro expands into Rust code. The current flow is:
+
+```txt
+DSL → IR → codegen
+```
+
+Key limitations:
+
+- Works exclusively at compile time through procedural macros  
+- Tightly coupled to Rust  
+- The IR is compilation-driven, token-based, and implementation-specific  
+
+---
+
+#### Planned refactor
+
+The goal is to clearly separate responsibilities between `graphium-macro` and `graphium-core`.
+
+- `graphium-core` will provide a universal contract to manage:
+  - graph and node state  
+  - execution flow abstraction  
+  - artifacts
+  - serialization
+  - shared logic for code generation  
+
+  This contract will be represented by DTOs.
+
+- DTOs already model entities (graphs, nodes, etc.). The plan is to extend them with helper methods for generic code generation across multiple targets.
+
+  Focusing on four targets:
+
+  1. **Rust + compile-time**  
+     DTO helpers operate on raw tokens (input and output are token streams).
+
+  2. **Rust + runtime**  
+     DTO helpers operate on an ABI-like interface, orchestrating execution based on the schema.
+
+  3. **TypeScript + compile-time**  
+     DTO helpers operate on `ts.factory` AST nodes and produce a `SourceFile`.
+
+  4. **TypeScript + runtime**  
+     DTO helpers generate JavaScript code that orchestrates execution based on the schema.
+
+- `graphium-macro` will be simplified to:
+  1. Parse the DSL into `graphium-core` DTOs  
+  2. Delegate code generation to DTO helpers  
+
+New flow:
+
+```txt
+DSL → DTO → codegen
+```
+
+Key benefits:
+
+- Enables both compile-time and runtime execution models  
+- Opens support for multiple programming languages  
+- Improves separation of concerns  
+- Establishes a more universal and extensible architecture  
+
+---
+
+### OpenTelemetry integration
+
+Graphium integrates with OpenTelemetry to collect metrics, traces, and logs through a shared layer running outside the main execution thread.
+
+Currently, Prometheus requires exposing a metrics endpoint for scraping, which assumes a network-accessible service. By using OpenTelemetry, metrics can be pushed to Prometheus-compatible backends without exposing public endpoints.
+
+---
+
+### Optional EDD (Event-Driven Design)
+
+Graphium will provide an optional EDD API, allowing nodes and graphs to emit events during execution. These events can trigger other nodes or graphs.
 
 ```rust
 node! {
@@ -186,10 +264,6 @@ node! {
     }
 }
 ```
-
-- TypeScript integration using DTO contracts as a bridge with `graphium-ui`
-
-- Logs API: allow graph and nodes to save their scoped logs somewhere, visualize grouped logs from graphium-ui
 
 ## Graphium UI
 

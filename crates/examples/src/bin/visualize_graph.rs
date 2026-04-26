@@ -62,7 +62,7 @@ graph! {
     OwnedGraph<Context> {
         GetNumber() -> (a_number) >>
         Duplicate(a_number) -> (a_split, b_split) >>
-        LeftBranch(a_split) -> (a_split) & RightBranch(b_split) -> (b_split) >>
+        LeftBranch(a_split) -> (a_split) && RightBranch(b_split) -> (b_split) >>
         InnerGraph::run(a_split, b_split) -> (a_split, b_split) >>
         @match Status::Success -> (a_split) {
             Status::Success => PipeNumber(a_split) -> (a_split),
