@@ -242,6 +242,14 @@ Key benefits:
 - Improves separation of concerns  
 - Establishes a more universal and extensible architecture  
 
+Choosing runtime execution might open new doors:
+
+- dynamic composition
+- remote execution over network
+- UI-driven construction
+- hot reloading
+- plugin systems
+
 ---
 
 ### OpenTelemetry integration
