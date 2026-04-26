@@ -43,6 +43,7 @@ pub(crate) fn to_mermaid(
     );
 
     let root = next_id(&mut counter);
+    println!("root is {root}");
     lines.push(format!(
         r#"{root}(["{}"]):::graphRoot"#,
         escape_label(&graph.name)
@@ -619,9 +620,10 @@ fn emit_artifact_edges(
     if !borrowed_inputs.is_empty() {
         borrowed_inputs.sort();
         borrowed_inputs.dedup();
+        // --
         if let Some(ctx) = &tracker.ctx_node {
             let label = if ctx_access == CtxAccessDto::Mut {
-                format!("borrow (ctx:&mut): {}", borrowed_inputs.join(", "))
+                format!("borrow mut: {}", borrowed_inputs.join(", "))
             } else {
                 format!("borrow: {}", borrowed_inputs.join(", "))
             };

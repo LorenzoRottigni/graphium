@@ -59,14 +59,6 @@ pub(crate) fn get_single_node_expr(
 ) -> GeneratedExpr {
     let node_path = &call.path;
     let nested_graph_path = is_graph_run_path(node_path).then(|| graph_type_path(node_path));
-    let has_borrowed_inputs = call
-        .input_kinds
-        .iter()
-        .any(|kind| *kind == ArtifactInputKind::Borrowed);
-
-    if nested_graph_path.is_some() && has_borrowed_inputs {
-        panic!("borrowed artifacts are not supported when calling nested graphs");
-    }
 
     if !call.explicit_inputs && call.inputs.is_empty() && call.outputs.is_empty() {
         let run_tokens = node_run_call_tokens(
@@ -135,8 +127,11 @@ pub(crate) fn get_single_node_expr(
             panic!("missing borrowed artifact `{artifact_name}` for node call");
         }
         next_borrowed.remove(&artifact_name);
+        let slot_ident = crate::ir::borrowed_slot_ident(&artifact_name);
         input_bindings.push(quote! {
-            let #arg_ident = ::core::mem::take(&mut ctx.#input);
+            let #arg_ident = #slot_ident
+                .take()
+                .unwrap_or_else(|| panic!(concat!("missing artifact `", stringify!(#input), "`")));
         });
         input_by_name
             .entry(artifact_name.clone())
@@ -157,8 +152,11 @@ pub(crate) fn get_single_node_expr(
         if !incoming.has_borrowed(&artifact_name) {
             panic!("missing borrowed artifact `{artifact_name}` for node call");
         }
+        let slot_ident = crate::ir::borrowed_slot_ident(&artifact_name);
         input_bindings.push(quote! {
-            let #arg_ident = &ctx.#input;
+            let #arg_ident = #slot_ident
+                .as_ref()
+                .unwrap_or_else(|| panic!(concat!("missing artifact `", stringify!(#input), "`")));
         });
         input_by_name
             .entry(artifact_name.clone())
@@ -219,8 +217,9 @@ pub(crate) fn get_single_node_expr(
                     ctx_clone_bindings.push(quote! {
                         let #clone_ident = #clone_expr;
                     });
+                    let slot_ident = crate::ir::borrowed_slot_ident(&output_name);
                     ctx_store_bindings.push(quote! {
-                        ctx.#output = #clone_ident;
+                        #slot_ident = ::std::option::Option::Some(#clone_ident);
                     });
                 }
             }
@@ -228,15 +227,10 @@ pub(crate) fn get_single_node_expr(
     }
 
     if call.outputs.is_empty() {
-        let ctx_arg = if has_borrowed_inputs {
-            quote! { &*ctx }
-        } else {
-            quote! { ctx }
-        };
         let run_call = node_run_call_tokens(
             node_path,
             nested_graph_path.as_ref(),
-            ctx_arg,
+            quote! { ctx },
             &arg_vars,
             async_mode,
         );
@@ -255,15 +249,10 @@ pub(crate) fn get_single_node_expr(
     }
 
     let mut outputs = Payload::new();
-    let ctx_arg = if has_borrowed_inputs {
-        quote! { &*ctx }
-    } else {
-        quote! { ctx }
-    };
     let run_call = node_run_call_tokens(
         node_path,
         nested_graph_path.as_ref(),
-        ctx_arg,
+        quote! { ctx },
         &arg_vars,
         async_mode,
     );
@@ -288,8 +277,8 @@ pub(crate) fn get_single_node_expr(
                 quote! { #run_call; }
             };
             let store_binding = if borrowed_from_return.contains(&artifact_name) {
-                let output_ident = &call.outputs[0];
-                quote! { ctx.#output_ident = #return_var; }
+                let slot_ident = crate::ir::borrowed_slot_ident(&artifact_name);
+                quote! { #slot_ident = ::std::option::Option::Some(#return_var); }
             } else {
                 quote! {}
             };
@@ -342,8 +331,9 @@ pub(crate) fn get_single_node_expr(
             let artifact_name = output.to_string();
             if *is_borrowed {
                 outputs.insert_borrowed(artifact_name.clone());
+                let slot_ident = crate::ir::borrowed_slot_ident(&artifact_name);
                 borrowed_store.push(quote! {
-                    ctx.#output = #tuple_var;
+                    #slot_ident = ::std::option::Option::Some(#tuple_var);
                 });
             } else {
                 let output_var = fresh_ident(counter, "hop", &artifact_name);
