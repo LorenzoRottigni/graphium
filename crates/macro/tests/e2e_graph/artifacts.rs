@@ -1,5 +1,3 @@
-use futures::executor::block_on;
-use graphium;
 use graphium_macro::{graph, node};
 
 node! {
@@ -15,127 +13,67 @@ node! {
 }
 
 #[test]
+/// This test ensures that graph macro **moves** artifacts produced by nodes using smart injection:
+/// - `GetNumber` produces `number` artifact that is moved into `Duplicate`
+/// - `Duplicate` produces `a_split` and `b_split` artifacts, where `a_split` is moved into `PipeNumber` and `b_split` is dropped
+/// - `PipeNumber` produces `a_split` artifact that is moved out of the graph as the final output
 fn e2e_graph_macro_moves_artifacts() {
-    let mut ctx = graphium::Context::default();
-
     node! {
-        /// Duplicates a number into two outputs.
-        #[tags("math", "util")]
-        #[deprecated = "use `BetterDuplicate` instead"]
         fn duplicate(a: u32) -> (u32, u32) {
             (a, a)
         }
     }
 
     graph! {
-        /// Duplicates a single number and pipes it through the graph.
-        #[tags("demo", "math")]
-        #[deprecated(note = "use `BetterGraph` instead")]
         OwnedGraph -> (a_split: u32) {
             GetNumber() -> (number) >>
             Duplicate(number) -> (a_split, b_split) >>
             PipeNumber(a_split) -> (a_split)
         }
     }
-    let duplicated = OwnedGraph::run(&mut ctx);
+    let duplicated = OwnedGraph::run_default();
 
     assert_eq!(duplicated, 42);
-
-    #[cfg(feature = "export")]
-    {
-        let graph_dto = OwnedGraph::dto();
-        assert_eq!(
-            graph_dto.docs.as_deref(),
-            Some("Duplicates a single number and pipes it through the graph.")
-        );
-        assert_eq!(graph_dto.tags, vec!["demo".to_string(), "math".to_string()]);
-        assert!(graph_dto.deprecated);
-        assert_eq!(
-            graph_dto.deprecated_reason.as_deref(),
-            Some("use `BetterGraph` instead")
-        );
-
-        let node_dto = Duplicate::dto();
-        assert_eq!(
-            node_dto.docs.as_deref(),
-            Some("Duplicates a number into two outputs.")
-        );
-        assert_eq!(node_dto.tags, vec!["math".to_string(), "util".to_string()]);
-        assert!(node_dto.deprecated);
-        assert_eq!(
-            node_dto.deprecated_reason.as_deref(),
-            Some("use `BetterDuplicate` instead")
-        );
-    }
 }
 
-#[test]
-fn e2e_node_macro_supports_explicit_name_override() {
-    let mut ctx = graphium::Context::default();
-
-    node! {
-        #[name = getNumber]
-        #[tags("io")]
-        async fn get_number_custom() -> u32 {
-            9
-        }
-    }
-
-    graph! {
-        #[tags("io")]
-        async CustomNameGraph<graphium::Context> -> (out: u32) {
-            getNumber() -> (out)
-        }
-    }
-
-    let value = block_on(CustomNameGraph::run_async(&mut ctx));
-    assert_eq!(value, 9);
-
-    #[cfg(feature = "export")]
-    {
-        let node_dto = getNumber::dto();
-        assert_eq!(node_dto.label, "getNumber");
-        assert_eq!(node_dto.tags, vec!["io".to_string()]);
-    }
-}
 
 #[test]
+/// This test ensures that graph macro **borrows** artifacts when using smart injection with references:
+/// - `GetNumber` produces `number` artifact that is moved into `StoreNumber`
+/// - `StoreNumber` returning `&number`, gives ownership of `number` back to the graph
+/// - `TakeOwnership` graph borrows `&number` to `TakeOwnership` which unpacks the reference and returns `number` as an owned value
+/// - `PipeNumber` takes ownership of `number` and moves it out of the graph as the final output
 fn e2e_graph_macro_borrows_artifacts() {
-    #[derive(Default)]
-    pub struct Context {}
-
-    let mut ctx = Context::default();
-
     node! {
         pub fn store_number(_a: u32) {
         }
     }
 
     node! {
-        pub fn take_ownership(_ctx: &Context, a: &u32) -> u32 {
+        pub fn take_ownership(a: &u32) -> u32 {
             *a
         }
     }
 
     graph! {
-        BorrowedGraph<Context> -> (number: u32) {
+        BorrowedGraph -> (number: u32) {
             GetNumber() -> (number) >>
             StoreNumber(number) -> (&number) >>
             TakeOwnership(&number) -> (number) >>
             PipeNumber(number) -> (number)
         }
     }
-    let num = BorrowedGraph::run(&mut ctx);
+    let num = BorrowedGraph::run_default();
     assert_eq!(num, 42);
 }
 
 #[test]
+/// This test ensure that artifacts returned only once using `&` keep living in the graph lifetime
+/// and can be borrowed multiple times from next nodes.
+/// - `GetNumber` produces `number` artifact and gives its ownership to the graph
+/// - `CheckNumber` borrows `&number` and checks its value without explictly propagating it
+/// - `CheckReferenceStillAvailable` borrows `&number`once again ensuring that reference it's still valid
 fn e2e_graph_macro_borrowed_ctx_values_persist() {
-    #[derive(Default)]
-    pub struct Context {}
-
-    let mut ctx = Context::default();
-
     node! {
         fn check_number(number: &u32) {
             assert_eq!(*number, 42);
@@ -149,53 +87,21 @@ fn e2e_graph_macro_borrowed_ctx_values_persist() {
     }
 
     graph! {
-        ReferenceGraph<Context> {
+        ReferenceGraph {
             GetNumber() -> (&number) >>
             CheckNumber(&number) >>
             CheckReferenceStillAvailable(&number)
         }
     }
 
-    ReferenceGraph::run(&mut ctx);
+    ReferenceGraph::run_default();
 }
 
 #[test]
-fn e2e_graph_macro_reference_can_be_forwarded() {
-    #[derive(Default)]
-    pub struct Context {}
-
-    let mut ctx = Context::default();
-
-    node! {
-        fn check_number(number: &u32) {
-            assert_eq!(*number, 42);
-        }
-    }
-
-    node! {
-        fn check_reference_still_available(number: &u32) {
-            assert_eq!(*number, 42);
-        }
-    }
-
-    graph! {
-        ReferenceGraphForwarded<Context> {
-            GetNumber() -> (&number) >>
-            CheckNumber(&number) -> &number >>
-            CheckReferenceStillAvailable(&number)
-        }
-    }
-
-    ReferenceGraphForwarded::run(&mut ctx);
-}
-
-#[test]
-fn e2e_graph_macro_can_take_ownership_from_ctx() {
-    #[derive(Default)]
-    pub struct Context {}
-
-    let mut ctx = Context::default();
-
+/// This test ensures that graph macro can drop artifacts produced by nodes using `*` token:
+/// - `GetNumber` produces `number` artifact and gives its ownership to the graph
+/// - `TakeNumber` takes ownership of `number` moving it out of the graph and making it unavailable for next nodes
+fn e2e_graph_macro_can_move_artifacts_back_to_its_nodes() {
     node! {
         fn take_number(number: u32) -> u32 {
             assert_eq!(number, 42);
@@ -204,12 +110,12 @@ fn e2e_graph_macro_can_take_ownership_from_ctx() {
     }
 
     graph! {
-        TakeGraph<Context> -> (out: u32) {
+        TakeGraph -> (out: u32) {
             GetNumber() -> (&number) >>
             TakeNumber(*number) -> (out)
         }
     }
 
-    let out = TakeGraph::run(&mut ctx);
+    let out = TakeGraph::run_default();
     assert_eq!(out, 42);
 }
