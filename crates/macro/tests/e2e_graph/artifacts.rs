@@ -73,7 +73,7 @@ fn e2e_graph_macro_borrows_artifacts() {
 /// - `GetNumber` produces `number` artifact and gives its ownership to the graph
 /// - `CheckNumber` borrows `&number` and checks its value without explictly propagating it
 /// - `CheckReferenceStillAvailable` borrows `&number`once again ensuring that reference it's still valid
-fn e2e_graph_macro_borrowed_ctx_values_persist() {
+fn e2e_graph_macro_borrowed_artifacts_persist() {
     node! {
         fn check_number(number: &u32) {
             assert_eq!(*number, 42);
