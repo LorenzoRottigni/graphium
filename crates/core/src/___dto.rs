@@ -3,7 +3,7 @@
 //! These types are intended for tooling (e.g. graphium-ui) and are designed to
 //! be stable, serde-serializable data structures.
 
-use crate::{CtxAccess, PlaygroundSchema};
+use crate::ddto::{ctx::CtxAccess, playground::PlaygroundSchema};
 use std::collections::HashMap;
 
 pub const EXPORT_SCHEMA_VERSION: u32 = 2;

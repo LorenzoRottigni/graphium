@@ -3,13 +3,13 @@
 // `graph!` emits fully inlined orchestration code.
 
 pub mod dto;
-pub mod playground;
 pub mod telemetry;
 
 #[cfg(feature = "export")]
 pub use serde;
 
-pub use playground::{CtxAccess, GraphPlayground, PlaygroundParam, PlaygroundSchema};
+pub use dto::ctx::CtxAccess;
+pub use dto::playground::{GraphPlayground, PlaygroundParam, PlaygroundSchema};
 pub use telemetry::GraphiumTelemetry;
 
 /// Backwards-compatible module path; prefer `graphium::dto`.
@@ -35,7 +35,7 @@ pub trait Graph<Ctx> {
 /// Trait implemented by macro-generated graphs to expose UI/admin test runners
 /// without any runtime registry/discovery.
 pub trait GraphUiTests {
-    fn graphium_ui_tests() -> Vec<dto::TestRun>;
+    fn graphium_ui_tests() -> Vec<dto::test::TestRun>;
 }
 
 /// Clones or copies an artifact when one hop needs to fan out to more than one
