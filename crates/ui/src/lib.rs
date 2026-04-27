@@ -1,8 +1,10 @@
 pub mod config;
 pub mod error;
 mod http;
+mod logs;
 mod mermaid;
 mod metrics;
+mod traces;
 pub mod pages;
 pub mod server;
 pub mod state;

@@ -13,6 +13,12 @@ pub(crate) struct AppState {
     /// Base URL for Prometheus (used to build metric queries / links in the UI).
     pub(crate) prometheus_base_url: String,
 
+    /// Base URL for Loki (used to query logs via HTTP API).
+    pub(crate) loki_base_url: String,
+
+    /// Base URL for Tempo query-frontend (used to search and fetch traces).
+    pub(crate) tempo_base_url: String,
+
     /// Shared HTTP client used by handlers to call Prometheus and other endpoints.
     pub(crate) client: reqwest::Client,
 

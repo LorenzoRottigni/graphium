@@ -15,10 +15,12 @@ graphium-macro = { version = "0.1.0", path = "../macro" }
 graphium-ui = { version = "0.1.0", path = "../ui" }
 
 [features]
-default = ["export", "metrics", "playground"]
+default = ["export", "metrics", "trace", "logs", "playground"]
 export = ["graphium/export"]
 dto = ["graphium/dto"]
 metrics = ["graphium/metrics"]
+trace = ["graphium/trace"]
+logs = ["graphium/logs"]
 playground = ["graphium/playground"]
 # Back-compat alias (deprecated): prefer `export`.
 serialize = ["export"]

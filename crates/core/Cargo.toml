@@ -8,9 +8,16 @@ name = "graphium"
 doctest = false
 
 [dependencies]
-prometheus = "0.13"
 serde = { version = "1", features = ["derive"], optional = true }
 graphium-macro = { version = "0.1.0", path = "../macro", optional = true }
+opentelemetry = "0.31.0"
+opentelemetry_sdk = "0.31.0"
+opentelemetry-otlp = { version = "0.31.1", default-features = false, features = ["http-proto", "reqwest-client", "trace", "metrics", "logs"] }
+once_cell = "1.21.4"
+tracing = "0.1"
+tracing-opentelemetry = "0.32.0"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["registry"] }
+opentelemetry-appender-tracing = "0.31.0"
 
 [features]
 # Enables DTO serde support (`graphium::serde` re-export + serde derives).
@@ -19,6 +26,10 @@ export = ["dep:serde"]
 dto = []
 # Enables macro-generated metrics wrappers and helpers.
 metrics = []
+# Enables macro-generated trace spans (OTLP to Tempo by default).
+trace = []
+# Enables macro-generated logs export (OTLP to Loki by default).
+logs = []
 # Enables macro-generated `GraphPlayground` impls.
 playground = []
 # Back-compat alias (deprecated): prefer `export`.

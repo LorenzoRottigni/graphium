@@ -132,8 +132,8 @@ impl MetricsSpec {
 
 pub fn parse_metric_name(value: &str) -> Option<fn(&mut MetricsSpec)> {
     match value {
-        "performance" => Some(|spec| spec.performance = true),
-        "errors" => Some(|spec| spec.errors = true),
+        "performance" | "latency" => Some(|spec| spec.performance = true),
+        "errors" | "error_rate" => Some(|spec| spec.errors = true),
         "count" => Some(|spec| spec.count = true),
         "caller" => Some(|spec| spec.caller = true),
         "success_rate" => Some(|spec| spec.success_rate = true),

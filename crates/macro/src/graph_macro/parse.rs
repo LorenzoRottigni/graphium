@@ -684,7 +684,7 @@ fn parse_metrics_list(input: ParseStream) -> Result<MetricsSpec> {
     while !input.is_empty() {
         let metric_name: syn::LitStr = input.parse()?;
         let apply = parse_metric_name(metric_name.value().as_str()).ok_or_else(|| {
-            input.error("unsupported metric; allowed: performance, errors, count, caller, success_rate, fail_rate")
+            input.error("unsupported metric; allowed: performance, latency, errors, error_rate, count, caller, success_rate, fail_rate")
         })?;
         apply(&mut metrics);
 

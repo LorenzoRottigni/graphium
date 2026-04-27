@@ -3,13 +3,14 @@
 // `graph!` emits fully inlined orchestration code.
 
 pub mod dto;
-pub mod metrics;
 pub mod playground;
+pub mod telemetry;
 
 #[cfg(feature = "export")]
 pub use serde;
 
 pub use playground::{CtxAccess, GraphPlayground, PlaygroundParam, PlaygroundSchema};
+pub use telemetry::GraphiumTelemetry;
 
 /// Backwards-compatible module path; prefer `graphium::dto`.
 pub mod export {

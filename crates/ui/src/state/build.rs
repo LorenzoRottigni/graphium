@@ -1,6 +1,11 @@
 use crate::state::{AppState, graph::UiGraph, index::UiIndex, node::UiNode, test::UiTest};
 
-pub(crate) fn build_state(prometheus_url: String, graphs: Vec<UiGraph>) -> AppState {
+pub(crate) fn build_state(
+    prometheus_url: String,
+    loki_url: String,
+    tempo_url: String,
+    graphs: Vec<UiGraph>,
+) -> AppState {
     let mut graphs = UiIndex::from_ordered(graphs, |g| &g.id);
 
     // Expand the configured root graphs into a fixed set of graphs/nodes
@@ -52,6 +57,8 @@ pub(crate) fn build_state(prometheus_url: String, graphs: Vec<UiGraph>) -> AppSt
 
     AppState {
         prometheus_base_url: prometheus_url,
+        loki_base_url: loki_url,
+        tempo_base_url: tempo_url,
         client: reqwest::Client::new(),
         graphs,
         tests: UiIndex::from_ordered(tests_ordered, |t| &t.dto.id),
