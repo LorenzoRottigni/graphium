@@ -458,6 +458,8 @@ impl GraphiumTelemetry {
 fn init_traces(resource: &Resource, endpoints: &TelemetryEndpoints) -> opentelemetry_sdk::trace::SdkTracerProvider {
     use opentelemetry::global;
     use opentelemetry_otlp::{Protocol, SpanExporter, WithExportConfig};
+    use opentelemetry_sdk::runtime::TokioCurrentThread;
+    use opentelemetry_sdk::trace::span_processor_with_async_runtime::BatchSpanProcessor;
 
     let exporter = SpanExporter::builder()
         .with_http()
@@ -466,8 +468,10 @@ fn init_traces(resource: &Resource, endpoints: &TelemetryEndpoints) -> opentelem
         .build()
         .expect("build otlp span exporter");
 
+    let processor = BatchSpanProcessor::builder(exporter, TokioCurrentThread).build();
+
     let provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
-        .with_batch_exporter(exporter)
+        .with_span_processor(processor)
         .with_resource(resource.clone())
         .build();
 
@@ -481,6 +485,8 @@ fn init_logs(
     endpoints: &TelemetryEndpoints,
 ) -> opentelemetry_sdk::logs::SdkLoggerProvider {
     use opentelemetry_otlp::{LogExporter, Protocol, WithExportConfig};
+    use opentelemetry_sdk::logs::log_processor_with_async_runtime::BatchLogProcessor;
+    use opentelemetry_sdk::runtime::TokioCurrentThread;
 
     let exporter = LogExporter::builder()
         .with_http()
@@ -489,8 +495,10 @@ fn init_logs(
         .build()
         .expect("build otlp log exporter");
 
+    let processor = BatchLogProcessor::builder(exporter, TokioCurrentThread).build();
+
     let provider = opentelemetry_sdk::logs::SdkLoggerProvider::builder()
-        .with_batch_exporter(exporter)
+        .with_log_processor(processor)
         .with_resource(resource.clone())
         .build();
 
@@ -504,7 +512,11 @@ fn init_metrics(
 ) -> (opentelemetry_sdk::metrics::SdkMeterProvider, MetricInstruments) {
     use opentelemetry::global;
     use opentelemetry_otlp::{MetricExporter, Protocol, WithExportConfig};
-    use opentelemetry_sdk::metrics::SdkMeterProvider;
+    use opentelemetry_sdk::metrics::{
+        SdkMeterProvider,
+        periodic_reader_with_async_runtime::PeriodicReader,
+    };
+    use opentelemetry_sdk::runtime::TokioCurrentThread;
 
     let exporter = MetricExporter::builder()
         .with_http()
@@ -513,8 +525,10 @@ fn init_metrics(
         .build()
         .expect("build otlp metric exporter");
 
+    let reader = PeriodicReader::builder(exporter, TokioCurrentThread).build();
+
     let provider = SdkMeterProvider::builder()
-        .with_periodic_exporter(exporter)
+        .with_reader(reader)
         .with_resource(resource.clone())
         .build();
 

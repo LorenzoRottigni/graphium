@@ -2,6 +2,7 @@ use axum::{
     self, Json,
     extract::{Path, Query, State},
 };
+use axum::http::StatusCode;
 
 use crate::{
     graphs::{
@@ -16,25 +17,46 @@ use crate::{
 pub async fn create_product(
     State(state): State<AppState>,
     mut multipart: axum::extract::Multipart,
-) -> Json<crate::models::Product> {
-    let name = multipart
+) -> Result<Json<crate::models::Product>, (StatusCode, String)> {
+    let mut name: Option<String> = None;
+    let mut price: Option<String> = None;
+
+    while let Some(field) = multipart
         .next_field()
         .await
-        .unwrap()
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
-    let price = multipart
-        .next_field()
-        .await
-        .unwrap()
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("invalid multipart body: {e}")))? {
+        let field_name = field.name().map(|n| n.to_string());
+        let value = field
+            .text()
+            .await
+            .map_err(|e| (StatusCode::BAD_REQUEST, format!("invalid multipart field: {e}")))?;
+
+        match field_name.as_deref() {
+            Some("name") => name = Some(value),
+            Some("price") => price = Some(value),
+            // Be lenient with clients that don't send field names: treat first two values
+            // as (name, price).
+            _ => {
+                if name.is_none() {
+                    name = Some(value);
+                } else if price.is_none() {
+                    price = Some(value);
+                }
+            }
+        }
+    }
+
+    let name = name.ok_or((
+        StatusCode::BAD_REQUEST,
+        "missing multipart field `name`".to_string(),
+    ))?;
+    let price = price.ok_or((
+        StatusCode::BAD_REQUEST,
+        "missing multipart field `price`".to_string(),
+    ))?;
+
     let mut ctx = state.graphium_ctx.lock().await;
-    CreateProductGraph::run_async(&mut ctx, name, price).await
+    Ok(CreateProductGraph::run_async(&mut ctx, name, price).await)
 }
 
 #[axum::debug_handler]
