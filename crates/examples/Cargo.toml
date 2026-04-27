@@ -11,11 +11,19 @@ serde = { version = "1.0", features = ["derive"] }
 
 # graphium crates
 graphium = { version = "0.1.0", path = "../core", default-features = false }
-graphium-macro = { version = "0.1.0", path = "../macro" }
-graphium-ui = { version = "0.1.0", path = "../ui" }
+graphium-ui = { version = "0.1.0", path = "../ui", optional = true }
 
 [features]
-default = ["export", "metrics", "trace", "logs", "playground"]
+default = ["full"]
+
+# "real world" app build: macros + telemetry (no DTO/export/UI/playground).
+macro = ["macros", "metrics", "trace", "logs"]
+
+# Dev/admin build: UI + DTO/export + telemetry + playground.
+full = ["ui", "export", "dto", "metrics", "trace", "logs", "playground", "macros"]
+
+ui = ["dep:graphium-ui"]
+macros = ["graphium/macros"]
 export = ["graphium/export"]
 dto = ["graphium/dto"]
 metrics = ["graphium/metrics"]

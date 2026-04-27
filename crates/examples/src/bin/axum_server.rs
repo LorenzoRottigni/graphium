@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
 use axum::{Router, routing::get};
-use graphium_macro::{graph, node};
+use graphium::{graph, node};
 
 #[derive(Clone)]
 struct Context {

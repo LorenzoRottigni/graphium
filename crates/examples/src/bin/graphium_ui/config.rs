@@ -1,4 +1,4 @@
-use graphium_macro::{graph, graph_test, node, node_test};
+use graphium::{graph, graph_test, node, node_test};
 use graphium_ui::{config::GraphiumUiConfig, graphs};
 
 #[derive(Clone, Copy, PartialEq, Eq)]

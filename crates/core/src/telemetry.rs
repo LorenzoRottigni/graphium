@@ -24,14 +24,50 @@ pub struct TelemetryEndpoints {
     pub service_name: String,
 }
 
+impl TelemetryEndpoints {
+    pub fn from_env() -> Self {
+        fn env(key: &str) -> Option<String> {
+            std::env::var(key).ok().filter(|v| !v.trim().is_empty())
+        }
+
+        fn join_base(base: &str, suffix: &str) -> String {
+            let base = base.trim_end_matches('/');
+            format!("{base}{suffix}")
+        }
+
+        let base_otlp = env("OTEL_EXPORTER_OTLP_ENDPOINT");
+
+        let prometheus_otlp_http = env("GRAPHIUM_PROMETHEUS_OTLP_HTTP")
+            .or_else(|| env("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"))
+            .or_else(|| base_otlp.as_deref().map(|b| join_base(b, "/v1/metrics")))
+            .unwrap_or_else(|| DEFAULT_PROMETHEUS_OTLP_HTTP.to_string());
+
+        let loki_otlp_http = env("GRAPHIUM_LOKI_OTLP_HTTP")
+            .or_else(|| env("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"))
+            .or_else(|| base_otlp.as_deref().map(|b| join_base(b, "/v1/logs")))
+            .unwrap_or_else(|| DEFAULT_LOKI_OTLP_HTTP.to_string());
+
+        let tempo_otlp_http = env("GRAPHIUM_TEMPO_OTLP_HTTP")
+            .or_else(|| env("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"))
+            .or_else(|| base_otlp.as_deref().map(|b| join_base(b, "/v1/traces")))
+            .unwrap_or_else(|| DEFAULT_TEMPO_OTLP_HTTP.to_string());
+
+        let service_name = env("GRAPHIUM_SERVICE_NAME")
+            .or_else(|| env("OTEL_SERVICE_NAME"))
+            .unwrap_or_else(|| "graphium".to_string());
+
+        Self {
+            prometheus_otlp_http,
+            loki_otlp_http,
+            tempo_otlp_http,
+            service_name,
+        }
+    }
+}
+
 impl Default for TelemetryEndpoints {
     fn default() -> Self {
-        Self {
-            prometheus_otlp_http: DEFAULT_PROMETHEUS_OTLP_HTTP.to_string(),
-            loki_otlp_http: DEFAULT_LOKI_OTLP_HTTP.to_string(),
-            tempo_otlp_http: DEFAULT_TEMPO_OTLP_HTTP.to_string(),
-            service_name: "graphium".to_string(),
-        }
+        Self::from_env()
     }
 }
 
@@ -228,8 +264,12 @@ pub struct GraphiumTelemetry {
 
 impl GraphiumTelemetry {
     pub fn global() -> &'static Self {
+        Self::init_global(TelemetryEndpoints::default())
+    }
+
+    pub fn init_global(endpoints: TelemetryEndpoints) -> &'static Self {
         static TELEMETRY: OnceLock<GraphiumTelemetry> = OnceLock::new();
-        TELEMETRY.get_or_init(|| GraphiumTelemetry::init(TelemetryEndpoints::default()))
+        TELEMETRY.get_or_init(|| GraphiumTelemetry::init(endpoints))
     }
 
     fn init(endpoints: TelemetryEndpoints) -> Self {

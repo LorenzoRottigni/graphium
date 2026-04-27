@@ -1,7 +1,8 @@
 use axum::Json;
-use graphium_macro::node;
+use graphium::node;
 
 node! {
+    #[metrics("performance", "errors", "count", "success_rate", "fail_rate")]
     pub async fn migrate_products_table(ctx: &crate::context::Context) -> Result<(), String> {
         sqlx::query(
             r#"
@@ -20,6 +21,7 @@ node! {
 }
 
 node! {
+    #[metrics("performance", "errors", "count", "success_rate", "fail_rate")]
     pub async fn product_create(
         ctx: &crate::context::Context,
         new_product: &crate::models::NewProduct,
@@ -41,6 +43,7 @@ node! {
 }
 
 node! {
+    #[metrics("performance", "errors", "count", "success_rate", "fail_rate")]
     pub async fn product_get_by_id(
         ctx: &crate::context::Context,
         product_id: i64,
@@ -61,6 +64,7 @@ node! {
 }
 
 node! {
+    #[metrics("performance", "errors", "count", "success_rate", "fail_rate")]
     pub async fn product_list(
         ctx: &crate::context::Context,
         limit: i64,
@@ -84,6 +88,7 @@ node! {
 }
 
 node! {
+    #[metrics("performance", "errors", "count", "success_rate", "fail_rate")]
     pub async fn product_update_price(
         ctx: &crate::context::Context,
         product_id: i64,
@@ -107,6 +112,7 @@ node! {
 }
 
 node! {
+    #[metrics("performance", "errors", "count", "success_rate", "fail_rate")]
     pub async fn product_delete(
         ctx: &crate::context::Context,
         product_id: i64,
@@ -126,6 +132,7 @@ node! {
 }
 
 node! {
+    #[metrics("performance", "errors", "count", "success_rate", "fail_rate")]
     pub async fn check_product_does_not_exist(
         ctx: &crate::context::Context,
         product_input: &crate::models::NewProduct,
@@ -150,6 +157,7 @@ node! {
 }
 
 node! {
+    #[metrics("performance", "errors", "count", "success_rate", "fail_rate")]
     pub async fn get_product_input(
         name: String,
         price: String,
@@ -162,6 +170,7 @@ node! {
 }
 
 node! {
+    #[metrics("performance", "errors", "count", "success_rate", "fail_rate")]
     pub async fn validate_product_input_data(
         product_input: &crate::models::NewProduct,
     ) {
@@ -175,6 +184,7 @@ node! {
 }
 
 node! {
+    #[metrics("performance", "errors", "count", "success_rate", "fail_rate")]
     pub async fn serialize_product(
         product: crate::models::Product,
     ) -> Json<crate::models::Product> {
@@ -183,6 +193,7 @@ node! {
 }
 
 node! {
+    #[metrics("performance", "errors", "count", "success_rate", "fail_rate")]
     pub async fn product_update(
         ctx: &crate::context::Context,
         product_id: i64,
@@ -209,6 +220,7 @@ node! {
 }
 
 node! {
+    #[metrics("performance", "errors", "count", "success_rate", "fail_rate")]
     pub async fn unwrap_result_option_product(
         product: Result<Option<crate::models::Product>, String>,
     ) -> crate::models::Product {
@@ -221,6 +233,7 @@ node! {
 }
 
 node! {
+    #[metrics("performance", "errors", "count", "success_rate", "fail_rate")]
     pub async fn unwrap_result_products(
         products: Result<Vec<crate::models::Product>, String>,
     ) -> Vec<crate::models::Product> {
@@ -232,6 +245,7 @@ node! {
 }
 
 node! {
+    #[metrics("performance", "errors", "count", "success_rate", "fail_rate")]
     pub async fn unwrap_result_rows_affected(
         rows: Result<u64, String>,
     ) -> u64 {
@@ -243,6 +257,7 @@ node! {
 }
 
 node! {
+    #[metrics("performance", "errors", "count", "success_rate", "fail_rate")]
     pub async fn rows_affected_to_delete_result(
         rows: u64,
     ) -> crate::models::DeleteResult {
@@ -251,6 +266,7 @@ node! {
 }
 
 node! {
+    #[metrics("performance", "errors", "count", "success_rate", "fail_rate")]
     pub async fn serialize_products(
         products: Vec<crate::models::Product>,
     ) -> Json<Vec<crate::models::Product>> {
@@ -259,6 +275,7 @@ node! {
 }
 
 node! {
+    #[metrics("performance", "errors", "count", "success_rate", "fail_rate")]
     pub async fn serialize_delete_result(
         result: crate::models::DeleteResult,
     ) -> Json<crate::models::DeleteResult> {
