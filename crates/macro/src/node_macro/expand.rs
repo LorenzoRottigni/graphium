@@ -325,10 +325,10 @@ pub fn expand(input: TokenStream) -> TokenStream {
     let metrics_config_tokens = metric_config_tokens(node_def.metrics);
     let metrics_defs = if metrics_enabled {
         quote! {
-            fn __graphium_node_metrics() -> &'static ::graphium::metrics::NodeMetricsHandle {
-                static METRICS: ::std::sync::OnceLock<::graphium::metrics::NodeMetricsHandle> = ::std::sync::OnceLock::new();
-                METRICS.get_or_init(|| {
-                    ::graphium::metrics::node_metrics(
+            fn __graphium_node_telemetry() -> &'static ::graphium::telemetry::NodeTelemetryHandle {
+                static TELEMETRY: ::std::sync::OnceLock<::graphium::telemetry::NodeTelemetryHandle> = ::std::sync::OnceLock::new();
+                TELEMETRY.get_or_init(|| {
+                    ::graphium::GraphiumTelemetry::global().node_metrics(
                         module_path!(),
                         Self::NAME,
                         module_path!(),
@@ -369,12 +369,21 @@ pub fn expand(input: TokenStream) -> TokenStream {
             if returns_result {
                 if track_panic_sync {
                     quote! {
-                        let __graphium_metrics = Self::__graphium_node_metrics();
+                        #[cfg(any(feature = "metrics", feature = "trace", feature = "logs"))]
+                        let __graphium_telemetry = ::graphium::GraphiumTelemetry::global();
+                        #[cfg(feature = "trace")]
+                        let _ = __graphium_telemetry
+                            .node_span(module_path!(), Self::NAME)
+                            .entered();
+
+                        let __graphium_metrics = Self::__graphium_node_telemetry();
                         let __graphium_start = __graphium_metrics.start_timer();
                         let __graphium_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| #fn_name(#( #call_args ),*)));
                         match __graphium_result {
                             Ok(value) => {
                                 if value.is_err() {
+                                    #[cfg(feature = "logs")]
+                                    ::graphium::telemetry::tracing::error!(graph = module_path!(), node = Self::NAME, "node failed");
                                     __graphium_metrics.record_failure(__graphium_start);
                                 } else {
                                     __graphium_metrics.record_success(__graphium_start);
@@ -382,6 +391,8 @@ pub fn expand(input: TokenStream) -> TokenStream {
                                 value
                             }
                             Err(payload) => {
+                                #[cfg(feature = "logs")]
+                                ::graphium::telemetry::tracing::error!(graph = module_path!(), node = Self::NAME, "node panicked");
                                 __graphium_metrics.record_failure(__graphium_start);
                                 ::std::panic::resume_unwind(payload)
                             }
@@ -389,10 +400,19 @@ pub fn expand(input: TokenStream) -> TokenStream {
                     }
                 } else {
                     quote! {
-                        let __graphium_metrics = Self::__graphium_node_metrics();
+                        #[cfg(any(feature = "metrics", feature = "trace", feature = "logs"))]
+                        let __graphium_telemetry = ::graphium::GraphiumTelemetry::global();
+                        #[cfg(feature = "trace")]
+                        let _ = __graphium_telemetry
+                            .node_span(module_path!(), Self::NAME)
+                            .entered();
+
+                        let __graphium_metrics = Self::__graphium_node_telemetry();
                         let __graphium_start = __graphium_metrics.start_timer();
                         let value = #fn_name(#( #call_args ),*);
                         if value.is_err() {
+                            #[cfg(feature = "logs")]
+                            ::graphium::telemetry::tracing::error!(graph = module_path!(), node = Self::NAME, "node failed");
                             __graphium_metrics.record_failure(__graphium_start);
                         } else {
                             __graphium_metrics.record_success(__graphium_start);
@@ -402,7 +422,14 @@ pub fn expand(input: TokenStream) -> TokenStream {
                 }
             } else if track_panic_sync {
                 quote! {
-                    let __graphium_metrics = Self::__graphium_node_metrics();
+                    #[cfg(any(feature = "metrics", feature = "trace", feature = "logs"))]
+                    let __graphium_telemetry = ::graphium::GraphiumTelemetry::global();
+                    #[cfg(feature = "trace")]
+                    let _ = __graphium_telemetry
+                        .node_span(module_path!(), Self::NAME)
+                        .entered();
+
+                    let __graphium_metrics = Self::__graphium_node_telemetry();
                     let __graphium_start = __graphium_metrics.start_timer();
                     let __graphium_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| #fn_name(#( #call_args ),*)));
                     match __graphium_result {
@@ -411,6 +438,8 @@ pub fn expand(input: TokenStream) -> TokenStream {
                             value
                         }
                         Err(payload) => {
+                            #[cfg(feature = "logs")]
+                            ::graphium::telemetry::tracing::error!(graph = module_path!(), node = Self::NAME, "node panicked");
                             __graphium_metrics.record_failure(__graphium_start);
                             ::std::panic::resume_unwind(payload)
                         }
@@ -418,7 +447,14 @@ pub fn expand(input: TokenStream) -> TokenStream {
                 }
             } else {
                 quote! {
-                    let __graphium_metrics = Self::__graphium_node_metrics();
+                    #[cfg(any(feature = "metrics", feature = "trace", feature = "logs"))]
+                    let __graphium_telemetry = ::graphium::GraphiumTelemetry::global();
+                    #[cfg(feature = "trace")]
+                    let _ = __graphium_telemetry
+                        .node_span(module_path!(), Self::NAME)
+                        .entered();
+
+                    let __graphium_metrics = Self::__graphium_node_telemetry();
                     let __graphium_start = __graphium_metrics.start_timer();
                     let value = #fn_name(#( #call_args ),*);
                     __graphium_metrics.record_success(__graphium_start);
@@ -426,7 +462,16 @@ pub fn expand(input: TokenStream) -> TokenStream {
                 }
             }
         } else {
-            quote! { #fn_name(#( #call_args ),*) }
+            quote! {
+                #[cfg(any(feature = "metrics", feature = "trace", feature = "logs"))]
+                let __graphium_telemetry = ::graphium::GraphiumTelemetry::global();
+                #[cfg(feature = "trace")]
+                let _ = __graphium_telemetry
+                    .node_span(module_path!(), Self::NAME)
+                    .entered();
+
+                #fn_name(#( #call_args ),*)
+            }
         };
 
         quote! {
@@ -444,10 +489,19 @@ pub fn expand(input: TokenStream) -> TokenStream {
         let async_body = if metrics_enabled {
             if returns_result {
                 quote! {
-                    let __graphium_metrics = Self::__graphium_node_metrics();
+                    #[cfg(any(feature = "metrics", feature = "trace", feature = "logs"))]
+                    let __graphium_telemetry = ::graphium::GraphiumTelemetry::global();
+                    #[cfg(feature = "trace")]
+                    let _ = __graphium_telemetry
+                        .node_span(module_path!(), Self::NAME)
+                        .entered();
+
+                    let __graphium_metrics = Self::__graphium_node_telemetry();
                     let __graphium_start = __graphium_metrics.start_timer();
                     let value = #fn_name(#( #call_args ),*).await;
                     if value.is_err() {
+                        #[cfg(feature = "logs")]
+                        ::graphium::telemetry::tracing::error!(graph = module_path!(), node = Self::NAME, "node failed");
                         __graphium_metrics.record_failure(__graphium_start);
                     } else {
                         __graphium_metrics.record_success(__graphium_start);
@@ -456,7 +510,14 @@ pub fn expand(input: TokenStream) -> TokenStream {
                 }
             } else {
                 quote! {
-                    let __graphium_metrics = Self::__graphium_node_metrics();
+                    #[cfg(any(feature = "metrics", feature = "trace", feature = "logs"))]
+                    let __graphium_telemetry = ::graphium::GraphiumTelemetry::global();
+                    #[cfg(feature = "trace")]
+                    let _ = __graphium_telemetry
+                        .node_span(module_path!(), Self::NAME)
+                        .entered();
+
+                    let __graphium_metrics = Self::__graphium_node_telemetry();
                     let __graphium_start = __graphium_metrics.start_timer();
                     let value = #fn_name(#( #call_args ),*).await;
                     __graphium_metrics.record_success(__graphium_start);
@@ -464,7 +525,16 @@ pub fn expand(input: TokenStream) -> TokenStream {
                 }
             }
         } else {
-            quote! { #fn_name(#( #call_args ),*).await }
+            quote! {
+                #[cfg(any(feature = "metrics", feature = "trace", feature = "logs"))]
+                let __graphium_telemetry = ::graphium::GraphiumTelemetry::global();
+                #[cfg(feature = "trace")]
+                let _ = __graphium_telemetry
+                    .node_span(module_path!(), Self::NAME)
+                    .entered();
+
+                #fn_name(#( #call_args ),*).await
+            }
         };
         quote! {
             pub async fn run_async #ctx_generic(
@@ -479,10 +549,19 @@ pub fn expand(input: TokenStream) -> TokenStream {
         let async_body = if metrics_enabled {
             if returns_result {
                 quote! {
-                    let __graphium_metrics = Self::__graphium_node_metrics();
+                    #[cfg(any(feature = "metrics", feature = "trace", feature = "logs"))]
+                    let __graphium_telemetry = ::graphium::GraphiumTelemetry::global();
+                    #[cfg(feature = "trace")]
+                    let _ = __graphium_telemetry
+                        .node_span(module_path!(), Self::NAME)
+                        .entered();
+
+                    let __graphium_metrics = Self::__graphium_node_telemetry();
                     let __graphium_start = __graphium_metrics.start_timer();
                     let value = #fn_name(#( #call_args ),*);
                     if value.is_err() {
+                        #[cfg(feature = "logs")]
+                        ::graphium::telemetry::tracing::error!(graph = module_path!(), node = Self::NAME, "node failed");
                         __graphium_metrics.record_failure(__graphium_start);
                     } else {
                         __graphium_metrics.record_success(__graphium_start);
@@ -491,7 +570,14 @@ pub fn expand(input: TokenStream) -> TokenStream {
                 }
             } else {
                 quote! {
-                    let __graphium_metrics = Self::__graphium_node_metrics();
+                    #[cfg(any(feature = "metrics", feature = "trace", feature = "logs"))]
+                    let __graphium_telemetry = ::graphium::GraphiumTelemetry::global();
+                    #[cfg(feature = "trace")]
+                    let _ = __graphium_telemetry
+                        .node_span(module_path!(), Self::NAME)
+                        .entered();
+
+                    let __graphium_metrics = Self::__graphium_node_telemetry();
                     let __graphium_start = __graphium_metrics.start_timer();
                     let value = #fn_name(#( #call_args ),*);
                     __graphium_metrics.record_success(__graphium_start);
@@ -499,7 +585,16 @@ pub fn expand(input: TokenStream) -> TokenStream {
                 }
             }
         } else {
-            quote! { #fn_name(#( #call_args ),*) }
+            quote! {
+                #[cfg(any(feature = "metrics", feature = "trace", feature = "logs"))]
+                let __graphium_telemetry = ::graphium::GraphiumTelemetry::global();
+                #[cfg(feature = "trace")]
+                let _ = __graphium_telemetry
+                    .node_span(module_path!(), Self::NAME)
+                    .entered();
+
+                #fn_name(#( #call_args ),*)
+            }
         };
         quote! {
             pub async fn run_async #ctx_generic(

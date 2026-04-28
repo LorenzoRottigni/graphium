@@ -4,9 +4,11 @@ use std::sync::Arc;
 use askama::Template;
 
 use crate::http::AppHttpError;
+use crate::logs::{LogLineView, fetch_graph_logs};
 use crate::mermaid::to_mermaid;
 use crate::metrics::{fetch_metrics, fmt_metric};
 use crate::state::{AppState, collect_graph_node_names, graph::UiGraph};
+use crate::traces::{TraceSummaryView, fetch_graph_traces};
 use crate::util::{normalize_symbol, slugify};
 
 #[derive(Default, Clone)]
@@ -93,7 +95,11 @@ pub(crate) struct GraphFragmentTemplate {
     pub(crate) graph_deprecated_reason: Option<String>,
     pub(crate) mermaid: String,
     pub(crate) prometheus_base_url: String,
+    pub(crate) loki_base_url: String,
+    pub(crate) tempo_base_url: String,
     pub(crate) metrics: MetricCards,
+    pub(crate) logs: Vec<LogLineView>,
+    pub(crate) traces: Vec<TraceSummaryView>,
     pub(crate) nodes: Vec<NodeLink>,
     pub(crate) raw_schema: String,
     pub(crate) playground: Option<PlaygroundTemplateView>,
@@ -230,6 +236,9 @@ pub(crate) async fn render_graph_fragment(
         }
     });
 
+    let logs = fetch_graph_logs(&state, &graph.export.name).await;
+    let traces = fetch_graph_traces(&state, &graph.export.name).await;
+
     Ok(GraphFragmentTemplate {
         graph_id: id,
         graph_docs: graph.export.docs.clone(),
@@ -238,7 +247,11 @@ pub(crate) async fn render_graph_fragment(
         graph_deprecated_reason: graph.export.deprecated_reason.clone(),
         mermaid,
         prometheus_base_url: state.prometheus_base_url.clone(),
+        loki_base_url: state.loki_base_url.clone(),
+        tempo_base_url: state.tempo_base_url.clone(),
         metrics,
+        logs,
+        traces,
         nodes,
         raw_schema,
         playground,

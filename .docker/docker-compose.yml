@@ -1,0 +1,98 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  loki:
+    image: grafana/loki:3.0.0
+    command: ["-config.file=/etc/loki/config.yml"]
+    volumes:
+      - ./loki.yml:/etc/loki/config.yml:ro
+    ports:
+      - "3100:3100"
+
+  tempo:
+    image: grafana/tempo:2.5.0
+    command: ["-config.file=/etc/tempo/config.yml"]
+    volumes:
+      - ./tempo.yml:/etc/tempo/config.yml:ro
+    ports:
+      - "3200:3200"
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.103.0
+    command: ["--config=/etc/otelcol/config.yml"]
+    volumes:
+      - ./otel-collector.yml:/etc/otelcol/config.yml:ro
+    ports:
+      - "4318:4318"
+      - "8889:8889"
+    depends_on:
+      - loki
+      - tempo
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - otel-collector
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3002:3000"
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+
+  ecommerce-prod:
+    build:
+      context: ..
+      dockerfile: .docker/ecommerce/Dockerfile
+    environment:
+      ECOMMERCE_BIND: 0.0.0.0:3000
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/postgres
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      GRAPHIUM_SERVICE_NAME: ecommerce-prod
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+
+  ecommerce-admin:
+    build:
+      context: ..
+      dockerfile: .docker/ecommerce/Dockerfile.ui
+    environment:
+      GRAPHIUM_UI_BIND: 0.0.0.0:4000
+      GRAPHIUM_PROMETHEUS_URL: http://prometheus:9090
+      GRAPHIUM_LOKI_URL: http://loki:3100
+      GRAPHIUM_TEMPO_URL: http://tempo:3200
+    ports:
+      - "4000:4000"
+    depends_on:
+      - prometheus
+      - loki
+      - tempo

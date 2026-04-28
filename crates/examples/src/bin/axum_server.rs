@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
-use axum::{Router, response::IntoResponse, routing::get};
-use graphium_macro::{graph, node};
+use axum::{Router, routing::get};
+use graphium::{graph, node};
 
 #[derive(Clone)]
 struct Context {
@@ -32,10 +32,6 @@ async fn ping_handler() -> &'static str {
 
 async fn version_handler() -> &'static str {
     "v0"
-}
-
-async fn metrics_handler() -> impl IntoResponse {
-    graphium::metrics::render_prometheus()
 }
 
 node! {
@@ -73,13 +69,6 @@ node! {
 }
 
 node! {
-    fn add_metrics_route(ctx: &mut Context) {
-        let router = std::mem::take(&mut ctx.router);
-        ctx.router = router.route("/metrics", get(metrics_handler));
-    }
-}
-
-node! {
     async fn start_server(ctx: &mut Context) {
         let listener = tokio::net::TcpListener::bind(ctx.addr)
             .await
@@ -97,7 +86,6 @@ graph! {
         AddHealthRoute() >>
         AddPingRoute() >>
         AddVersionRoute() >>
-        AddMetricsRoute() >>
         StartServer()
     }
 }

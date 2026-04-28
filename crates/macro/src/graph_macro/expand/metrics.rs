@@ -22,17 +22,17 @@ pub(super) fn wrap_sync_graph_body(run_body: &TokenStream, metrics: &MetricsSpec
         quote! {{
             #[cfg(feature = "metrics")]
             {
-                let __graphium_metrics = Self::__graphium_graph_metrics();
-                let __graphium_start = __graphium_metrics.start_timer();
+                let __graphium_telemetry = Self::__graphium_graph_telemetry();
+                let __graphium_start = __graphium_telemetry.start_timer();
                 let __graphium_result =
                     ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| #run_body));
                 match __graphium_result {
                     Ok(value) => {
-                        __graphium_metrics.record_success(__graphium_start);
+                        __graphium_telemetry.record_success(__graphium_start);
                         value
                     }
                     Err(payload) => {
-                        __graphium_metrics.record_failure(__graphium_start);
+                        __graphium_telemetry.record_failure(__graphium_start);
                         ::std::panic::resume_unwind(payload)
                     }
                 }
@@ -47,10 +47,10 @@ pub(super) fn wrap_sync_graph_body(run_body: &TokenStream, metrics: &MetricsSpec
         quote! {{
             #[cfg(feature = "metrics")]
             {
-                let __graphium_metrics = Self::__graphium_graph_metrics();
-                let __graphium_start = __graphium_metrics.start_timer();
+                let __graphium_telemetry = Self::__graphium_graph_telemetry();
+                let __graphium_start = __graphium_telemetry.start_timer();
                 let value = #run_body;
-                __graphium_metrics.record_success(__graphium_start);
+                __graphium_telemetry.record_success(__graphium_start);
                 value
             }
 
@@ -77,10 +77,10 @@ pub(super) fn wrap_async_graph_body(
     quote! {{
         #[cfg(feature = "metrics")]
         {
-            let __graphium_metrics = Self::__graphium_graph_metrics();
-            let __graphium_start = __graphium_metrics.start_timer();
+            let __graphium_telemetry = Self::__graphium_graph_telemetry();
+            let __graphium_start = __graphium_telemetry.start_timer();
             let value = #run_body_async;
-            __graphium_metrics.record_success(__graphium_start);
+            __graphium_telemetry.record_success(__graphium_start);
             value
         }
 
@@ -108,11 +108,11 @@ pub(super) fn build_metrics_impl(
     quote! {
         #[cfg(feature = "metrics")]
         impl #name {
-            fn __graphium_graph_metrics() -> &'static ::graphium::metrics::GraphMetricsHandle {
-                static METRICS: ::std::sync::OnceLock<::graphium::metrics::GraphMetricsHandle> =
+            fn __graphium_graph_telemetry() -> &'static ::graphium::telemetry::GraphTelemetryHandle {
+                static TELEMETRY: ::std::sync::OnceLock<::graphium::telemetry::GraphTelemetryHandle> =
                     ::std::sync::OnceLock::new();
-                METRICS.get_or_init(|| {
-                    ::graphium::metrics::graph_metrics(
+                TELEMETRY.get_or_init(|| {
+                    ::graphium::GraphiumTelemetry::global().graph_metrics(
                         stringify!(#name),
                         module_path!(),
                         #metrics_config_tokens,
@@ -136,7 +136,7 @@ pub(super) fn metric_config_tokens(metrics: &MetricsSpec) -> TokenStream {
     let fail_rate = metrics.fail_rate;
 
     quote! {
-        ::graphium::metrics::MetricConfig {
+        ::graphium::telemetry::MetricConfig {
             performance: #performance,
             errors: #errors,
             count: #count,

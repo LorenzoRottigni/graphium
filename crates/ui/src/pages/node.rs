@@ -3,8 +3,10 @@ use std::sync::Arc;
 use askama::Template;
 
 use crate::http::AppHttpError;
+use crate::logs::{LogLineView, fetch_node_logs};
 use crate::metrics::{fetch_node_metrics, fmt_metric};
 use crate::state::AppState;
+use crate::traces::{TraceSummaryView, fetch_node_traces};
 use crate::util::normalize_symbol;
 
 #[derive(Clone)]
@@ -41,6 +43,11 @@ pub(crate) struct NodeTemplate {
     pub(crate) metrics_graph: String,
     pub(crate) metrics_node: String,
     pub(crate) metrics: MetricCards,
+
+    pub(crate) loki_base_url: String,
+    pub(crate) tempo_base_url: String,
+    pub(crate) logs: Vec<LogLineView>,
+    pub(crate) traces: Vec<TraceSummaryView>,
 
     pub(crate) tests: Vec<TestLink>,
 
@@ -83,6 +90,9 @@ pub(crate) async fn node_page_html(
         p95: fmt_metric(metrics_view.p95_seconds),
     };
 
+    let logs = fetch_node_logs(&state, &node.dto.metrics_graph, &node.dto.metrics_node).await;
+    let traces = fetch_node_traces(&state, &node.dto.metrics_graph, &node.dto.metrics_node).await;
+
     Ok(NodeTemplate {
         title: format!("Node: {} | Graphium UI", node.dto.label),
         active: "dashboard",
@@ -96,6 +106,10 @@ pub(crate) async fn node_page_html(
         metrics_graph: node.dto.metrics_graph.clone(),
         metrics_node: node.dto.metrics_node.clone(),
         metrics,
+        loki_base_url: state.loki_base_url.clone(),
+        tempo_base_url: state.tempo_base_url.clone(),
+        logs,
+        traces,
         tests,
         raw_schema: node.dto.raw_schema.clone(),
     }

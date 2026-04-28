@@ -1,4 +1,4 @@
-use graphium_macro::{graph, node};
+use graphium::{graph, node};
 
 #[derive(Default)]
 struct Context;

@@ -26,6 +26,10 @@ export = []
 dto = []
 # Enables macro-generated graph metrics wrappers and helpers.
 metrics = []
+# Enables macro-generated trace spans helpers.
+trace = []
+# Enables macro-generated logs helpers.
+logs = []
 # Enables macro-generated playground helpers.
 playground = []
 # Back-compat alias (deprecated): prefer `export`.

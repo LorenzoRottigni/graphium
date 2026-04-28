@@ -45,7 +45,20 @@ pub fn build_async_impl(
                 ctx: &mut #context,
                 #( #run_params ),*
             ) #run_return_sig {
-                #async_graph_body
+                #[cfg(any(feature = "metrics", feature = "trace", feature = "logs"))]
+                let __graphium_telemetry = ::graphium::GraphiumTelemetry::global();
+                #[cfg(feature = "trace")]
+                let _ = __graphium_telemetry.graph_span(stringify!(#name)).entered();
+
+                #[cfg(feature = "logs")]
+                ::graphium::telemetry::tracing::info!(graph = stringify!(#name), "graph started");
+
+                let __graphium_result = #async_graph_body;
+
+                #[cfg(feature = "logs")]
+                ::graphium::telemetry::tracing::info!(graph = stringify!(#name), "graph finished");
+
+                __graphium_result
             }
             #default_runner
         }

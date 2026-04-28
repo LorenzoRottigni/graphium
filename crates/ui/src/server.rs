@@ -34,7 +34,12 @@ pub async fn serve(config: GraphiumUiConfig) -> Result<(), UiError> {
         return Err(UiError::EmptyGraphs);
     }
 
-    let state = Arc::new(build_state(config.prometheus_url, config.graphs));
+    let state = Arc::new(build_state(
+        config.prometheus_url,
+        config.loki_url,
+        config.tempo_url,
+        config.graphs,
+    ));
 
     let app = Router::new()
         .route("/", get(home))
