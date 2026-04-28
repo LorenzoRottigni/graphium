@@ -1,10 +1,10 @@
 error: proc macro panicked
-  --> tests/negative/artifacts/artifacts_drop_require_borrowing.rs:20:5
+  --> tests/negative/artifacts/artifacts_borrow_require_borrowing.rs:20:5
    |
 20 | /     graph! {
 21 | |         InvalidGraph {
 22 | |             GetNumber() -> (number) >>
-23 | |             PipeNumber(*number)
+23 | |             PipeNumber(&number)
 24 | |         }
 25 | |     }
    | |_____^
