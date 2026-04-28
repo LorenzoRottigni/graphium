@@ -1,0 +1,12 @@
+error: proc macro panicked
+  --> tests/compile_fail/e2e_graph/artifacts.rs:16:5
+   |
+16 | /     graph! {
+17 | |         InvalidGraph {
+18 | |             GetNumber() -> (number) >>
+19 | |             PipeNumber(number) >>
+...  |
+22 | |     }
+   | |_____^
+   |
+   = help: message: missing artifact `number` for next hop

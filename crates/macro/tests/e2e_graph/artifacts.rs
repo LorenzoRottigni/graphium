@@ -36,7 +36,6 @@ fn e2e_graph_macro_moves_artifacts() {
     assert_eq!(duplicated, 42);
 }
 
-
 #[test]
 /// This test ensures that graph macro **borrows** artifacts when using smart injection with references:
 /// - `GetNumber` produces `number` artifact that is moved into `StoreNumber`
