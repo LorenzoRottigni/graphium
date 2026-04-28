@@ -4,6 +4,7 @@ use graphium_macro::{graph, node};
 /// - `GetNumber` produces a `number` artifact that is moved to next node (not persisted in graph lifetime)
 /// - `PipeNumber` expects to move-in a `number` artifact that should be owned by its parent graph.
 /// - Expect error: `number` isn't living in the graph lifetime so can't be dropped.
+
 fn main() {
     node! {
         fn get_number() -> u32 {

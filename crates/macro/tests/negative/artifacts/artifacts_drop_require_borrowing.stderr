@@ -1,5 +1,12 @@
-error: unexpected end of input, expected identifier
-  --> tests/negative/artifacts/artifacts_drop_require_borrowing.rs:20:9
+error: proc macro panicked
+  --> tests/negative/artifacts/artifacts_drop_require_borrowing.rs:21:5
    |
-20 |         }
-   |         ^
+21 | /     graph! {
+22 | |         InvalidGraph {
+23 | |             GetNumber() -> (number) >>
+24 | |             PipeNumber(*number)
+25 | |         }
+26 | |     }
+   | |_____^
+   |
+   = help: message: missing borrowed artifact `number` for node call
