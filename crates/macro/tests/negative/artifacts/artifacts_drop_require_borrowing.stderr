@@ -1,0 +1,5 @@
+error: unexpected end of input, expected identifier
+  --> tests/negative/artifacts/artifacts_drop_require_borrowing.rs:20:9
+   |
+20 |         }
+   |         ^
