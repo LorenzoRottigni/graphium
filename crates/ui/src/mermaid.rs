@@ -33,6 +33,9 @@ pub(crate) fn to_mermaid(
         "classDef ctx fill:#13112b,stroke:#6366f1,color:#e0e7ff,stroke-width:2px".to_string(),
     );
     lines.push(
+        "classDef frame fill:#0b1220,stroke:#38bdf8,color:#e0f2fe,stroke-width:2px".to_string(),
+    );
+    lines.push(
         "classDef stepNode fill:#121214,stroke:#06b6d4,color:#ecfeff,stroke-width:2px".to_string(),
     );
     lines.push("classDef stepNodeCtxRef stroke:#6366f1,stroke-width:4px".to_string());
@@ -43,7 +46,6 @@ pub(crate) fn to_mermaid(
     );
 
     let root = next_id(&mut counter);
-    println!("root is {root}");
     lines.push(format!(
         r#"{root}(["{}"]):::graphRoot"#,
         escape_label(&graph.name)
@@ -71,16 +73,28 @@ pub(crate) fn to_mermaid(
         None
     };
 
+    let frame_node = if graph_uses_artifact_frame(&graph.flow.steps) {
+        let node_id = next_id(&mut counter);
+        lines.push(format!(r#"{node_id}(["{}"]):::frame"#, "graph lifetime"));
+        Some(node_id)
+    } else {
+        None
+    };
+
     if let Some(inputs_node) = &inputs_node {
         lines.push(format!("{root} --> {inputs_node}"));
     }
     if let Some(ctx_node) = &ctx_node {
         lines.push(format!("{root} --> {ctx_node}"));
     }
+    if let Some(frame_node) = &frame_node {
+        lines.push(format!("{root} --> {frame_node}"));
+    }
 
     let mut tracker = ArtifactTracker {
         inputs_node,
         ctx_node,
+        frame_node,
         ..Default::default()
     };
     if let Some(inputs_node) = &tracker.inputs_node {
@@ -132,9 +146,9 @@ pub(crate) fn to_mermaid(
 #[derive(Clone, Default)]
 struct ArtifactTracker {
     owned: HashMap<String, String>,
-    ctx_live: HashSet<String>,
     inputs_node: Option<String>,
     ctx_node: Option<String>,
+    frame_node: Option<String>,
 }
 
 #[derive(Clone)]
@@ -301,7 +315,7 @@ fn render_step(
                     }
                 }
             }
-            apply_ctx_updates(tracker, &join, &borrowed_outputs, lines);
+            apply_frame_updates(tracker, &join, &borrowed_outputs, lines);
 
             RenderedSteps {
                 head: fork,
@@ -374,7 +388,7 @@ fn render_step(
                     }
                 }
             }
-            apply_ctx_updates(tracker, &join, &borrowed_outputs, lines);
+            apply_frame_updates(tracker, &join, &borrowed_outputs, lines);
 
             RenderedSteps {
                 head: decision,
@@ -416,7 +430,7 @@ fn render_step(
                     }
                 }
             }
-            apply_ctx_updates(tracker, &exit, &borrowed_outputs, lines);
+            apply_frame_updates(tracker, &exit, &borrowed_outputs, lines);
 
             RenderedSteps {
                 head: cond,
@@ -464,7 +478,7 @@ fn render_step(
                     }
                 }
             }
-            apply_ctx_updates(tracker, &exit, &borrowed_outputs, lines);
+            apply_frame_updates(tracker, &exit, &borrowed_outputs, lines);
 
             RenderedSteps {
                 head: start,
@@ -485,41 +499,13 @@ fn render_step(
 fn graph_uses_ctx(steps: &[GraphStepDto]) -> bool {
     for step in steps {
         match step {
-            GraphStepDto::Node {
-                inputs,
-                outputs,
-                ctx,
-                ..
-            } => {
+            GraphStepDto::Node { ctx, .. } => {
                 if *ctx != CtxAccessDto::None {
-                    return true;
-                }
-                if inputs
-                    .iter()
-                    .any(|v| v.starts_with('&') || v.starts_with('*'))
-                    || outputs
-                        .iter()
-                        .any(|v| v.starts_with('&') || v.starts_with('*'))
-                {
                     return true;
                 }
             }
-            GraphStepDto::Nested {
-                inputs,
-                outputs,
-                ctx,
-                ..
-            } => {
+            GraphStepDto::Nested { ctx, .. } => {
                 if *ctx != CtxAccessDto::None {
-                    return true;
-                }
-                if inputs
-                    .iter()
-                    .any(|v| v.starts_with('&') || v.starts_with('*'))
-                    || outputs
-                        .iter()
-                        .any(|v| v.starts_with('&') || v.starts_with('*'))
-                {
                     return true;
                 }
             }
@@ -535,6 +521,42 @@ fn graph_uses_ctx(steps: &[GraphStepDto]) -> bool {
             }
             GraphStepDto::While { body, .. } | GraphStepDto::Loop { body, .. } => {
                 if graph_uses_ctx(body) {
+                    return true;
+                }
+            }
+            GraphStepDto::Break => {}
+        }
+    }
+    false
+}
+
+fn graph_uses_artifact_frame(steps: &[GraphStepDto]) -> bool {
+    for step in steps {
+        match step {
+            GraphStepDto::Node { inputs, outputs, .. }
+            | GraphStepDto::Nested { inputs, outputs, .. } => {
+                if inputs
+                    .iter()
+                    .any(|v| v.starts_with('&') || v.starts_with('*'))
+                    || outputs
+                        .iter()
+                        .any(|v| v.starts_with('&') || v.starts_with('*'))
+                {
+                    return true;
+                }
+            }
+            GraphStepDto::Parallel { branches, .. } => {
+                if branches.iter().any(|b| graph_uses_artifact_frame(b)) {
+                    return true;
+                }
+            }
+            GraphStepDto::Route { cases, .. } => {
+                if cases.iter().any(|c| graph_uses_artifact_frame(&c.steps)) {
+                    return true;
+                }
+            }
+            GraphStepDto::While { body, .. } | GraphStepDto::Loop { body, .. } => {
+                if graph_uses_artifact_frame(body) {
                     return true;
                 }
             }
@@ -620,15 +642,10 @@ fn emit_artifact_edges(
     if !borrowed_inputs.is_empty() {
         borrowed_inputs.sort();
         borrowed_inputs.dedup();
-        // --
-        if let Some(ctx) = &tracker.ctx_node {
-            let label = if ctx_access == CtxAccessDto::Mut {
-                format!("borrow mut: {}", borrowed_inputs.join(", "))
-            } else {
-                format!("borrow: {}", borrowed_inputs.join(", "))
-            };
+        if let Some(frame) = &tracker.frame_node {
+            let label = format!("borrow: {}", borrowed_inputs.join(", "));
             lines.push(format!(
-                r#"{ctx} -. "{}" .- {step_node}"#,
+                r#"{frame} -. "{}" .- {step_node}"#,
                 escape_label(&label)
             ));
         }
@@ -637,19 +654,12 @@ fn emit_artifact_edges(
     if !taken_inputs.is_empty() {
         taken_inputs.sort();
         taken_inputs.dedup();
-        if let Some(ctx) = &tracker.ctx_node {
-            let label = if ctx_access == CtxAccessDto::Mut {
-                format!("take (ctx:&mut): {}", taken_inputs.join(", "))
-            } else {
-                format!("take: {}", taken_inputs.join(", "))
-            };
+        if let Some(frame) = &tracker.frame_node {
+            let label = format!("take: {}", taken_inputs.join(", "));
             lines.push(format!(
-                r#"{ctx} -. "{}" .-> {step_node}"#,
+                r#"{frame} -. "{}" .-> {step_node}"#,
                 escape_label(&label)
             ));
-        }
-        for base in &taken_inputs {
-            tracker.ctx_live.remove(*base);
         }
     }
 
@@ -668,7 +678,7 @@ fn emit_artifact_edges(
             .insert(base.to_string(), step_node.to_string());
     }
 
-    apply_ctx_updates(tracker, step_node, &borrowed_outputs, lines);
+    apply_frame_updates(tracker, step_node, &borrowed_outputs, lines);
 }
 
 fn parallel_fanout(branches: &[Vec<GraphStepDto>]) -> HashMap<String, usize> {
@@ -752,26 +762,87 @@ fn collect_steps_owned_requirements(steps: &[GraphStepDto], out: &mut HashSet<St
     }
 }
 
-fn apply_ctx_updates(
+fn apply_frame_updates(
     tracker: &mut ArtifactTracker,
     step_node: &str,
     borrowed_outputs: &[&str],
     lines: &mut Vec<String>,
 ) {
-    if let Some(ctx) = &tracker.ctx_node {
-        if borrowed_outputs.is_empty() {
-            return;
-        }
-        let mut outputs = borrowed_outputs.to_vec();
-        outputs.sort();
-        outputs.dedup();
-        let label = format!("ctx set: {}", outputs.join(", "));
-        lines.push(format!(
-            r#"{step_node} -. "{}" .- {ctx}"#,
-            escape_label(&label)
-        ));
+    let Some(frame) = &tracker.frame_node else {
+        return;
+    };
+    if borrowed_outputs.is_empty() {
+        return;
     }
-    for base in borrowed_outputs {
-        tracker.ctx_live.insert((*base).to_string());
+    let mut outputs = borrowed_outputs.to_vec();
+    outputs.sort();
+    outputs.dedup();
+    let label = format!("store ref: {}", outputs.join(", "));
+    lines.push(format!(
+        r#"{step_node} -. "{}" .- {frame}"#,
+        escape_label(&label)
+    ));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use graphium::dto::{GraphFlowDto, GraphStepDto};
+
+    #[test]
+    fn mermaid_uses_frame_for_borrowed_artifacts_not_ctx() {
+        let graph = GraphDto {
+            id: "g".to_string(),
+            name: "G".to_string(),
+            flow: GraphFlowDto {
+                inputs: vec![],
+                outputs: vec![],
+                steps: vec![
+                    GraphStepDto::Node {
+                        name: "A".to_string(),
+                        ctx: CtxAccessDto::None,
+                        inputs: vec![],
+                        outputs: vec!["&x".to_string()],
+                    },
+                    GraphStepDto::Node {
+                        name: "B".to_string(),
+                        ctx: CtxAccessDto::None,
+                        inputs: vec!["&x".to_string()],
+                        outputs: vec![],
+                    },
+                ],
+            },
+            ..Default::default()
+        };
+
+        let rendered = to_mermaid(&graph, None, &HashSet::new());
+        assert!(rendered.contains("graph lifetime"));
+        assert!(!rendered.contains(":::ctx"));
+        assert!(!rendered.contains("ctx set:"));
+        assert!(rendered.contains("store ref: x"));
+        assert!(rendered.contains("borrow: x"));
+    }
+
+    #[test]
+    fn mermaid_uses_ctx_only_when_ctx_access_present() {
+        let graph = GraphDto {
+            id: "g".to_string(),
+            name: "G".to_string(),
+            flow: GraphFlowDto {
+                inputs: vec![],
+                outputs: vec![],
+                steps: vec![GraphStepDto::Node {
+                    name: "A".to_string(),
+                    ctx: CtxAccessDto::Ref,
+                    inputs: vec![],
+                    outputs: vec![],
+                }],
+            },
+            ..Default::default()
+        };
+
+        let rendered = to_mermaid(&graph, None, &HashSet::new());
+        assert!(rendered.contains(":::ctx"));
+        assert!(!rendered.contains("graph lifetime"));
     }
 }

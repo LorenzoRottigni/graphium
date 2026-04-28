@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use axum::Router;
+use graphium::GraphiumTelemetry;
 use tokio::sync::Mutex;
 
 pub mod context;
@@ -12,7 +13,11 @@ pub mod state;
 
 #[tokio::main]
 pub async fn main() {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
+    #[cfg(any(feature = "metrics", feature = "trace", feature = "logs"))]
+    let _ = GraphiumTelemetry::global();
+
+    let bind = std::env::var("ECOMMERCE_BIND").unwrap_or_else(|_| "127.0.0.1:3000".to_string());
+    let listener = tokio::net::TcpListener::bind(&bind)
         .await
         .expect("bind address");
     let ctx = context::Context::new().await;

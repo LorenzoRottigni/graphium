@@ -18,8 +18,8 @@ use crate::ir::{MetricsSpec, parse_metric_name};
 /// # Attributes
 ///
 /// Supported metric names:
-/// - `"performance"` - Track execution time
-/// - `"errors"` - Track error count
+/// - `"performance"` / `"latency"` - Track execution time
+/// - `"errors"` / `"error_rate"` - Track error count
 /// - `"count"` - Track invocation count
 /// - `"caller"` - Track caller information
 /// - `"success_rate"` - Track success/failure ratio
@@ -45,7 +45,7 @@ pub fn extract_metrics_from_attrs(attrs: &mut Vec<Attribute>) -> MetricsSpec {
         for value in values {
             let apply = parse_metric_name(value.value().as_str()).unwrap_or_else(|| {
                 panic!(
-                    "unsupported metric `{}`; allowed: performance, errors, count, caller, success_rate, fail_rate",
+                    "unsupported metric `{}`; allowed: performance, latency, errors, error_rate, count, caller, success_rate, fail_rate",
                     value.value()
                 )
             });
@@ -70,7 +70,7 @@ pub fn metric_config_tokens(metrics: MetricsSpec) -> TokenStream {
     let fail_rate = metrics.fail_rate;
 
     quote! {
-        ::graphium::metrics::MetricConfig {
+        ::graphium::telemetry::MetricConfig {
             performance: #performance,
             errors: #errors,
             count: #count,

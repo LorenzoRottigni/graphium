@@ -9,6 +9,8 @@ use crate::{
 pub struct GraphiumUiConfig {
     pub bind: SocketAddr,
     pub prometheus_url: String,
+    pub loki_url: String,
+    pub tempo_url: String,
     pub graphs: Vec<UiGraph>,
 }
 
@@ -17,6 +19,8 @@ impl GraphiumUiConfig {
         Self {
             bind,
             prometheus_url: prometheus_url.into(),
+            loki_url: "http://127.0.0.1:3100".to_string(),
+            tempo_url: "http://127.0.0.1:3200".to_string(),
             graphs: Vec::new(),
         }
     }
@@ -25,6 +29,8 @@ impl GraphiumUiConfig {
         Self {
             bind: default_bind(),
             prometheus_url: prometheus_url.into(),
+            loki_url: "http://127.0.0.1:3100".to_string(),
+            tempo_url: "http://127.0.0.1:3200".to_string(),
             graphs,
         }
     }
@@ -46,6 +52,16 @@ impl GraphiumUiConfig {
         self.graphs = graphs;
         self
     }
+
+    pub fn with_loki_url(mut self, loki_url: impl Into<String>) -> Self {
+        self.loki_url = loki_url.into();
+        self
+    }
+
+    pub fn with_tempo_url(mut self, tempo_url: impl Into<String>) -> Self {
+        self.tempo_url = tempo_url.into();
+        self
+    }
 }
 
 impl Default for GraphiumUiConfig {
@@ -53,6 +69,8 @@ impl Default for GraphiumUiConfig {
         Self {
             bind: default_bind(),
             prometheus_url: "http://127.0.0.1:9090".to_string(),
+            loki_url: "http://127.0.0.1:3100".to_string(),
+            tempo_url: "http://127.0.0.1:3200".to_string(),
             graphs: Vec::new(),
         }
     }

@@ -2,9 +2,10 @@ use crate::context::Context;
 use crate::models::{DeleteResult, Product, UpdateProduct};
 use crate::nodes::product_service::*;
 use axum::Json;
-use graphium_macro::graph;
+use graphium::graph;
 
 graph! {
+    #[metrics("performance", "errors", "count", "success_rate", "fail_rate")]
     async CreateProductGraph<Context>(name: String, price: String) -> (product_dto: Json<Product>) {
         GetProductInput(name, price) -> &product_input >>
         ValidateProductInputData(&product_input) &&
@@ -15,6 +16,7 @@ graph! {
 }
 
 graph! {
+    #[metrics("performance", "errors", "count", "success_rate", "fail_rate")]
     async GetProductGraph<Context>(product_id: i64) -> (product_dto: Json<Product>) {
         ProductGetById(product_id) -> product_result >>
         UnwrapResultOptionProduct(product_result) -> product >>
@@ -23,6 +25,7 @@ graph! {
 }
 
 graph! {
+    #[metrics("performance", "errors", "count", "success_rate", "fail_rate")]
     async ListProductsGraph<Context>(limit: i64, offset: i64) -> (products_dto: Json<Vec<Product>>) {
         ProductList(limit, offset) -> products_result >>
         UnwrapResultProducts(products_result) -> products >>
@@ -31,6 +34,7 @@ graph! {
 }
 
 graph! {
+    #[metrics("performance", "errors", "count", "success_rate", "fail_rate")]
     async UpdateProductGraph<Context>(product_id: i64, update: UpdateProduct) -> (product_dto: Json<Product>) {
         ProductUpdate(product_id, update) -> product_result >>
         UnwrapResultOptionProduct(product_result) -> product >>
@@ -39,6 +43,7 @@ graph! {
 }
 
 graph! {
+    #[metrics("performance", "errors", "count", "success_rate", "fail_rate")]
     async DeleteProductGraph<Context>(product_id: i64) -> (result_dto: Json<DeleteResult>) {
         ProductDelete(product_id) -> rows_result >>
         UnwrapResultRowsAffected(rows_result) -> rows >>

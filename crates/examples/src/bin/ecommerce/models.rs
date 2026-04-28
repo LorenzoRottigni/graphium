@@ -1,4 +1,4 @@
-use graphium::serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, sqlx::FromRow, Serialize, Deserialize)]
 pub struct Product {
