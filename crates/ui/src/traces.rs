@@ -11,7 +11,10 @@ pub(crate) struct TraceSummaryView {
     pub(crate) api_trace_url: String,
 }
 
-pub(crate) async fn fetch_graph_traces(state: &AppState, graph_name: &str) -> Vec<TraceSummaryView> {
+pub(crate) async fn fetch_graph_traces(
+    state: &AppState,
+    graph_name: &str,
+) -> Vec<TraceSummaryView> {
     let q = format!(
         r#"{{ .service.name = "graphium" && .graph = "{}" }}"#,
         graph_name.replace('"', "\\\"")
@@ -85,4 +88,3 @@ async fn tempo_search(state: &AppState, q: &str, limit: usize) -> Vec<TraceSumma
         })
         .collect()
 }
-

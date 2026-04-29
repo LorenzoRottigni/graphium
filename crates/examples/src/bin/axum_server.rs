@@ -80,7 +80,7 @@ node! {
 }
 
 graph! {
-    async AxumServerGraph<Context> {
+    async AxumServerGraph<'a, Context> {
         InitRouter() >>
         AddRootRoute() >>
         AddHealthRoute() >>

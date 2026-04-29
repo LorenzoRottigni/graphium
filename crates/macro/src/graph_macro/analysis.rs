@@ -153,7 +153,7 @@ fn analyze_single(call: &NodeCall) -> ExprShape {
             ArtifactInputKind::Owned => {
                 *entry_usage.entry(input.to_string()).or_insert(0) += 1;
             }
-            ArtifactInputKind::Borrowed | ArtifactInputKind::Taken => {
+            ArtifactInputKind::Borrowed(_) | ArtifactInputKind::Taken(_) => {
                 entry_borrowed.insert(input.to_string());
             }
         }
@@ -166,13 +166,13 @@ fn analyze_single(call: &NodeCall) -> ExprShape {
             .outputs
             .iter()
             .zip(call.output_borrows.iter())
-            .filter_map(|(output, is_borrowed)| (!*is_borrowed).then(|| output.to_string()))
+            .filter_map(|(output, borrow)| borrow.is_none().then(|| output.to_string()))
             .collect(),
         exit_borrowed: call
             .outputs
             .iter()
             .zip(call.output_borrows.iter())
-            .filter_map(|(output, is_borrowed)| (*is_borrowed).then(|| output.to_string()))
+            .filter_map(|(output, borrow)| borrow.is_some().then(|| output.to_string()))
             .collect(),
     }
 }
@@ -310,7 +310,7 @@ mod tests {
             inputs: vec![parse_quote!(value), parse_quote!(value)],
             input_kinds: vec![ArtifactInputKind::Owned, ArtifactInputKind::Owned],
             outputs: vec![parse_quote!(out)],
-            output_borrows: vec![false],
+            output_borrows: vec![None],
         });
 
         let shape = analyze_expr(&expr);
@@ -328,10 +328,10 @@ mod tests {
                 inputs: vec![parse_quote!(value)],
                 input_kinds: vec![ArtifactInputKind::Owned],
                 outputs: vec![parse_quote!(out)],
-                output_borrows: vec![false],
+                output_borrows: vec![None],
             })),
             outputs: vec![parse_quote!(out)],
-            output_borrows: vec![false],
+            output_borrows: vec![None],
         });
 
         let shape = analyze_expr(&expr);

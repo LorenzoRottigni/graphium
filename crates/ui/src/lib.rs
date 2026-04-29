@@ -4,10 +4,10 @@ mod http;
 mod logs;
 mod mermaid;
 mod metrics;
-mod traces;
 pub mod pages;
 pub mod server;
 pub mod state;
+mod traces;
 pub mod util;
 
 pub use crate::config::GraphiumUiConfig;

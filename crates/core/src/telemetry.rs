@@ -328,7 +328,8 @@ impl GraphiumTelemetry {
         #[cfg(feature = "metrics")]
         let (count, errors, success, fail, latency) = if cfg.caller {
             (
-                cfg.count.then_some(self.instruments.graph_count_by_caller.clone()),
+                cfg.count
+                    .then_some(self.instruments.graph_count_by_caller.clone()),
                 cfg.errors
                     .then_some(self.instruments.graph_errors_by_caller.clone()),
                 cfg.success_rate
@@ -345,7 +346,8 @@ impl GraphiumTelemetry {
                 cfg.success_rate
                     .then_some(self.instruments.graph_success.clone()),
                 cfg.fail_rate.then_some(self.instruments.graph_fail.clone()),
-                cfg.performance.then_some(self.instruments.graph_latency.clone()),
+                cfg.performance
+                    .then_some(self.instruments.graph_latency.clone()),
             )
         };
 
@@ -387,7 +389,8 @@ impl GraphiumTelemetry {
         #[cfg(feature = "metrics")]
         let (count, errors, success, fail, latency) = if cfg.caller {
             (
-                cfg.count.then_some(self.instruments.node_count_by_caller.clone()),
+                cfg.count
+                    .then_some(self.instruments.node_count_by_caller.clone()),
                 cfg.errors
                     .then_some(self.instruments.node_errors_by_caller.clone()),
                 cfg.success_rate
@@ -404,7 +407,8 @@ impl GraphiumTelemetry {
                 cfg.success_rate
                     .then_some(self.instruments.node_success.clone()),
                 cfg.fail_rate.then_some(self.instruments.node_fail.clone()),
-                cfg.performance.then_some(self.instruments.node_latency.clone()),
+                cfg.performance
+                    .then_some(self.instruments.node_latency.clone()),
             )
         };
 
@@ -455,7 +459,10 @@ impl GraphiumTelemetry {
 }
 
 #[cfg(feature = "trace")]
-fn init_traces(resource: &Resource, endpoints: &TelemetryEndpoints) -> opentelemetry_sdk::trace::SdkTracerProvider {
+fn init_traces(
+    resource: &Resource,
+    endpoints: &TelemetryEndpoints,
+) -> opentelemetry_sdk::trace::SdkTracerProvider {
     use opentelemetry::global;
     use opentelemetry_otlp::{Protocol, SpanExporter, WithExportConfig};
     use opentelemetry_sdk::runtime::TokioCurrentThread;
@@ -509,12 +516,14 @@ fn init_logs(
 fn init_metrics(
     resource: &Resource,
     endpoints: &TelemetryEndpoints,
-) -> (opentelemetry_sdk::metrics::SdkMeterProvider, MetricInstruments) {
+) -> (
+    opentelemetry_sdk::metrics::SdkMeterProvider,
+    MetricInstruments,
+) {
     use opentelemetry::global;
     use opentelemetry_otlp::{MetricExporter, Protocol, WithExportConfig};
     use opentelemetry_sdk::metrics::{
-        SdkMeterProvider,
-        periodic_reader_with_async_runtime::PeriodicReader,
+        SdkMeterProvider, periodic_reader_with_async_runtime::PeriodicReader,
     };
     use opentelemetry_sdk::runtime::TokioCurrentThread;
 
@@ -552,9 +561,7 @@ fn init_metrics(
         node_fail_by_caller: meter
             .u64_counter("graphium_node_fail_by_caller_total")
             .build(),
-        node_latency: meter
-            .f64_histogram("graphium_node_latency_seconds")
-            .build(),
+        node_latency: meter.f64_histogram("graphium_node_latency_seconds").build(),
         node_latency_by_caller: meter
             .f64_histogram("graphium_node_latency_by_caller_seconds")
             .build(),
@@ -605,9 +612,8 @@ fn install_tracing_subscriber(
 
     #[cfg(feature = "logs")]
     let registry = {
-        let bridge = opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge::new(
-            logger_provider,
-        );
+        let bridge =
+            opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge::new(logger_provider);
         registry.with(bridge)
     };
 

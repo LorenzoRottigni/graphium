@@ -98,15 +98,16 @@ DSL definition:
 ```rust
 graph! {
     #[metrics("performance", "errors", "count", "caller", "success_rate", "fail_rate")]
-    LinearRegressionGraph<Context> -> (model: Model) {
-        GetDataset() -> (&dataset) >>
-        ParseInputFeatures(&dataset) -> (input_features) && ParseOutputFeatures(&dataset) -> (output_features) >>
-        TrainTestSplit(input_features, output_features) -> (&X_train, &X_test, &y_train, &y_test) >>
-        Preprocessing(&X_train, &X_test, &y_train) -> (&X_train, &X_test, &y_train) >>
-        InitModel(&X_train, &y_train) -> (&model, &X_train, &y_train) >>
-        FitModel(&model, &X_train, &y_train) -> (&model) >>
-        EvaluateModel(&model) -> (&model) >>
-        ExportModel(&model) -> (model)
+    LinearRegressionGraph<'a, Context> -> (model: Model) {
+        GetDataset() -> (&'a dataset) >>
+        ParseInputFeatures(&'a dataset) -> (input_features) &&
+        ParseOutputFeatures(&'a dataset) -> (output_features) >>
+        TrainTestSplit(input_features, output_features) -> (&'a X_train, &'a X_test, &'a y_train, &'a y_test) >>
+        Preprocessing(&'a X_train, &'a X_test, &'a y_train) -> (&'a X_train, &'a X_test, &'a y_train) >>
+        InitModel(&'a X_train, &'a y_train) -> (&'a model, &'a X_train, &'a y_train) >>
+        FitModel(&'a model, &'a X_train, &'a y_train) -> (&'a model) >>
+        EvaluateModel(&'a model) -> (&'a model) >>
+        ExportModel(&'a model) -> (model)
     }
 }
 ```
@@ -131,7 +132,7 @@ Application-level DSL:
 
 ```rust
 graph! {
-    AxumEcommerce<Context> {
+    AxumEcommerce<'a, Context> {
         RouterInit >>
         RegisterProductController >>
         RegisterUserController >>
@@ -144,11 +145,11 @@ Nested execution graphs:
 
 ```rust
 graph! {
-    async CreateProductGraph<Context>(name: String, price: String) -> (product_dto: Json<Product>) {
-        GetProductInput(name, price) -> (&product_input) >>
-        ValidateProductInputData(&product_input) &&
-        CheckProductDoesNotExist(&product_input) >>
-        ProductCreate(&product_input) -> product >>
+    async CreateProductGraph<'a, Context>(name: String, price: String) -> (product_dto: Json<Product>) {
+        GetProductInput(name, price) -> &'a product_input >>
+        ValidateProductInputData(&'a product_input) &&
+        CheckProductDoesNotExist(&'a product_input) >>
+        ProductCreate(&'a product_input) -> product >>
         SerializeProduct(product) -> product_dto
     }
 }

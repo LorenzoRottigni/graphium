@@ -533,8 +533,12 @@ fn graph_uses_ctx(steps: &[GraphStepDto]) -> bool {
 fn graph_uses_artifact_frame(steps: &[GraphStepDto]) -> bool {
     for step in steps {
         match step {
-            GraphStepDto::Node { inputs, outputs, .. }
-            | GraphStepDto::Nested { inputs, outputs, .. } => {
+            GraphStepDto::Node {
+                inputs, outputs, ..
+            }
+            | GraphStepDto::Nested {
+                inputs, outputs, ..
+            } => {
                 if inputs
                     .iter()
                     .any(|v| v.starts_with('&') || v.starts_with('*'))

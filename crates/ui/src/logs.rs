@@ -106,4 +106,3 @@ fn unix_now_nanos() -> u64 {
     };
     dur.as_nanos().min(u128::from(u64::MAX)) as u64
 }
-

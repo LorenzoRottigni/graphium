@@ -1,8 +1,8 @@
+use axum::http::StatusCode;
 use axum::{
     self, Json,
     extract::{Path, Query, State},
 };
-use axum::http::StatusCode;
 
 use crate::{
     graphs::{
@@ -21,15 +21,19 @@ pub async fn create_product(
     let mut name: Option<String> = None;
     let mut price: Option<String> = None;
 
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("invalid multipart body: {e}")))? {
+    while let Some(field) = multipart.next_field().await.map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("invalid multipart body: {e}"),
+        )
+    })? {
         let field_name = field.name().map(|n| n.to_string());
-        let value = field
-            .text()
-            .await
-            .map_err(|e| (StatusCode::BAD_REQUEST, format!("invalid multipart field: {e}")))?;
+        let value = field.text().await.map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                format!("invalid multipart field: {e}"),
+            )
+        })?;
 
         match field_name.as_deref() {
             Some("name") => name = Some(value),

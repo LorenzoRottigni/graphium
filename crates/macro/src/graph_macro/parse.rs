@@ -16,8 +16,8 @@ use syn::{
 };
 
 use crate::ir::{
-    ArtifactInputKind, GraphInput, LoopExpr, MetricsSpec, NodeCall, NodeExpr, RouteExpr, WhileExpr,
-    parse_metric_name,
+    ArtifactInputKind, BorrowSpec, GraphInput, LoopExpr, MetricsSpec, NodeCall, NodeExpr,
+    RouteExpr, WhileExpr, parse_metric_name,
 };
 
 impl Parse for NodeExpr {
@@ -163,14 +163,9 @@ impl Parse for NodeCall {
                 syn::parenthesized!(content in input);
                 parse_output_ident_list(&content)?
             } else {
-                let is_borrowed = if input.peek(Token![&]) {
-                    input.parse::<Token![&]>()?;
-                    true
-                } else {
-                    false
-                };
+                let borrow = parse_optional_borrow_spec(input)?;
                 let ident: Ident = input.parse()?;
-                (vec![ident], vec![is_borrowed])
+                (vec![ident], vec![borrow])
             }
         } else {
             (Vec::new(), Vec::new())
@@ -196,10 +191,20 @@ fn parse_input_ident_list(input: ParseStream) -> Result<(Vec<Ident>, Vec<Artifac
     while !input.is_empty() {
         let kind = if input.peek(Token![&]) {
             input.parse::<Token![&]>()?;
-            ArtifactInputKind::Borrowed
+            let lifetime = parse_optional_lifetime(input)?;
+            let mutable = input.peek(Token![mut]);
+            if mutable {
+                input.parse::<Token![mut]>()?;
+            }
+            ArtifactInputKind::Borrowed(if mutable {
+                BorrowSpec::mutable(lifetime)
+            } else {
+                BorrowSpec::shared(lifetime)
+            })
         } else if input.peek(Token![*]) {
             input.parse::<Token![*]>()?;
-            ArtifactInputKind::Taken
+            let lifetime = parse_optional_lifetime(input)?;
+            ArtifactInputKind::Taken(BorrowSpec::shared(lifetime))
         } else {
             ArtifactInputKind::Owned
         };
@@ -215,21 +220,30 @@ fn parse_input_ident_list(input: ParseStream) -> Result<(Vec<Ident>, Vec<Artifac
     Ok((idents, kinds))
 }
 
-fn parse_output_ident_list(input: ParseStream) -> Result<(Vec<Ident>, Vec<bool>)> {
+fn parse_output_ident_list(input: ParseStream) -> Result<(Vec<Ident>, Vec<Option<BorrowSpec>>)> {
     let mut idents = Vec::new();
     let mut borrows = Vec::new();
 
     while !input.is_empty() {
-        let is_borrowed = if input.peek(Token![&]) {
+        let borrow = if input.peek(Token![&]) {
             input.parse::<Token![&]>()?;
-            true
+            let lifetime = parse_optional_lifetime(input)?;
+            let mutable = input.peek(Token![mut]);
+            if mutable {
+                input.parse::<Token![mut]>()?;
+            }
+            Some(if mutable {
+                BorrowSpec::mutable(lifetime)
+            } else {
+                BorrowSpec::shared(lifetime)
+            })
         } else if input.peek(Token![*]) {
             return Err(input.error("`*artifact` is only supported for node inputs"));
         } else {
-            false
+            None
         };
         idents.push(input.parse()?);
-        borrows.push(is_borrowed);
+        borrows.push(borrow);
         if input.peek(Token![,]) {
             input.parse::<Token![,]>()?;
         } else {
@@ -238,6 +252,31 @@ fn parse_output_ident_list(input: ParseStream) -> Result<(Vec<Ident>, Vec<bool>)
     }
 
     Ok((idents, borrows))
+}
+
+fn parse_optional_lifetime(input: ParseStream) -> Result<Option<syn::Lifetime>> {
+    if input.peek(syn::Lifetime) {
+        Ok(Some(input.parse()?))
+    } else {
+        Ok(None)
+    }
+}
+
+fn parse_optional_borrow_spec(input: ParseStream) -> Result<Option<BorrowSpec>> {
+    if !input.peek(Token![&]) {
+        return Ok(None);
+    }
+    input.parse::<Token![&]>()?;
+    let lifetime = parse_optional_lifetime(input)?;
+    let mutable = input.peek(Token![mut]);
+    if mutable {
+        input.parse::<Token![mut]>()?;
+    }
+    Ok(Some(if mutable {
+        BorrowSpec::mutable(lifetime)
+    } else {
+        BorrowSpec::shared(lifetime)
+    }))
 }
 
 /// Parses a comma-separated list like `(artifact: Type, other: Type)`.
@@ -305,7 +344,7 @@ fn parse_match_routes(
     content: ParseStream,
     on: Expr,
     outputs: Vec<Ident>,
-    output_borrows: Vec<bool>,
+    output_borrows: Vec<Option<BorrowSpec>>,
 ) -> Result<RouteExpr> {
     let mut routes: Vec<(Expr, NodeExpr)> = Vec::new();
 
@@ -508,6 +547,7 @@ impl Parse for GraphInput {
 /// `#[metrics(...)] #[tests(...)] async MyGraph<Ctx>(inputs...) -> (outputs...) { ... }`
 fn parse_graph_input(input: ParseStream) -> Result<GraphInput> {
     let mut context: Option<Path> = None;
+    let mut lifetimes: Vec<syn::Lifetime> = Vec::new();
     let mut graph_inputs: Vec<(Ident, Type)> = Vec::new();
     let mut graph_outputs: Vec<(Ident, Type)> = Vec::new();
     let mut async_enabled = false;
@@ -627,7 +667,25 @@ fn parse_graph_input(input: ParseStream) -> Result<GraphInput> {
 
     if input.peek(Token![<]) {
         input.parse::<Token![<]>()?;
-        context = Some(input.parse()?);
+        // Accept `<Context>` (legacy) or `<'a, Context>` (new).
+        // We allow multiple lifetimes, but still treat the first non-lifetime
+        // argument as the context path.
+        while !input.peek(Token![>]) && !input.is_empty() {
+            if input.peek(syn::Lifetime) {
+                lifetimes.push(input.parse()?);
+            } else {
+                if context.is_some() {
+                    return Err(input.error("expected a lifetime or single context type path"));
+                }
+                context = Some(input.parse()?);
+            }
+
+            if input.peek(Token![,]) {
+                input.parse::<Token![,]>()?;
+            } else {
+                break;
+            }
+        }
         input.parse::<Token![>]>()?;
     }
 
@@ -667,6 +725,7 @@ fn parse_graph_input(input: ParseStream) -> Result<GraphInput> {
         attrs,
         name,
         context,
+        lifetimes,
         inputs: graph_inputs,
         outputs: graph_outputs,
         nodes,

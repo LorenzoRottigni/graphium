@@ -31,7 +31,7 @@ Define a simple graph:
 use graphium_macro::graph;
 
 graph! {
-    MyGraph<Context> -> (result: u32) {
+    MyGraph<'a, Context> -> (result: u32) {
         NodeA() -> (value) >>
         NodeB(value) -> (result)
     }

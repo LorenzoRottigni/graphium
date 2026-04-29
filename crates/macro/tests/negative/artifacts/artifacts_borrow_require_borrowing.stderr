@@ -2,9 +2,9 @@ error: proc macro panicked
   --> tests/negative/artifacts/artifacts_borrow_require_borrowing.rs:20:5
    |
 20 | /     graph! {
-21 | |         InvalidGraph {
+21 | |         InvalidGraph<'a> {
 22 | |             GetNumber() -> (number) >>
-23 | |             PipeNumber(&number)
+23 | |             PipeNumber(&'a number)
 24 | |         }
 25 | |     }
    | |_____^

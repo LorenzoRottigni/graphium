@@ -18,10 +18,10 @@ fn main() {
     }
 
     graph! {
-        InvalidGraph {
-            GetNumber() -> (&number) >>
-            PipeNumber(*number) >>
-            PipeNumber(&number) -> (number)
+        InvalidGraph<'a> {
+            GetNumber() -> (&'a number) >>
+            PipeNumber(*'a number) >>
+            PipeNumber(&'a number) -> (number)
         }
     }
 }

@@ -18,9 +18,9 @@ fn main() {
     }
 
     graph! {
-        InvalidGraph {
+        InvalidGraph<'a> {
             GetNumber() -> (number) >>
-            PipeNumber(&number)
+            PipeNumber(&'a number)
         }
     }
 }

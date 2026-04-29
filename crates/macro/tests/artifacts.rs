@@ -55,10 +55,10 @@ fn e2e_graph_macro_borrows_artifacts() {
     }
 
     graph! {
-        BorrowedGraph -> (number: u32) {
+        BorrowedGraph<'a> -> (number: u32) {
             GetNumber() -> (number) >>
-            StoreNumber(number) -> (&number) >>
-            TakeOwnership(&number) -> (number) >>
+            StoreNumber(number) -> (&'a number) >>
+            TakeOwnership(&'a number) -> (number) >>
             PipeNumber(number) -> (number)
         }
     }
@@ -86,10 +86,10 @@ fn e2e_graph_macro_borrowed_artifacts_persist() {
     }
 
     graph! {
-        ReferenceGraph {
-            GetNumber() -> (&number) >>
-            CheckNumber(&number) >>
-            CheckReferenceStillAvailable(&number)
+        ReferenceGraph<'a> {
+            GetNumber() -> (&'a number) >>
+            CheckNumber(&'a number) >>
+            CheckReferenceStillAvailable(&'a number)
         }
     }
 
@@ -109,9 +109,9 @@ fn e2e_graph_macro_can_move_artifacts_back_to_its_nodes() {
     }
 
     graph! {
-        TakeGraph -> (out: u32) {
-            GetNumber() -> (&number) >>
-            TakeNumber(*number) -> (out)
+        TakeGraph<'a> -> (out: u32) {
+            GetNumber() -> (&'a number) >>
+            TakeNumber(*'a number) -> (out)
         }
     }
 

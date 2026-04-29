@@ -79,7 +79,7 @@ pub(crate) fn get_single_node_expr(
 
     let mut remaining = UsageMap::new();
     for (input, kind) in call.inputs.iter().zip(call.input_kinds.iter()) {
-        if *kind != ArtifactInputKind::Owned {
+        if !matches!(kind, ArtifactInputKind::Owned) {
             continue;
         }
         *remaining.entry(input.to_string()).or_insert(0) += 1;
@@ -102,13 +102,7 @@ pub(crate) fn get_single_node_expr(
         .outputs
         .iter()
         .zip(call.output_borrows.iter())
-        .filter_map(|(output, is_borrowed)| {
-            if *is_borrowed {
-                Some(output.clone())
-            } else {
-                None
-            }
-        })
+        .filter_map(|(output, borrow)| borrow.is_some().then(|| output.clone()))
         .collect();
 
     // Bind taken inputs first so later `&ctx.field` borrows don't conflict with
@@ -119,9 +113,9 @@ pub(crate) fn get_single_node_expr(
         .zip(call.input_kinds.iter())
         .zip(arg_idents.iter())
     {
-        if *kind != ArtifactInputKind::Taken {
+        let ArtifactInputKind::Taken(_spec) = kind else {
             continue;
-        }
+        };
         let artifact_name = input.to_string();
         if !incoming.has_borrowed(&artifact_name) {
             panic!("missing borrowed artifact `{artifact_name}` for node call");
@@ -145,17 +139,22 @@ pub(crate) fn get_single_node_expr(
         .zip(call.input_kinds.iter())
         .zip(arg_idents.iter())
     {
-        if *kind != ArtifactInputKind::Borrowed {
+        let ArtifactInputKind::Borrowed(spec) = kind else {
             continue;
-        }
+        };
         let artifact_name = input.to_string();
         if !incoming.has_borrowed(&artifact_name) {
             panic!("missing borrowed artifact `{artifact_name}` for node call");
         }
         let slot_ident = crate::ir::borrowed_slot_ident(&artifact_name);
+        let access = if spec.mutable {
+            quote! { as_mut }
+        } else {
+            quote! { as_ref }
+        };
         input_bindings.push(quote! {
             let #arg_ident = #slot_ident
-                .as_ref()
+                .#access()
                 .unwrap_or_else(|| panic!(concat!("missing artifact `", stringify!(#input), "`")));
         });
         input_by_name
@@ -170,7 +169,7 @@ pub(crate) fn get_single_node_expr(
         .zip(call.input_kinds.iter())
         .zip(arg_idents.iter())
     {
-        if *kind != ArtifactInputKind::Owned {
+        if !matches!(kind, ArtifactInputKind::Owned) {
             continue;
         }
         let artifact_name = input.to_string();
@@ -258,15 +257,15 @@ pub(crate) fn get_single_node_expr(
     );
 
     let mut borrowed_from_return = Vec::new();
-    for (output, is_borrowed) in call.outputs.iter().zip(call.output_borrows.iter()) {
-        if *is_borrowed && !input_by_name.contains_key(&output.to_string()) {
+    for (output, borrow) in call.outputs.iter().zip(call.output_borrows.iter()) {
+        if borrow.is_some() && !input_by_name.contains_key(&output.to_string()) {
             borrowed_from_return.push(output.to_string());
         }
     }
 
     if call.outputs.len() == 1 {
         let artifact_name = call.outputs[0].to_string();
-        let is_borrowed = call.output_borrows[0];
+        let is_borrowed = call.output_borrows[0].is_some();
 
         if is_borrowed {
             outputs.insert_borrowed(artifact_name.clone());
@@ -329,7 +328,7 @@ pub(crate) fn get_single_node_expr(
             .zip(tuple_vars.iter())
         {
             let artifact_name = output.to_string();
-            if *is_borrowed {
+            if is_borrowed.is_some() {
                 outputs.insert_borrowed(artifact_name.clone());
                 let slot_ident = crate::ir::borrowed_slot_ident(&artifact_name);
                 borrowed_store.push(quote! {
