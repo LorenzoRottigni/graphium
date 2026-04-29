@@ -204,7 +204,15 @@ fn parse_input_ident_list(input: ParseStream) -> Result<(Vec<Ident>, Vec<Artifac
         } else if input.peek(Token![*]) {
             input.parse::<Token![*]>()?;
             let lifetime = parse_optional_lifetime(input)?;
-            ArtifactInputKind::Taken(BorrowSpec::shared(lifetime))
+            let mutable = input.peek(Token![mut]);
+            if mutable {
+                input.parse::<Token![mut]>()?;
+            }
+            ArtifactInputKind::Taken(if mutable {
+                BorrowSpec::mutable(lifetime)
+            } else {
+                BorrowSpec::shared(lifetime)
+            })
         } else {
             ArtifactInputKind::Owned
         };

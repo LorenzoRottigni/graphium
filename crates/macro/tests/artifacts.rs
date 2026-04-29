@@ -118,3 +118,33 @@ fn e2e_graph_macro_can_move_artifacts_back_to_its_nodes() {
     let out = TakeGraph::run_default();
     assert_eq!(out, 42);
 }
+
+#[test]
+/// Ensures `&'a mut artifact` and `*'a mut artifact` are supported:
+/// - `GetNumber` persists `number` in the graph lifetime
+/// - `BumpNumber` mutably borrows it and mutates in place
+/// - `TakeNumber` takes ownership via `*'a mut number`
+fn e2e_graph_macro_supports_mutable_borrows() {
+    node! {
+        fn bump_number(number: &mut u32) {
+            *number += 1;
+        }
+    }
+
+    node! {
+        fn take_number(number: u32) -> u32 {
+            number
+        }
+    }
+
+    graph! {
+        MutBorrowGraph<'a> -> (out: u32) {
+            GetNumber() -> (&'a mut number) >>
+            BumpNumber(&'a mut number) >>
+            TakeNumber(*'a mut number) -> (out)
+        }
+    }
+
+    let out = MutBorrowGraph::run_default();
+    assert_eq!(out, 43);
+}

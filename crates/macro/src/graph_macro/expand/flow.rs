@@ -268,7 +268,13 @@ fn artifact_input_list_tokens(
                     quote! { concat!("&", stringify!(#ident)) }
                 }
             }
-            ArtifactInputKind::Taken(_spec) => quote! { concat!("*", stringify!(#ident)) },
+            ArtifactInputKind::Taken(spec) => {
+                if spec.mutable {
+                    quote! { concat!("*mut ", stringify!(#ident)) }
+                } else {
+                    quote! { concat!("*", stringify!(#ident)) }
+                }
+            }
         })
         .collect()
 }

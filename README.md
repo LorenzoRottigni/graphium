@@ -103,11 +103,11 @@ graph! {
         ParseInputFeatures(&'a dataset) -> (input_features) &&
         ParseOutputFeatures(&'a dataset) -> (output_features) >>
         TrainTestSplit(input_features, output_features) -> (&'a X_train, &'a X_test, &'a y_train, &'a y_test) >>
-        Preprocessing(&'a X_train, &'a X_test, &'a y_train) -> (&'a X_train, &'a X_test, &'a y_train) >>
-        InitModel(&'a X_train, &'a y_train) -> (&'a model, &'a X_train, &'a y_train) >>
-        FitModel(&'a model, &'a X_train, &'a y_train) -> (&'a model) >>
-        EvaluateModel(&'a model) -> (&'a model) >>
-        ExportModel(&'a model) -> (model)
+        Preprocessing(&'a mut X_train, &'a mut X_test, &'a mut y_train) >>
+        InitModel(&'a X_train, &'a y_train) -> (&'a model) >>
+        FitModel(&'a mut model, &'a X_train, &'a y_train) >>
+        EvaluateModel(&'a model) >>
+        ExportModel(*'a model) -> (model)
     }
 }
 ```
