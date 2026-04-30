@@ -200,7 +200,7 @@ pub(crate) fn get_loop_node_expr(
 /// `(vec!["value"], {"shared"})`; with no explicit outputs it reuses the body shape.
 pub(crate) fn loop_exit_outputs(
     outputs: &[syn::Ident],
-    output_borrows: &[bool],
+    output_borrows: &[Option<crate::ir::BorrowSpec>],
     body_shape: &ExprShape,
 ) -> (Vec<String>, BTreeSet<String>) {
     if outputs.is_empty() {
@@ -212,8 +212,8 @@ pub(crate) fn loop_exit_outputs(
 
     let mut owned = Vec::new();
     let mut borrowed = BTreeSet::new();
-    for (output, is_borrowed) in outputs.iter().zip(output_borrows.iter()) {
-        if *is_borrowed {
+    for (output, borrow) in outputs.iter().zip(output_borrows.iter()) {
+        if borrow.is_some() {
             borrowed.insert(output.to_string());
         } else {
             owned.push(output.to_string());
@@ -230,13 +230,13 @@ pub(crate) fn loop_exit_outputs(
 /// `["value", "extra"]` expands into a panic because `extra` was not declared.
 pub(super) fn validate_loop_outputs(
     outputs: &[syn::Ident],
-    output_borrows: &[bool],
+    output_borrows: &[Option<crate::ir::BorrowSpec>],
     body_shape: &ExprShape,
 ) {
     let mut expected_owned = BTreeSet::new();
     let mut expected_borrowed = BTreeSet::new();
-    for (output, is_borrowed) in outputs.iter().zip(output_borrows.iter()) {
-        if *is_borrowed {
+    for (output, borrow) in outputs.iter().zip(output_borrows.iter()) {
+        if borrow.is_some() {
             expected_borrowed.insert(output.to_string());
         } else {
             expected_owned.insert(output.to_string());
@@ -299,7 +299,7 @@ mod tests {
         };
 
         let result = std::panic::catch_unwind(|| {
-            validate_loop_outputs(&[parse_quote!(expected)], &[false], &shape)
+            validate_loop_outputs(&[parse_quote!(expected)], &[None], &shape)
         });
 
         assert!(result.is_err());

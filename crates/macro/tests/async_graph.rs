@@ -18,7 +18,7 @@ fn e2e_graph_async_with_sync_nodes() {
     }
 
     graph! {
-        async AsyncSyncGraph<Context> {
+        async AsyncSyncGraph<'a, Context> {
             SetCtx()
         }
     }
@@ -44,7 +44,7 @@ fn e2e_graph_async_nodes() {
     }
 
     graph! {
-        async AsyncGraph<graphium::Context> -> (a_number: u32) {
+        async AsyncGraph<'a, graphium::Context> -> (a_number: u32) {
             GetNumber() -> (a_number) >>
             AddOne(a_number) -> (a_number)
         }

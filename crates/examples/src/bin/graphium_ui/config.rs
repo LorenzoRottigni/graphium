@@ -221,26 +221,35 @@ node! {
 node! {
     #[metrics("performance", "count")]
     fn preprocessing(
-        x_train: &Vec<f32>,
-        x_test: &Vec<f32>,
-        y_train: &Vec<f32>,
-    ) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
-        (x_train.clone(), x_test.clone(), y_train.clone())
+        x_train: &mut Vec<f32>,
+        x_test: &mut Vec<f32>,
+        y_train: &mut Vec<f32>,
+    ) {
+        // Demo-only: normalize values in place to exercise `&'a mut` propagation.
+        for x in x_train.iter_mut().chain(x_test.iter_mut()) {
+            *x *= 0.1;
+        }
+        for y in y_train.iter_mut() {
+            *y *= 0.1;
+        }
     }
 }
 
 node! {
     #[metrics("performance", "count")]
-    fn init_model(x_train: &Vec<f32>, y_train: &Vec<f32>) -> (Model, Vec<f32>, Vec<f32>) {
-        (Model::default(), x_train.clone(), y_train.clone())
+    fn init_model(_x_train: &Vec<f32>, _y_train: &Vec<f32>) -> Model {
+        Model::default()
     }
 }
 
 node! {
     #[metrics("performance", "count")]
-    fn fit_model(model: &Model, x_train: &Vec<f32>, y_train: &Vec<f32>) {
-        // UI demo only: this node intentionally does not mutate the shared model.
-        let _ = (model, x_train.len(), y_train.len());
+    fn fit_model(model: &mut Model, x_train: &Vec<f32>, y_train: &Vec<f32>) {
+        // Demo-only: touch the inputs so they stay \"used\", and mutate the model
+        // to justify `&mut` in the DSL.
+        let _ = (x_train.len(), y_train.len());
+        model.weight += 1.0;
+        model.bias += 1.0;
     }
 }
 
@@ -253,14 +262,14 @@ node! {
 
 node! {
     #[metrics("performance", "count")]
-    fn export_model(model: &Model) -> Model {
-        model.clone()
+    fn export_model(model: Model) -> Model {
+        model
     }
 }
 
 graph! {
     #[metrics("performance", "count", "success_rate")]
-    InnerGraph<Context>(left: u32, right: u32) -> (left: u32, right: u32) {
+    InnerGraph<'a, Context>(left: u32, right: u32) -> (left: u32, right: u32) {
         PipeNumber(left) -> (left) && PipeNumber(right) -> (right) >>
         LeftBranch(left) -> (left) && RightBranch(right) -> (right)
     }
@@ -268,7 +277,7 @@ graph! {
 
 graph! {
     #[metrics("performance", "count", "success_rate")]
-    DeepInnerGraph<Context>(left: u32, right: u32) -> (left: u32, right: u32) {
+    DeepInnerGraph<'a, Context>(left: u32, right: u32) -> (left: u32, right: u32) {
         InnerGraph::run(left, right) -> (left, right) >>
         PipeNumber(left) -> (left) && PipeNumber(right) -> (right)
     }
@@ -277,7 +286,7 @@ graph! {
 graph! {
     #[metrics("performance", "errors", "count", "caller", "success_rate", "fail_rate")]
     #[tests(OwnedGraphReturnsNonZeroSplit)]
-    OwnedGraph<Context> -> (a_split: u32) {
+    OwnedGraph<'a, Context> -> (a_split: u32) {
         GetNumber() -> (a_number) >>
         Duplicate(a_number) -> (left, right) >>
         LeftBranch(left) -> (left) && RightBranch(right) -> (right) >>
@@ -300,10 +309,10 @@ graph! {
 graph! {
     #[metrics("performance", "count", "success_rate")]
     #[tests(BorrowedGraphKeepsOwnershipPath)]
-    BorrowedGraph<Context> -> (a_number: u32) {
+    BorrowedGraph<'a, Context> -> (a_number: u32) {
         GetNumber() -> (a_number) >>
-        StoreNumber(a_number) -> (&a_number) >>
-        TakeOwnership(&a_number) -> (a_number) >>
+        StoreNumber(a_number) -> (&'a a_number) >>
+        TakeOwnership(&'a a_number) -> (a_number) >>
         PipeNumber(a_number) -> (a_number)
     }
 }
@@ -312,7 +321,7 @@ graph! {
     #[metrics("performance", "count", "success_rate")]
     #[tests(ControlFlowGraphConvergesToSuccessPath)]
     #[deprecated(note = "Testing deprecation")]
-    ControlFlowGraph<Context> -> (a_number: u32) {
+    ControlFlowGraph<'a, Context> -> (a_number: u32) {
         InitAttempts() >>
         @while |ctx: &Context| ctx.attempts < 3 {
             BumpAttempts()
@@ -336,15 +345,16 @@ graph! {
     #[metrics("performance", "errors", "count", "caller", "success_rate", "fail_rate")]
     #[tests(LinearRegressionGraphExportsDefaultModel)]
     #[tags("ml", "demo")]
-    LinearRegressionGraph<Context> -> (model: Model) {
-        GetDataset() -> (&dataset) >>
-        ParseInputFeatures(&dataset) -> (input_features) && ParseOutputFeatures(&dataset) -> (output_features) >>
-        TrainTestSplit(input_features, output_features) -> (&X_train, &X_test, &y_train, &y_test) >>
-        Preprocessing(&X_train, &X_test, &y_train) -> (&X_train, &X_test, &y_train) >>
-        InitModel(&X_train, &y_train) -> (&model, &X_train, &y_train) >>
-        FitModel(&model, &X_train, &y_train) -> (&model) >>
-        EvaluateModel(&model) -> (&model) >>
-        ExportModel(&model) -> (model)
+    LinearRegressionGraph<'a, Context> -> (model: Model) {
+        GetDataset() -> (&'a dataset) >>
+        ParseInputFeatures(&'a dataset) -> (input_features)
+            && ParseOutputFeatures(&'a dataset) -> (output_features) >>
+        TrainTestSplit(input_features, output_features) -> (&'a X_train, &'a X_test, &'a y_train, &'a y_test) >>
+        Preprocessing(&'a mut X_train, &'a mut X_test, &'a mut y_train) >>
+        InitModel(&'a X_train, &'a y_train) -> (&'a model) >>
+        FitModel(&'a mut model, &'a X_train, &'a y_train) >>
+        EvaluateModel(&'a model) >>
+        ExportModel(*'a model) -> (model)
     }
 }
 
@@ -419,6 +429,8 @@ graph_test! {
     fn linear_regression_graph_exports_default_model() {
         let mut ctx = Context::default();
         let out = LinearRegressionGraph::run(&mut ctx);
-        assert_eq!(out, Model::default());
+        // `fit_model` mutates the model in-place; this just ensures the
+        // end-to-end graph wiring works.
+        assert_ne!(out, Model::default());
     }
 }

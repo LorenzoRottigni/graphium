@@ -1,0 +1,12 @@
+error: proc macro panicked
+  --> tests/negative/artifacts/artifacts_move_require_propagation.rs:20:5
+   |
+20 | /     graph! {
+21 | |         InvalidGraph {
+22 | |             GetNumber() -> (number) >>
+23 | |             PipeNumber(number) >>
+...  |
+26 | |     }
+   | |_____^
+   |
+   = help: message: missing artifact `number` for next hop

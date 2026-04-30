@@ -41,6 +41,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
         attrs,
         name,
         context,
+        lifetimes: _lifetimes,
         inputs: graph_inputs,
         outputs: graph_outputs,
         nodes,
@@ -187,13 +188,14 @@ fn collect_borrowed_slot_names(nodes: &crate::ir::NodeExpr) -> BTreeSet<String> 
                 for (ident, kind) in call.inputs.iter().zip(call.input_kinds.iter()) {
                     if matches!(
                         kind,
-                        crate::ir::ArtifactInputKind::Borrowed | crate::ir::ArtifactInputKind::Taken
+                        crate::ir::ArtifactInputKind::Borrowed(_)
+                            | crate::ir::ArtifactInputKind::Taken(_)
                     ) {
                         out.insert(ident.to_string());
                     }
                 }
-                for (ident, is_borrowed) in call.outputs.iter().zip(call.output_borrows.iter()) {
-                    if *is_borrowed {
+                for (ident, borrow) in call.outputs.iter().zip(call.output_borrows.iter()) {
+                    if borrow.is_some() {
                         out.insert(ident.to_string());
                     }
                 }
@@ -204,8 +206,8 @@ fn collect_borrowed_slot_names(nodes: &crate::ir::NodeExpr) -> BTreeSet<String> 
                 }
             }
             NodeExpr::Route(route) => {
-                for (ident, is_borrowed) in route.outputs.iter().zip(route.output_borrows.iter()) {
-                    if *is_borrowed {
+                for (ident, borrow) in route.outputs.iter().zip(route.output_borrows.iter()) {
+                    if borrow.is_some() {
                         out.insert(ident.to_string());
                     }
                 }
@@ -214,20 +216,24 @@ fn collect_borrowed_slot_names(nodes: &crate::ir::NodeExpr) -> BTreeSet<String> 
                 }
             }
             NodeExpr::While(while_expr) => {
-                for (ident, is_borrowed) in while_expr
+                for (ident, borrow) in while_expr
                     .outputs
                     .iter()
                     .zip(while_expr.output_borrows.iter())
                 {
-                    if *is_borrowed {
+                    if borrow.is_some() {
                         out.insert(ident.to_string());
                     }
                 }
                 walk(&while_expr.body, out);
             }
             NodeExpr::Loop(loop_expr) => {
-                for (ident, is_borrowed) in loop_expr.outputs.iter().zip(loop_expr.output_borrows.iter()) {
-                    if *is_borrowed {
+                for (ident, borrow) in loop_expr
+                    .outputs
+                    .iter()
+                    .zip(loop_expr.output_borrows.iter())
+                {
+                    if borrow.is_some() {
                         out.insert(ident.to_string());
                     }
                 }

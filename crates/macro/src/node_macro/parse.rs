@@ -59,14 +59,9 @@ pub fn parse_node_def(func: &ItemFn, metrics: MetricsSpec) -> NodeDef {
             continue;
         }
 
-        if let Type::Reference(reference) = &*pat.ty {
-            if reference.mutability.is_some() {
-                panic!(
-                    "node input `{}` must be shared; mutable references are not supported",
-                    pat_ident.ident
-                );
-            }
-        }
+        // Inputs may be owned, shared (`&T`), or mutable (`&mut T`).
+        // The graph DSL is responsible for choosing `&'a` vs `&'a mut` when
+        // wiring artifacts between nodes.
 
         let index = inputs.len();
         inputs.push((pat_ident.ident.clone(), (*pat.ty).clone()));

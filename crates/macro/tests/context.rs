@@ -34,7 +34,7 @@ fn e2e_graph_macro_wires_ctx() {
     }
 
     graph! {
-        CtxGraph<Context> {
+        CtxGraph<'a, Context> {
             GetMutableCtx() >>
             ExtractFromCtx() -> (number) >>
             AssertCtx(number) && AssertCtx2(number)

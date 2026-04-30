@@ -41,7 +41,7 @@ use graphium_macro::graph;
 struct Context;
 
 graph! {
-    MyGraph<Context> -> (result: u32) {
+    MyGraph<'a, Context> -> (result: u32) {
         ComputeValue() -> (value) >>
         ProcessResult(value) -> (result)
     }

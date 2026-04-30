@@ -1,0 +1,12 @@
+error: proc macro panicked
+  --> tests/negative/artifacts/artifacts_unvailable_after_drop.rs:20:5
+   |
+20 | /     graph! {
+21 | |         InvalidGraph<'a> {
+22 | |             GetNumber() -> (&'a number) >>
+23 | |             PipeNumber(*'a number) >>
+...  |
+26 | |     }
+   | |_____^
+   |
+   = help: message: missing borrowed artifact `number` for node call

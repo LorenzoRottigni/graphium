@@ -104,8 +104,8 @@ pub(crate) fn get_route_node_expr(
         intersection
     };
     if !route.outputs.is_empty() {
-        for (output, is_borrowed) in route.outputs.iter().zip(route.output_borrows.iter()) {
-            if *is_borrowed {
+        for (output, borrow) in route.outputs.iter().zip(route.output_borrows.iter()) {
+            if borrow.is_some() {
                 routed_borrowed.insert(output.to_string());
             }
         }
@@ -145,8 +145,8 @@ pub(crate) fn route_exit_outputs(
 
     let mut owned = Vec::new();
     let mut borrowed = BTreeSet::new();
-    for (output, is_borrowed) in route.outputs.iter().zip(route.output_borrows.iter()) {
-        if *is_borrowed {
+    for (output, borrow) in route.outputs.iter().zip(route.output_borrows.iter()) {
+        if borrow.is_some() {
             borrowed.insert(output.to_string());
         } else {
             owned.push(output.to_string());
@@ -164,8 +164,8 @@ pub(crate) fn route_exit_outputs(
 pub(super) fn validate_route_outputs(route: &RouteExpr, shapes: &[ExprShape]) {
     let mut expected_owned = BTreeSet::new();
     let mut expected_borrowed = BTreeSet::new();
-    for (output, is_borrowed) in route.outputs.iter().zip(route.output_borrows.iter()) {
-        if *is_borrowed {
+    for (output, borrow) in route.outputs.iter().zip(route.output_borrows.iter()) {
+        if borrow.is_some() {
             expected_borrowed.insert(output.to_string());
         } else {
             expected_owned.insert(output.to_string());
@@ -203,7 +203,7 @@ mod tests {
     use syn::parse_quote;
 
     use super::{route_exit_outputs, validate_route_outputs};
-    use crate::ir::{ExprShape, RouteExpr};
+    use crate::ir::{BorrowSpec, ExprShape, RouteExpr};
 
     #[test]
     fn route_exit_outputs_use_declared_signature_when_present() {
@@ -211,7 +211,7 @@ mod tests {
             on: parse_quote!(selector),
             routes: Vec::new(),
             outputs: vec![parse_quote!(owned), parse_quote!(borrowed)],
-            output_borrows: vec![false, true],
+            output_borrows: vec![None, Some(BorrowSpec::shared(None))],
             is_if_chain: false,
         };
 
@@ -227,7 +227,7 @@ mod tests {
             on: parse_quote!(selector),
             routes: Vec::new(),
             outputs: vec![parse_quote!(value)],
-            output_borrows: vec![false],
+            output_borrows: vec![None],
             is_if_chain: false,
         };
         let shapes = vec![ExprShape {

@@ -1,6 +1,5 @@
 use super::io::IoParamDto;
 
-
 #[derive(Clone, Copy, Debug)]
 pub struct PlaygroundParam {
     pub name: &'static str,
@@ -25,7 +24,6 @@ pub trait GraphPlayground {
 
     fn playground_run(form: &std::collections::HashMap<String, String>) -> Result<String, String>;
 }
-
 
 #[cfg_attr(feature = "export", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -65,4 +63,3 @@ impl PlaygroundSchemaDto {
         }
     }
 }
-

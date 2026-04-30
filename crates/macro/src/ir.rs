@@ -13,7 +13,7 @@
 
 use quote::format_ident;
 use std::collections::{BTreeMap, BTreeSet};
-use syn::{Expr, Ident, Path, Type};
+use syn::{Expr, Ident, Lifetime, Path, Type};
 
 #[derive(Clone)]
 pub struct NodeDef {
@@ -38,11 +38,33 @@ pub enum ParamKind {
     Input(usize),
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BorrowSpec {
+    pub lifetime: Option<Lifetime>,
+    pub mutable: bool,
+}
+
+impl BorrowSpec {
+    pub fn shared(lifetime: Option<Lifetime>) -> Self {
+        Self {
+            lifetime,
+            mutable: false,
+        }
+    }
+
+    pub fn mutable(lifetime: Option<Lifetime>) -> Self {
+        Self {
+            lifetime,
+            mutable: true,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ArtifactInputKind {
     Owned,
-    Borrowed,
-    Taken,
+    Borrowed(BorrowSpec),
+    Taken(BorrowSpec),
 }
 
 #[derive(Clone)]
@@ -52,7 +74,7 @@ pub struct NodeCall {
     pub inputs: Vec<Ident>,
     pub input_kinds: Vec<ArtifactInputKind>,
     pub outputs: Vec<Ident>,
-    pub output_borrows: Vec<bool>,
+    pub output_borrows: Vec<Option<BorrowSpec>>,
 }
 
 #[derive(Clone)]
@@ -71,7 +93,7 @@ pub struct RouteExpr {
     pub on: Expr,
     pub routes: Vec<(Expr, NodeExpr)>,
     pub outputs: Vec<Ident>,
-    pub output_borrows: Vec<bool>,
+    pub output_borrows: Vec<Option<BorrowSpec>>,
     pub is_if_chain: bool,
 }
 
@@ -80,20 +102,21 @@ pub struct WhileExpr {
     pub condition: Expr,
     pub body: Box<NodeExpr>,
     pub outputs: Vec<Ident>,
-    pub output_borrows: Vec<bool>,
+    pub output_borrows: Vec<Option<BorrowSpec>>,
 }
 
 #[derive(Clone)]
 pub struct LoopExpr {
     pub body: Box<NodeExpr>,
     pub outputs: Vec<Ident>,
-    pub output_borrows: Vec<bool>,
+    pub output_borrows: Vec<Option<BorrowSpec>>,
 }
 
 pub struct GraphInput {
     pub attrs: Vec<syn::Attribute>,
     pub name: Ident,
     pub context: Path,
+    pub lifetimes: Vec<Lifetime>,
     pub inputs: Vec<(Ident, Type)>,
     pub outputs: Vec<(Ident, Type)>,
     pub nodes: NodeExpr,

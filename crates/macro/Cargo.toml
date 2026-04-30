@@ -12,6 +12,7 @@ doctest = false
 proc-macro2 = "1.0"
 quote = "1.0"
 syn = { version = "2.0", features = ["full"] }
+trybuild = "1.0.116"
 
 [dev-dependencies]
 graphium = { version = "0.1.0", path = "../core" }

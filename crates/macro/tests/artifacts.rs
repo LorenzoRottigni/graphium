@@ -36,7 +36,6 @@ fn e2e_graph_macro_moves_artifacts() {
     assert_eq!(duplicated, 42);
 }
 
-
 #[test]
 /// This test ensures that graph macro **borrows** artifacts when using smart injection with references:
 /// - `GetNumber` produces `number` artifact that is moved into `StoreNumber`
@@ -56,10 +55,10 @@ fn e2e_graph_macro_borrows_artifacts() {
     }
 
     graph! {
-        BorrowedGraph -> (number: u32) {
+        BorrowedGraph<'a> -> (number: u32) {
             GetNumber() -> (number) >>
-            StoreNumber(number) -> (&number) >>
-            TakeOwnership(&number) -> (number) >>
+            StoreNumber(number) -> (&'a number) >>
+            TakeOwnership(&'a number) -> (number) >>
             PipeNumber(number) -> (number)
         }
     }
@@ -87,10 +86,10 @@ fn e2e_graph_macro_borrowed_artifacts_persist() {
     }
 
     graph! {
-        ReferenceGraph {
-            GetNumber() -> (&number) >>
-            CheckNumber(&number) >>
-            CheckReferenceStillAvailable(&number)
+        ReferenceGraph<'a> {
+            GetNumber() -> (&'a number) >>
+            CheckNumber(&'a number) >>
+            CheckReferenceStillAvailable(&'a number)
         }
     }
 
@@ -110,12 +109,42 @@ fn e2e_graph_macro_can_move_artifacts_back_to_its_nodes() {
     }
 
     graph! {
-        TakeGraph -> (out: u32) {
-            GetNumber() -> (&number) >>
-            TakeNumber(*number) -> (out)
+        TakeGraph<'a> -> (out: u32) {
+            GetNumber() -> (&'a number) >>
+            TakeNumber(*'a number) -> (out)
         }
     }
 
     let out = TakeGraph::run_default();
     assert_eq!(out, 42);
+}
+
+#[test]
+/// Ensures `&'a mut artifact` and `*'a mut artifact` are supported:
+/// - `GetNumber` persists `number` in the graph lifetime
+/// - `BumpNumber` mutably borrows it and mutates in place
+/// - `TakeNumber` takes ownership via `*'a mut number`
+fn e2e_graph_macro_supports_mutable_borrows() {
+    node! {
+        fn bump_number(number: &mut u32) {
+            *number += 1;
+        }
+    }
+
+    node! {
+        fn take_number(number: u32) -> u32 {
+            number
+        }
+    }
+
+    graph! {
+        MutBorrowGraph<'a> -> (out: u32) {
+            GetNumber() -> (&'a mut number) >>
+            BumpNumber(&'a mut number) >>
+            TakeNumber(*'a mut number) -> (out)
+        }
+    }
+
+    let out = MutBorrowGraph::run_default();
+    assert_eq!(out, 43);
 }

@@ -261,10 +261,20 @@ fn artifact_input_list_tokens(
         .zip(kinds.iter())
         .map(|(ident, kind)| match kind {
             ArtifactInputKind::Owned => quote! { stringify!(#ident) },
-            ArtifactInputKind::Borrowed => {
-                quote! { concat!("&", stringify!(#ident)) }
+            ArtifactInputKind::Borrowed(spec) => {
+                if spec.mutable {
+                    quote! { concat!("&mut ", stringify!(#ident)) }
+                } else {
+                    quote! { concat!("&", stringify!(#ident)) }
+                }
             }
-            ArtifactInputKind::Taken => quote! { concat!("*", stringify!(#ident)) },
+            ArtifactInputKind::Taken(spec) => {
+                if spec.mutable {
+                    quote! { concat!("*mut ", stringify!(#ident)) }
+                } else {
+                    quote! { concat!("*", stringify!(#ident)) }
+                }
+            }
         })
         .collect()
 }
@@ -272,14 +282,18 @@ fn artifact_input_list_tokens(
 /// Renders node output artifact labels, prefixing borrowed values with `&`.
 fn artifact_output_list_tokens(
     idents: &[syn::Ident],
-    borrows: &[bool],
+    borrows: &[Option<crate::ir::BorrowSpec>],
 ) -> Vec<proc_macro2::TokenStream> {
     idents
         .iter()
         .zip(borrows.iter())
-        .map(|(ident, borrowed)| {
-            if *borrowed {
-                quote! { concat!("&", stringify!(#ident)) }
+        .map(|(ident, borrow)| {
+            if let Some(spec) = borrow {
+                if spec.mutable {
+                    quote! { concat!("&mut ", stringify!(#ident)) }
+                } else {
+                    quote! { concat!("&", stringify!(#ident)) }
+                }
             } else {
                 quote! { stringify!(#ident) }
             }
