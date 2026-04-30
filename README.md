@@ -103,9 +103,9 @@ graph! {
         ParseInputFeatures(&'a dataset) -> (input_features) &&
         ParseOutputFeatures(&'a dataset) -> (output_features) >>
         TrainTestSplit(input_features, output_features) -> (&'a X_train, &'a X_test, &'a y_train, &'a y_test) >>
-        Preprocessing(&'a mut X_train, &'a mut X_test, &'a mut y_train) >>
+        Preprocessing(&'a mut X_train, *'a mut X_test, *'a mut y_train) >>
         InitModel(&'a X_train, &'a y_train) -> (&'a model) >>
-        FitModel(&'a mut model, &'a X_train, &'a y_train) >>
+        FitModel(&'a mut model, *'a X_train, *'a y_train) >>
         EvaluateModel(&'a model) >>
         ExportModel(*'a model) -> (model)
     }
@@ -149,7 +149,7 @@ graph! {
         GetProductInput(name, price) -> &'a product_input >>
         ValidateProductInputData(&'a product_input) &&
         CheckProductDoesNotExist(&'a product_input) >>
-        ProductCreate(&'a product_input) -> product >>
+        ProductCreate(*'a product_input) -> product >>
         SerializeProduct(product) -> product_dto
     }
 }
@@ -163,15 +163,126 @@ Graphium is designed to be flexible: it adapts to the level of abstraction that 
 
 ---
 
-## Execution Model
+## DSL (Domain Specific Language)
 
-Graphium executes graphs as compile-time expanded pipelines of nodes, where:
+Graphium provides a proprietary DSL for defining and executing graph-based workflows.  
+It borrows syntax from Rust while redefining specific operators and annotations to express execution flow, data dependency, and artifact lifecycle.
 
-- Nodes define computation units
-- Edges define data propagation
-- Operators (`>>`, `&&`) define execution strategy
+---
 
-All execution logic is resolved at compile time unless runtime features are explicitly enabled.
+### 1. Execution model
+
+Graph execution is expressed as a directed computation graph where nodes represent transformations and edges define execution strategy.
+
+#### Serial execution
+
+- **Operator:** `>>` (bitwise right shift)
+- **Meaning:** executes the right-hand node after the left-hand node completes
+
+```rust
+A() >> B()
+```
+
+#### Parallel execution
+
+- **Operator:** `&&` (logical AND)
+- **Meaning:** executes nodes concurrently when dependencies allow it
+
+```rust
+A() && B() && C()
+```
+
+---
+
+### 2. Async graphs
+
+- **Keyword:** `async`
+- **Meaning:** enables asynchronous execution of the entire graph via `run_async()`
+
+When a graph is marked `async`, all eligible nodes may be scheduled concurrently based on dependency resolution.
+
+```rust
+async graph! {
+    ...
+}
+```
+
+---
+
+### 3. Artifact lifecycle & ownership system
+
+Graphium introduces a **lifetime-based artifact system**, inspired by Rust lifetimes but used as a runtime-managed abstraction for graph-scoped data.
+
+#### 3.1 Lifetime annotations
+
+- **Syntax:** `<'a>`
+- **Meaning:** defines a scoped artifact lifetime within the graph execution
+
+Lifetimes control:
+
+- when artifacts are accessible
+- when they can be mutated
+- when they are dropped
+
+> Note: lifetimes are not Rust compiler lifetimes, but runtime graph-scoped identifiers.
+
+---
+
+#### 3.2 References
+
+- **Operator:** `&`
+- **Meaning:** borrows an artifact from a given lifetime without taking ownership
+
+```rust
+-> (&'a dataset)
+```
+
+or
+
+```rust
+process(&'a dataset)
+```
+
+Artifacts remain owned by the graph lifetime and can be reused by subsequent nodes.
+
+---
+
+#### 3.3 Mutability
+
+- **Keyword:** `mut`
+- **Meaning:** grants mutable access to a borrowed artifact
+
+```rust
+(&'a mut X_train)
+```
+
+Mutability allows in-place transformation of shared artifacts within the same lifetime scope.
+
+---
+
+#### 3.4 Ownership transfer (move semantics)
+
+- **Operator:** `*`
+- **Meaning:** consumes an artifact from a lifetime and moves ownership into the node scope
+
+```rust
+process(*'a model)
+```
+
+This transfers the value out of the graph-managed lifetime into the executing node.
+
+---
+
+### 4. Context system
+
+- **Annotation:** `Context`
+- **Meaning:** defines the type of shared execution context available to all nodes in the graph
+
+```rust
+Graph<'a, Context>
+```
+
+The context is globally accessible to nodes and typically carries configuration, services, or runtime state.
 
 ---
 
