@@ -26,7 +26,27 @@
 {% endif %}
 
 <section class="border border-dark rounded-md p-4 bg-darkest">
-    <h3 class="text-lg font-semibold mb-3">Graph structure</h3>
+    <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-3">
+        <h3 class="text-lg font-semibold">Graph structure</h3>
+        <div class="flex items-center gap-3 text-sm">
+            <span class="text-light">Artifact ownership</span>
+            <label class="inline-flex items-center cursor-pointer select-none">
+                <input
+                    type="checkbox"
+                    class="sr-only peer"
+                    {% if show_artifacts %}checked{% endif %}
+                    hx-get="/fragment/graph/{{ graph_id }}?artifacts={% if show_artifacts %}0{% else %}1{% endif %}"
+                    hx-trigger="change"
+                    hx-target="#graph-content"
+                    hx-swap="innerHTML"
+                    hx-indicator="#loading"
+                />
+                <div class="w-11 h-6 bg-black/40 border border-dark rounded-full peer peer-checked:bg-primary/30 peer-checked:border-primary transition-colors relative">
+                    <div class="absolute top-0.5 left-0.5 h-5 w-5 bg-light rounded-full transition-transform peer-checked:translate-x-5"></div>
+                </div>
+            </label>
+        </div>
+    </div>
     <div class="overflow-x-auto scrollbar-primary">
         <pre class="mermaid">{{ mermaid|safe }}</pre>
     </div>

@@ -4,6 +4,7 @@ use std::sync::Arc;
 use axum::Form;
 use axum::Router;
 use axum::extract::{Path, State};
+use axum::extract::Query;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use serde::Deserialize;
@@ -116,8 +117,15 @@ async fn graph_page(
 async fn graph_fragment(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
+    Query(q): Query<GraphVizQuery>,
 ) -> Result<Response, AppHttpError> {
-    let html = graph_pages::render_graph_fragment(state, id.clone(), Default::default()).await?;
+    let html = graph_pages::render_graph_fragment(
+        state,
+        id.clone(),
+        Default::default(),
+        q.show_artifacts(),
+    )
+    .await?;
     let mut resp = Html(html).into_response();
     let _ = resp.headers_mut().insert(
         axum::http::HeaderName::from_static("hx-push-url"),
@@ -125,6 +133,24 @@ async fn graph_fragment(
             .unwrap_or_else(|_| axum::http::HeaderValue::from_static("/")),
     );
     Ok(resp)
+}
+
+#[derive(Deserialize, Default)]
+struct GraphVizQuery {
+    /// When false ("0", "false", "off"), hide artifact ownership/flow rendering.
+    artifacts: Option<String>,
+}
+
+impl GraphVizQuery {
+    fn show_artifacts(&self) -> bool {
+        match self.artifacts.as_deref() {
+            None => true,
+            Some(v) => {
+                let v = v.trim().to_ascii_lowercase();
+                !(v == "0" || v == "false" || v == "off" || v == "no")
+            }
+        }
+    }
 }
 
 async fn run_playground(
@@ -150,6 +176,7 @@ async fn run_playground(
             values,
             result: Some(result),
         },
+        true,
     )
     .await?;
 
