@@ -262,14 +262,26 @@ fn artifact_input_list_tokens(
         .map(|(ident, kind)| match kind {
             ArtifactInputKind::Owned => quote! { stringify!(#ident) },
             ArtifactInputKind::Borrowed(spec) => {
-                if spec.mutable {
+                if let Some(lifetime) = &spec.lifetime {
+                    if spec.mutable {
+                        quote! { concat!("&", stringify!(#lifetime), " mut ", stringify!(#ident)) }
+                    } else {
+                        quote! { concat!("&", stringify!(#lifetime), " ", stringify!(#ident)) }
+                    }
+                } else if spec.mutable {
                     quote! { concat!("&mut ", stringify!(#ident)) }
                 } else {
                     quote! { concat!("&", stringify!(#ident)) }
                 }
             }
             ArtifactInputKind::Taken(spec) => {
-                if spec.mutable {
+                if let Some(lifetime) = &spec.lifetime {
+                    if spec.mutable {
+                        quote! { concat!("*", stringify!(#lifetime), " mut ", stringify!(#ident)) }
+                    } else {
+                        quote! { concat!("*", stringify!(#lifetime), " ", stringify!(#ident)) }
+                    }
+                } else if spec.mutable {
                     quote! { concat!("*mut ", stringify!(#ident)) }
                 } else {
                     quote! { concat!("*", stringify!(#ident)) }
@@ -289,7 +301,13 @@ fn artifact_output_list_tokens(
         .zip(borrows.iter())
         .map(|(ident, borrow)| {
             if let Some(spec) = borrow {
-                if spec.mutable {
+                if let Some(lifetime) = &spec.lifetime {
+                    if spec.mutable {
+                        quote! { concat!("&", stringify!(#lifetime), " mut ", stringify!(#ident)) }
+                    } else {
+                        quote! { concat!("&", stringify!(#lifetime), " ", stringify!(#ident)) }
+                    }
+                } else if spec.mutable {
                     quote! { concat!("&mut ", stringify!(#ident)) }
                 } else {
                     quote! { concat!("&", stringify!(#ident)) }
