@@ -694,9 +694,10 @@ fn emit_artifact_edges(
     for base in owned_inputs {
         let fanout = owned_fanout.and_then(|m| m.get(base)).copied().unwrap_or(1);
         let label = if fanout > 1 {
-            format!("clone x{} + move: {base}", fanout - 1)
+            // Show the artifact name first, then the action, so it's easy to scan.
+            format!("{base} [clone x{} + move]", fanout - 1)
         } else {
-            format!("move: {base}")
+            format!("{base} [move]")
         };
 
         if let Some(src) = tracker.owned.get(&ArtifactKey::new(None, base)) {
@@ -992,10 +993,41 @@ fn emit_lifetime_rail_links(
     outputs: &[String],
     lines: &mut Vec<String>,
 ) {
-    let mut per_lt: Vec<(String, LifetimeOps)> = collect_lifetime_ops(inputs, outputs)
-        .into_iter()
-        .collect();
+    let mut per_lt: Vec<(String, LifetimeOps)> =
+        collect_lifetime_ops(inputs, outputs).into_iter().collect();
     per_lt.sort_by(|(a, _), (b, _)| a.cmp(b));
+
+    // Also collect artifact names so lifetime interactions are concrete.
+    let mut names_per_lt: HashMap<String, (Vec<String>, Vec<String>, Vec<String>, Vec<String>)> =
+        HashMap::new(); // (read, edit, take, store)
+    for input in inputs {
+        let parsed = parse_artifact(input);
+        if parsed.access == ArtifactAccess::Owned {
+            continue;
+        }
+        let Some(lt) = parsed.lifetime else { continue };
+        let entry = names_per_lt.entry(lt.to_string()).or_default();
+        match parsed.access {
+            ArtifactAccess::Borrowed => {
+                if parsed.mutable {
+                    entry.1.push(parsed.name.to_string());
+                } else {
+                    entry.0.push(parsed.name.to_string());
+                }
+            }
+            ArtifactAccess::Taken => entry.2.push(parsed.name.to_string()),
+            ArtifactAccess::Owned => {}
+        }
+    }
+    for output in outputs {
+        let parsed = parse_artifact(output);
+        if parsed.access != ArtifactAccess::Borrowed {
+            continue;
+        }
+        let Some(lt) = parsed.lifetime else { continue };
+        let entry = names_per_lt.entry(lt.to_string()).or_default();
+        entry.3.push(parsed.name.to_string());
+    }
 
     for (lt, ops) in per_lt {
         let rails = tracker.lifetimes.borrow();
@@ -1007,7 +1039,20 @@ fn emit_lifetime_rail_links(
         };
 
         // Read/edit/take: lifetime -> step (arrow into the node)
-        let in_label = lifetime_in_label(ops);
+        let mut in_label = lifetime_in_label(ops);
+        if let Some((mut r, mut e, mut t, _)) = names_per_lt.get(&lt).cloned() {
+            r.sort(); r.dedup();
+            e.sort(); e.dedup();
+            t.sort(); t.dedup();
+            let mut parts: Vec<String> = Vec::new();
+            if !r.is_empty() { parts.push(format!("read: {}", r.join(", "))); }
+            if !e.is_empty() { parts.push(format!("edit: {}", e.join(", "))); }
+            if !t.is_empty() { parts.push(format!("take: {}", t.join(", "))); }
+            if !parts.is_empty() {
+                // Prefer concrete names over just counts.
+                in_label = parts.join(" | ");
+            }
+        }
         if !in_label.is_empty() {
             lines.push(format!(
                 r#"{tap} -. "{}" .-> {step_node}"#,
@@ -1016,7 +1061,13 @@ fn emit_lifetime_rail_links(
         }
 
         // Store: step -> lifetime (arrow into the rail)
-        let out_label = lifetime_out_label(ops);
+        let mut out_label = lifetime_out_label(ops);
+        if let Some((_, _, _, mut s)) = names_per_lt.get(&lt).cloned() {
+            s.sort(); s.dedup();
+            if !s.is_empty() {
+                out_label = format!("store: {}", s.join(", "));
+            }
+        }
         if !out_label.is_empty() {
             lines.push(format!(
                 r#"{step_node} -. "{}" .-> {tap}"#,
