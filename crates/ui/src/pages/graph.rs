@@ -93,6 +93,7 @@ pub(crate) struct GraphFragmentTemplate {
     pub(crate) graph_tags: Vec<String>,
     pub(crate) graph_deprecated: bool,
     pub(crate) graph_deprecated_reason: Option<String>,
+    pub(crate) show_artifacts: bool,
     pub(crate) mermaid: String,
     pub(crate) prometheus_base_url: String,
     pub(crate) loki_base_url: String,
@@ -111,6 +112,7 @@ pub(crate) async fn render_graph_fragment(
     state: Arc<AppState>,
     id: String,
     playground_view: PlaygroundView,
+    show_artifacts: bool,
 ) -> Result<String, AppHttpError> {
     let graph = state
         .graphs
@@ -123,6 +125,7 @@ pub(crate) async fn render_graph_fragment(
         &graph.export,
         graph.playground.map(|p| p.schema.context),
         &linkable_graphs,
+        show_artifacts,
     );
 
     let metrics = fetch_metrics(&state, &graph.export.name).await;
@@ -245,6 +248,7 @@ pub(crate) async fn render_graph_fragment(
         graph_tags: graph.export.tags.clone(),
         graph_deprecated: graph.export.deprecated,
         graph_deprecated_reason: graph.export.deprecated_reason.clone(),
+        show_artifacts,
         mermaid,
         prometheus_base_url: state.prometheus_base_url.clone(),
         loki_base_url: state.loki_base_url.clone(),
