@@ -21,3 +21,11 @@
 - graphium-ui use wasm to load config at runtime (Docker build compile rust and wasm is provided to rust at runtime)
 - Logs API: allow graph and nodes to scope their logs and visualize grouped and ordered logs from within the UI
 - Allow an API similar to && and >> to pass child nodes to the previous node as argument as an executor
+- allow a node to return itself without being executed: GetProduct() runs the node and GetProduct simply returns itself
+    GetProduct >> LoadHandler(GetProduct)
+  not good, its better to automatically bring nodes into the scope outside DAG:
+    LoadHandler(GetProduct)
+  where GetProduct is simply imported.
+  or would it even better to register GetProduct somewhere and get it by reference?
+- create an optional trait for graphs and nodes "Playground" which requires graph
+  or node to receive as arg only native values. And allow that node or graph to be executed from the ui.

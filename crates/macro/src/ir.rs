@@ -68,11 +68,19 @@ pub enum ArtifactInputKind {
 }
 
 #[derive(Clone)]
+pub enum CallInput {
+    Artifact { ident: Ident, kind: ArtifactInputKind },
+    /// An explicit path argument that may resolve either to a graph artifact
+    /// (by name) or to a node/graph handle (by path), depending on what's in
+    /// scope at that point in the graph.
+    Auto { path: Path },
+}
+
+#[derive(Clone)]
 pub struct NodeCall {
     pub path: Path,
     pub explicit_inputs: bool,
-    pub inputs: Vec<Ident>,
-    pub input_kinds: Vec<ArtifactInputKind>,
+    pub inputs: Vec<CallInput>,
     pub outputs: Vec<Ident>,
     pub output_borrows: Vec<Option<BorrowSpec>>,
 }

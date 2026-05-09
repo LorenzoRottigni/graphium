@@ -9,8 +9,24 @@ use std::collections::{BTreeMap, BTreeSet};
 use quote::quote;
 
 use crate::ir::{
-    ArtifactInputKind, GeneratedExpr, NodeCall, Payload, UsageMap, fresh_ident, is_graph_run_path,
+    ArtifactInputKind, CallInput, GeneratedExpr, NodeCall, Payload, UsageMap, fresh_ident,
+    is_graph_run_path,
 };
+
+fn ident_safe_suffix(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+        .collect()
+}
+
+fn path_is_single_ident(path: &syn::Path) -> Option<String> {
+    if path.leading_colon.is_some() || path.segments.len() != 1 {
+        return None;
+    }
+    let seg = path.segments.first()?;
+    seg.arguments.is_empty().then(|| seg.ident.to_string())
+}
 
 /// Builds the actual call expression for a node wrapper or nested graph entry
 /// point, including the async `.await` when required.
@@ -78,17 +94,26 @@ pub(crate) fn get_single_node_expr(
     let mut next_borrowed = incoming.borrowed.clone();
 
     let mut remaining = UsageMap::new();
-    for (input, kind) in call.inputs.iter().zip(call.input_kinds.iter()) {
+    for input in &call.inputs {
+        let CallInput::Artifact { ident, kind } = input else {
+            continue;
+        };
         if !matches!(kind, ArtifactInputKind::Owned) {
             continue;
         }
-        *remaining.entry(input.to_string()).or_insert(0) += 1;
+        *remaining.entry(ident.to_string()).or_insert(0) += 1;
     }
 
     let arg_idents: Vec<syn::Ident> = call
         .inputs
         .iter()
-        .map(|input| fresh_ident(counter, "arg", &input.to_string()))
+        .map(|input| {
+            let label = match input {
+                CallInput::Artifact { ident, .. } => ident.to_string(),
+                CallInput::Auto { path } => ident_safe_suffix(&quote!(#path).to_string()),
+            };
+            fresh_ident(counter, "arg", &label)
+        })
         .collect();
 
     let arg_vars = arg_idents.clone();
@@ -107,12 +132,10 @@ pub(crate) fn get_single_node_expr(
 
     // Bind taken inputs first so later `&ctx.field` borrows don't conflict with
     // `&mut ctx.other_field` takes.
-    for ((input, kind), arg_ident) in call
-        .inputs
-        .iter()
-        .zip(call.input_kinds.iter())
-        .zip(arg_idents.iter())
-    {
+    for (input, arg_ident) in call.inputs.iter().zip(arg_idents.iter()) {
+        let CallInput::Artifact { ident: input, kind } = input else {
+            continue;
+        };
         let ArtifactInputKind::Taken(_spec) = kind else {
             continue;
         };
@@ -133,12 +156,10 @@ pub(crate) fn get_single_node_expr(
     }
 
     // Then bind borrowed inputs.
-    for ((input, kind), arg_ident) in call
-        .inputs
-        .iter()
-        .zip(call.input_kinds.iter())
-        .zip(arg_idents.iter())
-    {
+    for (input, arg_ident) in call.inputs.iter().zip(arg_idents.iter()) {
+        let CallInput::Artifact { ident: input, kind } = input else {
+            continue;
+        };
         let ArtifactInputKind::Borrowed(spec) = kind else {
             continue;
         };
@@ -163,12 +184,10 @@ pub(crate) fn get_single_node_expr(
     }
 
     // Finally bind owned inputs from the hop payload.
-    for ((input, kind), arg_ident) in call
-        .inputs
-        .iter()
-        .zip(call.input_kinds.iter())
-        .zip(arg_idents.iter())
-    {
+    for (input, arg_ident) in call.inputs.iter().zip(arg_idents.iter()) {
+        let CallInput::Artifact { ident: input, kind } = input else {
+            continue;
+        };
         if !matches!(kind, ArtifactInputKind::Owned) {
             continue;
         }
@@ -200,6 +219,45 @@ pub(crate) fn get_single_node_expr(
         input_by_name
             .entry(artifact_name.clone())
             .or_insert((arg_ident.clone(), false));
+    }
+
+    // Finally bind auto inputs. These resolve to either artifacts (by name) or
+    // to node/graph handle values (by path).
+    for (input, arg_ident) in call.inputs.iter().zip(arg_idents.iter()) {
+        let CallInput::Auto { path } = input else {
+            continue;
+        };
+        if let Some(name) = path_is_single_ident(path) {
+            if let Some(source) = incoming.get_owned(&name) {
+                let remaining_uses = remaining
+                    .get_mut(&name)
+                    .unwrap_or_else(|| panic!("missing usage count for `{name}`"));
+                let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
+                if *remaining_uses == 1 {
+                    input_bindings.push(quote! {
+                        let #arg_ident = #source
+                            .take()
+                            .unwrap_or_else(|| panic!(concat!("missing artifact `", stringify!(#ident), "`")));
+                    });
+                } else {
+                    input_bindings.push(quote! {
+                        let #arg_ident = ::graphium::clone_artifact(
+                            #source
+                                .as_ref()
+                                .unwrap_or_else(|| panic!(concat!("missing artifact `", stringify!(#ident), "`")))
+                        );
+                    });
+                }
+                *remaining_uses -= 1;
+                input_by_name
+                    .entry(name.clone())
+                    .or_insert((arg_ident.clone(), false));
+            } else {
+                input_bindings.push(quote! { let #arg_ident = #path; });
+            }
+        } else {
+            input_bindings.push(quote! { let #arg_ident = #path; });
+        }
     }
 
     if !borrowed_outputs.is_empty() {
@@ -412,7 +470,6 @@ mod tests {
             path: parse_quote!(demo::Worker),
             explicit_inputs: false,
             inputs: Vec::new(),
-            input_kinds: Vec::new(),
             outputs: Vec::new(),
             output_borrows: Vec::new(),
         };

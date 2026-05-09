@@ -283,6 +283,57 @@ graph! {
     }
 }
 
+node! {
+    fn callable_get(ctx: &Context) -> u32 {
+        let _ = ctx;
+        10
+    }
+}
+
+node! {
+    fn callable_server() -> u32 {
+        5
+    }
+}
+
+node! {
+    fn callable_load_handler(
+        ctx: &Context,
+        handler: CallableGet,
+        server: u32,
+    ) -> u32 {
+        ::graphium::NodeHandle::run(&handler, ctx, ()) + server
+    }
+}
+
+node! {
+    fn callable_run_graph(
+        ctx: &mut Context,
+        runner: CallableInnerGraph,
+    ) -> u32 {
+        ::graphium::GraphHandle::run(&runner, ctx, ())
+    }
+}
+
+graph! {
+    CallableArgsGraph<'a, Context> -> (value: u32) {
+        CallableServer() -> (server) >>
+        CallableLoadHandler(CallableGet, server) -> (value)
+    }
+}
+
+graph! {
+    CallableInnerGraph<'a, Context> -> (value: u32) {
+        CallableGet() -> (value)
+    }
+}
+
+graph! {
+    CallableOuterGraph<'a, Context> -> (value: u32) {
+        CallableRunGraph(CallableInnerGraph) -> (value)
+    }
+}
+
 graph! {
     #[metrics("performance", "errors", "count", "caller", "success_rate", "fail_rate")]
     #[tests(OwnedGraphReturnsNonZeroSplit)]
@@ -375,7 +426,9 @@ pub fn config() -> GraphiumUiConfig {
             OwnedGraph,
             BorrowedGraph,
             ControlFlowGraph,
-            DeepInnerGraph
+            DeepInnerGraph,
+            CallableArgsGraph,
+            CallableOuterGraph
         ],
         ..Default::default()
     }
@@ -421,6 +474,24 @@ graph_test! {
         let mut ctx = Context::default();
         let out = ControlFlowGraph::run(&mut ctx);
         assert_eq!(out, 30);
+    }
+}
+
+graph_test! {
+    #[test]
+    fn callable_args_graph_executes_handler() {
+        let mut ctx = Context::default();
+        let out = CallableArgsGraph::run(&mut ctx);
+        assert_eq!(out, 15);
+    }
+}
+
+graph_test! {
+    #[test]
+    fn callable_outer_graph_runs_inner_graph() {
+        let mut ctx = Context::default();
+        let out = CallableOuterGraph::run(&mut ctx);
+        assert_eq!(out, 10);
     }
 }
 

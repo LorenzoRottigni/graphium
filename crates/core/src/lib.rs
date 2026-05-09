@@ -32,6 +32,27 @@ pub trait Graph<Ctx> {
     fn run(ctx: &mut Ctx);
 }
 
+/// Trait implemented by macro-generated node wrapper types so they can be
+/// passed as typed "handles" to other nodes.
+///
+/// `Inputs` is represented as a tuple, e.g. `()`, `(A,)`, `(A, B)`.
+pub trait NodeHandle<Ctx, Inputs, Output> {
+    fn run(&self, ctx: &Ctx, inputs: Inputs) -> Output;
+}
+
+/// Variant for nodes that require mutable context access.
+pub trait NodeHandleMut<Ctx, Inputs, Output> {
+    fn run(&self, ctx: &mut Ctx, inputs: Inputs) -> Output;
+}
+
+/// Trait implemented by macro-generated graphs so they can be passed as typed
+/// "handles" to other nodes.
+///
+/// `Inputs` is represented as a tuple, e.g. `()`, `(A,)`, `(A, B)`.
+pub trait GraphHandle<Ctx, Inputs, Output> {
+    fn run(&self, ctx: &mut Ctx, inputs: Inputs) -> Output;
+}
+
 /// Trait implemented by macro-generated graphs to expose UI/admin test runners
 /// without any runtime registry/discovery.
 pub trait GraphUiTests {

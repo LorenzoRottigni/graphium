@@ -92,6 +92,39 @@ pub fn expand(input: TokenStream) -> TokenStream {
         async_enabled,
     );
     let run_return_sig = super::execution::build_run_return_sig(&graph_outputs);
+    let inputs_tuple_ty = match graph_inputs.len() {
+        0 => quote! { () },
+        1 => {
+            let ty = &graph_inputs[0].1;
+            quote! { (#ty,) }
+        }
+        _ => {
+            let tys = graph_inputs.iter().map(|(_, ty)| ty);
+            quote! { ( #( #tys ),* ) }
+        }
+    };
+    let inputs_tuple_pat = match root_setup.run_args.len() {
+        0 => quote! { () },
+        1 => {
+            let a = &root_setup.run_args[0];
+            quote! { (#a,) }
+        }
+        _ => {
+            let args = &root_setup.run_args;
+            quote! { ( #( #args ),* ) }
+        }
+    };
+    let output_ty = match graph_outputs.len() {
+        0 => quote! { () },
+        1 => {
+            let ty = &graph_outputs[0].1;
+            quote! { #ty }
+        }
+        _ => {
+            let tys = graph_outputs.iter().map(|(_, ty)| ty);
+            quote! { ( #( #tys ),* ) }
+        }
+    };
     let run_body = super::execution::build_run_body(
         execution.generated_sync.as_ref(),
         &root_setup.root_input_bindings,
@@ -122,6 +155,9 @@ pub fn expand(input: TokenStream) -> TokenStream {
         &root_setup.run_params,
         &root_setup.run_args,
         &run_return_sig,
+        &inputs_tuple_ty,
+        &inputs_tuple_pat,
+        &output_ty,
         &sync_graph_body,
     );
     let async_impl = runtime::build_async_impl(
@@ -185,7 +221,10 @@ fn collect_borrowed_slot_names(nodes: &crate::ir::NodeExpr) -> BTreeSet<String> 
         use crate::ir::NodeExpr;
         match expr {
             NodeExpr::Single(call) => {
-                for (ident, kind) in call.inputs.iter().zip(call.input_kinds.iter()) {
+                for input in &call.inputs {
+                    let crate::ir::CallInput::Artifact { ident, kind } = input else {
+                        continue;
+                    };
                     if matches!(
                         kind,
                         crate::ir::ArtifactInputKind::Borrowed(_)

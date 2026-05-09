@@ -6,7 +6,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::ir::{ArtifactInputKind, ExprShape, NodeCall, NodeExpr, UsageMap};
+use crate::ir::{ArtifactInputKind, CallInput, ExprShape, NodeCall, NodeExpr, UsageMap};
 
 use super::expr::{
     SelectorParam, collect_parallel_entry_usage, loop_exit_outputs, route_exit_outputs,
@@ -148,13 +148,19 @@ fn analyze_single(call: &NodeCall) -> ExprShape {
 
     let mut entry_usage = UsageMap::new();
     let mut entry_borrowed = BTreeSet::new();
-    for (input, kind) in call.inputs.iter().zip(call.input_kinds.iter()) {
-        match kind {
-            ArtifactInputKind::Owned => {
-                *entry_usage.entry(input.to_string()).or_insert(0) += 1;
-            }
-            ArtifactInputKind::Borrowed(_) | ArtifactInputKind::Taken(_) => {
-                entry_borrowed.insert(input.to_string());
+    for input in &call.inputs {
+        match input {
+            CallInput::Artifact { ident, kind } => match kind {
+                ArtifactInputKind::Owned => {
+                    *entry_usage.entry(ident.to_string()).or_insert(0) += 1;
+                }
+                ArtifactInputKind::Borrowed(_) | ArtifactInputKind::Taken(_) => {
+                    entry_borrowed.insert(ident.to_string());
+                }
+            },
+            CallInput::Auto { path: _ } => {
+                // Auto inputs are resolved during codegen based on what's in scope.
+                // Shape analysis treats them as non-artifact dependencies.
             }
         }
     }
@@ -300,15 +306,23 @@ mod tests {
     use super::{
         analyze_expr, collect_parallel_outputs, collect_route_outputs, required_artifacts,
     };
-    use crate::ir::{ArtifactInputKind, ExprShape, LoopExpr, NodeCall, NodeExpr};
+    use crate::ir::{ArtifactInputKind, CallInput, ExprShape, LoopExpr, NodeCall, NodeExpr};
 
     #[test]
     fn analyze_single_counts_duplicate_owned_inputs() {
         let expr = NodeExpr::Single(NodeCall {
             path: parse_quote!(demo::Node),
             explicit_inputs: true,
-            inputs: vec![parse_quote!(value), parse_quote!(value)],
-            input_kinds: vec![ArtifactInputKind::Owned, ArtifactInputKind::Owned],
+            inputs: vec![
+                CallInput::Artifact {
+                    ident: parse_quote!(value),
+                    kind: ArtifactInputKind::Owned,
+                },
+                CallInput::Artifact {
+                    ident: parse_quote!(value),
+                    kind: ArtifactInputKind::Owned,
+                },
+            ],
             outputs: vec![parse_quote!(out)],
             output_borrows: vec![None],
         });
@@ -325,8 +339,10 @@ mod tests {
             body: Box::new(NodeExpr::Single(NodeCall {
                 path: parse_quote!(demo::Node),
                 explicit_inputs: true,
-                inputs: vec![parse_quote!(value)],
-                input_kinds: vec![ArtifactInputKind::Owned],
+                inputs: vec![CallInput::Artifact {
+                    ident: parse_quote!(value),
+                    kind: ArtifactInputKind::Owned,
+                }],
                 outputs: vec![parse_quote!(out)],
                 output_borrows: vec![None],
             })),

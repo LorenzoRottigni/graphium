@@ -167,6 +167,10 @@ pub fn expand(input: TokenStream) -> TokenStream {
         Some(ty) => quote! { -> #ty },
         None => quote! {},
     };
+    let output_ty = match &node_def.return_ty {
+        Some(ty) => quote! { #ty },
+        None => quote! { () },
+    };
     let metrics_enabled = node_def.metrics.enabled();
     let track_panics = node_def.metrics.track_panics_sync();
     let track_panic_sync = track_panics && metrics_enabled;
@@ -607,6 +611,72 @@ pub fn expand(input: TokenStream) -> TokenStream {
         }
     };
 
+    let inputs_tuple_ty = match input_types.len() {
+        0 => quote! { () },
+        1 => {
+            let a = &input_types[0];
+            quote! { (#a,) }
+        }
+        _ => quote! { ( #( #input_types ),* ) },
+    };
+    let inputs_tuple_pat: proc_macro2::TokenStream = match input_idents.len() {
+        0 => quote! { () },
+        1 => {
+            let a = &input_idents[0];
+            quote! { (#a,) }
+        }
+        _ => quote! { ( #( #input_idents ),* ) },
+    };
+
+    let handle_impl = if is_async {
+        quote! {}
+    } else {
+        match &node_def.ctx_type {
+            Some(ctx_ty) => {
+                if node_def.ctx_mut {
+                    quote! {
+                        impl ::graphium::NodeHandleMut<#ctx_ty, #inputs_tuple_ty, #output_ty> for #struct_name {
+                            fn run(&self, ctx: &mut #ctx_ty, inputs: #inputs_tuple_ty) -> #output_ty {
+                                let #inputs_tuple_pat = inputs;
+                                Self::run(ctx, #( #input_idents ),* )
+                            }
+                        }
+                    }
+                } else {
+                    quote! {
+                        impl ::graphium::NodeHandle<#ctx_ty, #inputs_tuple_ty, #output_ty> for #struct_name {
+                            fn run(&self, ctx: & #ctx_ty, inputs: #inputs_tuple_ty) -> #output_ty {
+                                let #inputs_tuple_pat = inputs;
+                                Self::run(ctx, #( #input_idents ),* )
+                            }
+                        }
+                    }
+                }
+            }
+            None => {
+                if node_def.ctx_mut {
+                    quote! {
+                        impl<Ctx> ::graphium::NodeHandleMut<Ctx, #inputs_tuple_ty, #output_ty> for #struct_name {
+                            fn run(&self, ctx: &mut Ctx, inputs: #inputs_tuple_ty) -> #output_ty {
+                                let #inputs_tuple_pat = inputs;
+                                Self::run(ctx, #( #input_idents ),* )
+                            }
+                        }
+                    }
+                } else {
+                    quote! {
+                        impl<Ctx> ::graphium::NodeHandle<Ctx, #inputs_tuple_ty, #output_ty> for #struct_name {
+                            fn run(&self, ctx: &Ctx, inputs: #inputs_tuple_ty) -> #output_ty {
+                                let #inputs_tuple_pat = inputs;
+                                Self::run(ctx, #( #input_idents ),* )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    };
+
     let expanded = quote! {
         #func
 
@@ -627,6 +697,8 @@ pub fn expand(input: TokenStream) -> TokenStream {
             #sync_run
             #async_run
         }
+
+        #handle_impl
 
         static #play_inputs_ident: &[::graphium::PlaygroundParam] = &[ #( #playground_inputs ),* ];
         static #play_outputs_ident: &[::graphium::PlaygroundParam] = &[ #( #output_params ),* ];

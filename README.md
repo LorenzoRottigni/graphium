@@ -273,6 +273,29 @@ This transfers the value out of the graph-managed lifetime into the executing no
 
 ---
 
+#### 3.5 Node/graph handles (callable arguments)
+
+In addition to artifacts, a node can accept **handles**: a node or graph passed as an argument, so the outer node can execute it.
+
+- **Syntax:** pass the node/graph wrapper by name (e.g. `GetProduct`, `ExampleGraph`)
+- **Meaning:** inject a typed handle (not wired from artifacts)
+
+Example (higher-order node calling another node):
+
+```rust
+LoadHandler(GetProduct, server)
+```
+
+Example (node executing a sub-graph):
+
+```rust
+RunGraph(ExampleGraph)
+```
+
+Handles are **type-checked at compile time** via `graphium::NodeHandle{,Mut}` and `graphium::GraphHandle`.
+
+---
+
 ### 4. Context system
 
 - **Annotation:** `Context`

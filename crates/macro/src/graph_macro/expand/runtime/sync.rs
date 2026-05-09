@@ -18,6 +18,9 @@ pub fn build_sync_impl(
     run_params: &[TokenStream],
     run_args: &[Ident],
     run_return_sig: &TokenStream,
+    inputs_tuple_ty: &TokenStream,
+    inputs_tuple_pat: &TokenStream,
+    output_ty: &TokenStream,
     sync_graph_body: &TokenStream,
 ) -> TokenStream {
     if async_enabled {
@@ -65,6 +68,13 @@ pub fn build_sync_impl(
                 __graphium_result
             }
             #default_runner
+        }
+
+        impl ::graphium::GraphHandle<#context, #inputs_tuple_ty, #output_ty> for #name {
+            fn run(&self, ctx: &mut #context, inputs: #inputs_tuple_ty) -> #output_ty {
+                let #inputs_tuple_pat = inputs;
+                #name::run(ctx, #( #run_args ),* )
+            }
         }
     }
 }

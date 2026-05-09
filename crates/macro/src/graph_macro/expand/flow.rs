@@ -7,7 +7,7 @@ use quote::quote;
 
 use crate::graph_macro::analysis::{analyze_expr, required_artifacts, required_borrowed};
 use crate::graph_macro::expr::{SelectorParam, graph_type_path, selector_params_for_on_expr};
-use crate::ir::{ArtifactInputKind, NodeCall, NodeExpr, is_graph_run_path};
+use crate::ir::{ArtifactInputKind, CallInput, NodeCall, NodeExpr, is_graph_run_path};
 
 /// Builds the `GraphFlowDto` literal returned by generated graph types.
 pub(super) fn graph_flow_tokens(
@@ -213,7 +213,7 @@ fn static_str_list_tokens(values: &[String]) -> Vec<proc_macro2::TokenStream> {
 fn node_call_step_tokens(call: &NodeCall) -> proc_macro2::TokenStream {
     let node_path = &call.path;
     let nested_graph_path = is_graph_run_path(node_path).then(|| graph_type_path(node_path));
-    let input_tokens = artifact_input_list_tokens(&call.inputs, &call.input_kinds);
+    let input_tokens = call_input_list_tokens(&call.inputs);
     let output_tokens = artifact_output_list_tokens(&call.outputs, &call.output_borrows);
 
     if let Some(graph_path) = nested_graph_path {
@@ -252,41 +252,40 @@ fn node_call_step_tokens(call: &NodeCall) -> proc_macro2::TokenStream {
 /// providing idents `[value, shared, moved]` with kinds
 /// `[Owned, Borrowed, Taken]` expands into tokens like
 /// `["value", "&shared", "*moved"]`.
-fn artifact_input_list_tokens(
-    idents: &[syn::Ident],
-    kinds: &[ArtifactInputKind],
-) -> Vec<proc_macro2::TokenStream> {
-    idents
+fn call_input_list_tokens(inputs: &[CallInput]) -> Vec<proc_macro2::TokenStream> {
+    inputs
         .iter()
-        .zip(kinds.iter())
-        .map(|(ident, kind)| match kind {
-            ArtifactInputKind::Owned => quote! { stringify!(#ident) },
-            ArtifactInputKind::Borrowed(spec) => {
-                if let Some(lifetime) = &spec.lifetime {
-                    if spec.mutable {
-                        quote! { concat!("&", stringify!(#lifetime), " mut ", stringify!(#ident)) }
+        .map(|input| match input {
+            CallInput::Auto { path } => quote! { stringify!(#path) },
+            CallInput::Artifact { ident, kind } => match kind {
+                ArtifactInputKind::Owned => quote! { stringify!(#ident) },
+                ArtifactInputKind::Borrowed(spec) => {
+                    if let Some(lifetime) = &spec.lifetime {
+                        if spec.mutable {
+                            quote! { concat!("&", stringify!(#lifetime), " mut ", stringify!(#ident)) }
+                        } else {
+                            quote! { concat!("&", stringify!(#lifetime), " ", stringify!(#ident)) }
+                        }
+                    } else if spec.mutable {
+                        quote! { concat!("&mut ", stringify!(#ident)) }
                     } else {
-                        quote! { concat!("&", stringify!(#lifetime), " ", stringify!(#ident)) }
+                        quote! { concat!("&", stringify!(#ident)) }
                     }
-                } else if spec.mutable {
-                    quote! { concat!("&mut ", stringify!(#ident)) }
-                } else {
-                    quote! { concat!("&", stringify!(#ident)) }
                 }
-            }
-            ArtifactInputKind::Taken(spec) => {
-                if let Some(lifetime) = &spec.lifetime {
-                    if spec.mutable {
-                        quote! { concat!("*", stringify!(#lifetime), " mut ", stringify!(#ident)) }
+                ArtifactInputKind::Taken(spec) => {
+                    if let Some(lifetime) = &spec.lifetime {
+                        if spec.mutable {
+                            quote! { concat!("*", stringify!(#lifetime), " mut ", stringify!(#ident)) }
+                        } else {
+                            quote! { concat!("*", stringify!(#lifetime), " ", stringify!(#ident)) }
+                        }
+                    } else if spec.mutable {
+                        quote! { concat!("*mut ", stringify!(#ident)) }
                     } else {
-                        quote! { concat!("*", stringify!(#lifetime), " ", stringify!(#ident)) }
+                        quote! { concat!("*", stringify!(#ident)) }
                     }
-                } else if spec.mutable {
-                    quote! { concat!("*mut ", stringify!(#ident)) }
-                } else {
-                    quote! { concat!("*", stringify!(#ident)) }
                 }
-            }
+            },
         })
         .collect()
 }
@@ -333,7 +332,6 @@ mod tests {
                 path: parse_quote!(demo::A),
                 explicit_inputs: false,
                 inputs: Vec::new(),
-                input_kinds: Vec::new(),
                 outputs: Vec::new(),
                 output_borrows: Vec::new(),
             }),
@@ -341,7 +339,6 @@ mod tests {
                 path: parse_quote!(demo::B),
                 explicit_inputs: false,
                 inputs: Vec::new(),
-                input_kinds: Vec::new(),
                 outputs: Vec::new(),
                 output_borrows: Vec::new(),
             }),

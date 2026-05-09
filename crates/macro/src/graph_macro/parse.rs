@@ -16,7 +16,7 @@ use syn::{
 };
 
 use crate::ir::{
-    ArtifactInputKind, BorrowSpec, GraphInput, LoopExpr, MetricsSpec, NodeCall, NodeExpr,
+    ArtifactInputKind, BorrowSpec, CallInput, GraphInput, LoopExpr, MetricsSpec, NodeCall, NodeExpr,
     RouteExpr, WhileExpr, parse_metric_name,
 };
 
@@ -148,12 +148,12 @@ impl Parse for NodeCall {
     fn parse(input: ParseStream) -> Result<Self> {
         let path: Path = input.parse()?;
         let explicit_inputs = input.peek(syn::token::Paren);
-        let (inputs, input_kinds) = if explicit_inputs {
+        let inputs = if explicit_inputs {
             let content;
             syn::parenthesized!(content in input);
-            parse_input_ident_list(&content)?
+            parse_input_list(&content)?
         } else {
-            (Vec::new(), Vec::new())
+            Vec::new()
         };
 
         let (outputs, output_borrows) = if input.peek(Token![->]) {
@@ -175,49 +175,83 @@ impl Parse for NodeCall {
             path,
             explicit_inputs,
             inputs,
-            input_kinds,
             outputs,
             output_borrows,
         })
     }
 }
 
-/// Parses a comma-separated list of artifact names used for node inputs or
-/// outputs in the graph DSL.
-fn parse_input_ident_list(input: ParseStream) -> Result<(Vec<Ident>, Vec<ArtifactInputKind>)> {
-    let mut idents = Vec::new();
-    let mut kinds = Vec::new();
+/// Parses a comma-separated list of node call inputs.
+///
+/// Inputs can be:
+/// - artifacts (owned / borrowed / taken) via `name`, `&name`, `*name` (plus
+///   optional lifetimes and `mut`)
+/// - auto inputs via `Path`, which resolve to either an artifact name or a
+///   node/graph handle depending on what is in scope, e.g. `GetProduct`
+fn parse_input_list(input: ParseStream) -> Result<Vec<CallInput>> {
+    let mut inputs = Vec::new();
 
     while !input.is_empty() {
-        let kind = if input.peek(Token![&]) {
-            input.parse::<Token![&]>()?;
-            let lifetime = parse_optional_lifetime(input)?;
-            let mutable = input.peek(Token![mut]);
-            if mutable {
-                input.parse::<Token![mut]>()?;
-            }
-            ArtifactInputKind::Borrowed(if mutable {
-                BorrowSpec::mutable(lifetime)
+        if input.peek(Token![&]) || input.peek(Token![*]) {
+            let kind = if input.peek(Token![&]) {
+                input.parse::<Token![&]>()?;
+                let lifetime = parse_optional_lifetime(input)?;
+                let mutable = input.peek(Token![mut]);
+                if mutable {
+                    input.parse::<Token![mut]>()?;
+                }
+                ArtifactInputKind::Borrowed(if mutable {
+                    BorrowSpec::mutable(lifetime)
+                } else {
+                    BorrowSpec::shared(lifetime)
+                })
+            } else if input.peek(Token![*]) {
+                input.parse::<Token![*]>()?;
+                let lifetime = parse_optional_lifetime(input)?;
+                let mutable = input.peek(Token![mut]);
+                if mutable {
+                    input.parse::<Token![mut]>()?;
+                }
+                ArtifactInputKind::Taken(if mutable {
+                    BorrowSpec::mutable(lifetime)
+                } else {
+                    BorrowSpec::shared(lifetime)
+                })
             } else {
-                BorrowSpec::shared(lifetime)
-            })
-        } else if input.peek(Token![*]) {
-            input.parse::<Token![*]>()?;
-            let lifetime = parse_optional_lifetime(input)?;
-            let mutable = input.peek(Token![mut]);
-            if mutable {
-                input.parse::<Token![mut]>()?;
-            }
-            ArtifactInputKind::Taken(if mutable {
-                BorrowSpec::mutable(lifetime)
-            } else {
-                BorrowSpec::shared(lifetime)
-            })
+                ArtifactInputKind::Owned
+            };
+            let ident: Ident = input.parse()?;
+            inputs.push(CallInput::Artifact { ident, kind });
         } else {
-            ArtifactInputKind::Owned
-        };
-        idents.push(input.parse()?);
-        kinds.push(kind);
+            // Bare inputs are resolved by convention:
+            // - snake_case (lowercase leading) -> owned artifact name
+            // - PascalCase (uppercase leading) -> node/graph handle value
+            //
+            // This matches typical Graphium usage where artifacts are bound from
+            // hop/lifetime storage and nodes/graphs are type-like identifiers.
+            let fork = input.fork();
+            if let Ok(ident) = fork.parse::<Ident>() {
+                let name = ident.to_string();
+                if name
+                    .chars()
+                    .next()
+                    .is_some_and(|ch| ch.is_ascii_lowercase() || ch == '_')
+                {
+                    input.advance_to(&fork);
+                    inputs.push(CallInput::Artifact {
+                        ident,
+                        kind: ArtifactInputKind::Owned,
+                    });
+                } else {
+                    let path: Path = input.parse()?;
+                    inputs.push(CallInput::Auto { path });
+                }
+            } else {
+                let path: Path = input.parse()?;
+                inputs.push(CallInput::Auto { path });
+            }
+        }
+
         if input.peek(Token![,]) {
             input.parse::<Token![,]>()?;
         } else {
@@ -225,7 +259,7 @@ fn parse_input_ident_list(input: ParseStream) -> Result<(Vec<Ident>, Vec<Artifac
         }
     }
 
-    Ok((idents, kinds))
+    Ok(inputs)
 }
 
 fn parse_output_ident_list(input: ParseStream) -> Result<(Vec<Ident>, Vec<Option<BorrowSpec>>)> {
