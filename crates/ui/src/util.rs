@@ -59,12 +59,52 @@ pub(crate) enum ArtifactAccess {
     Taken,
 }
 
-pub(crate) fn parse_artifact(value: &str) -> (&str, ArtifactAccess) {
-    if let Some(rest) = value.strip_prefix('&') {
-        (rest, ArtifactAccess::Borrowed)
-    } else if let Some(rest) = value.strip_prefix('*') {
-        (rest, ArtifactAccess::Taken)
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct ParsedArtifact<'a> {
+    pub(crate) name: &'a str,
+    pub(crate) access: ArtifactAccess,
+    pub(crate) lifetime: Option<&'a str>,
+    pub(crate) mutable: bool,
+}
+
+pub(crate) fn parse_artifact(value: &str) -> ParsedArtifact<'_> {
+    let mut rest = value.trim();
+
+    let access = if let Some(after) = rest.strip_prefix('&') {
+        rest = after.trim_start();
+        ArtifactAccess::Borrowed
+    } else if let Some(after) = rest.strip_prefix('*') {
+        rest = after.trim_start();
+        ArtifactAccess::Taken
     } else {
-        (value, ArtifactAccess::Owned)
+        ArtifactAccess::Owned
+    };
+
+    let mut mutable = false;
+    if let Some(after) = rest.strip_prefix("mut ") {
+        mutable = true;
+        rest = after.trim_start();
+    }
+
+    let mut lifetime: Option<&str> = None;
+    if rest.starts_with('\'') {
+        let end = rest
+            .find(char::is_whitespace)
+            .unwrap_or_else(|| rest.len());
+        lifetime = Some(&rest[..end]);
+        rest = rest[end..].trim_start();
+    }
+
+    if let Some(after) = rest.strip_prefix("mut ") {
+        mutable = true;
+        rest = after.trim_start();
+    }
+
+    let name = rest.trim_matches(|ch: char| matches!(ch, '(' | ')' | ','));
+    ParsedArtifact {
+        name,
+        access,
+        lifetime,
+        mutable,
     }
 }

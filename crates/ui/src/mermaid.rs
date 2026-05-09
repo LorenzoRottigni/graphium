@@ -1,4 +1,6 @@
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use graphium::dto::{CtxAccessDto, GraphCaseDto, GraphDto, GraphStepDto};
 
@@ -10,6 +12,7 @@ pub(crate) fn to_mermaid(
     graph: &GraphDto,
     context_label: Option<&str>,
     linkable_graphs: &HashSet<String>,
+    show_artifacts: bool,
 ) -> String {
     let mut lines = Vec::new();
     let mut counter = 0usize;
@@ -17,7 +20,7 @@ pub(crate) fn to_mermaid(
     // Tune layout a bit so linear graphs read cleanly and complex graphs don't
     // feel as cramped by default.
     lines.push(
-        r#"%%{init: {"flowchart": {"curve":"basis","nodeSpacing":56,"rankSpacing":80}} }%%"#
+        r#"%%{init: {"flowchart": {"curve":"linear","nodeSpacing":56,"rankSpacing":80}} }%%"#
             .to_string(),
     );
     // Prefer a horizontal layout so execution reads left-to-right; the UI wraps
@@ -33,7 +36,12 @@ pub(crate) fn to_mermaid(
         "classDef ctx fill:#13112b,stroke:#6366f1,color:#e0e7ff,stroke-width:2px".to_string(),
     );
     lines.push(
-        "classDef frame fill:#0b1220,stroke:#38bdf8,color:#e0f2fe,stroke-width:2px".to_string(),
+        // Lifetimes are rendered as separate "rails" (straight lines) so we can
+        // connect steps to the rail with short labeled links without cluttering
+        // the main execution edges.
+        // Keep contrast low: the rail is a guide, not the focus.
+        "classDef lifetime fill:#0b0f14,stroke:#334155,color:#cbd5e1,stroke-width:1px"
+            .to_string(),
     );
     lines.push(
         "classDef stepNode fill:#121214,stroke:#06b6d4,color:#ecfeff,stroke-width:2px".to_string(),
@@ -44,7 +52,6 @@ pub(crate) fn to_mermaid(
     lines.push(
         "classDef control fill:#0b0b0c,stroke:#9ca3af,color:#ffffff,stroke-width:2px".to_string(),
     );
-
     let root = next_id(&mut counter);
     lines.push(format!(
         r#"{root}(["{}"]):::graphRoot"#,
@@ -73,33 +80,28 @@ pub(crate) fn to_mermaid(
         None
     };
 
-    let frame_node = if graph_uses_artifact_frame(&graph.flow.steps) {
-        let node_id = next_id(&mut counter);
-        lines.push(format!(r#"{node_id}(["{}"]):::frame"#, "graph lifetime"));
-        Some(node_id)
-    } else {
-        None
-    };
-
     if let Some(inputs_node) = &inputs_node {
         lines.push(format!("{root} --> {inputs_node}"));
     }
     if let Some(ctx_node) = &ctx_node {
         lines.push(format!("{root} --> {ctx_node}"));
     }
-    if let Some(frame_node) = &frame_node {
-        lines.push(format!("{root} --> {frame_node}"));
-    }
 
     let mut tracker = ArtifactTracker {
         inputs_node,
         ctx_node,
-        frame_node,
+        lifetimes: Arc::new(RefCell::new(HashMap::new())),
+        lifetime_order: Arc::new(Vec::new()),
         ..Default::default()
     };
     if let Some(inputs_node) = &tracker.inputs_node {
         for input in &graph.flow.inputs {
-            tracker.owned.insert(input.clone(), inputs_node.clone());
+            let parsed = parse_artifact(input);
+            // Owned artifacts are normal data-flow values; don't tie them to a
+            // lifetime abstraction in the UI.
+            tracker
+                .owned
+                .insert(ArtifactKey::new(None, parsed.name), inputs_node.clone());
         }
     }
 
@@ -107,12 +109,22 @@ pub(crate) fn to_mermaid(
         return lines.join("\n");
     }
 
+    if show_artifacts {
+        // Pre-create lifetime rails so they exist from the beginning of the diagram.
+        init_lifetime_rails(&mut tracker, &graph.flow.steps, &mut counter);
+        // Add an initial tick so rails start aligned with the graph root.
+        advance_lifetime_rails(&mut tracker, &mut counter);
+    }
+    // Note: Mermaid flowcharts don't guarantee exact placement; we render rails
+    // after the main chain so they typically appear below it.
+
     let rendered = append_steps(
         &graph.flow.steps,
         &mut tracker,
         linkable_graphs,
         &mut lines,
         &mut counter,
+        show_artifacts,
     );
     lines.push(format!("{root} --> {}", rendered.head));
 
@@ -131,24 +143,75 @@ pub(crate) fn to_mermaid(
         lines.push(format!("{} --> {outputs_node}", rendered.tail));
         // Add explicit data edges for declared graph outputs.
         for output in graph.flow.outputs.iter() {
-            if let Some(src) = tracker.owned.get(output) {
+            let parsed = parse_artifact(output);
+            if let Some(src) = tracker
+                .owned
+                .get(&ArtifactKey::new(None, parsed.name))
+            {
                 lines.push(format!(
                     r#"{src} -. "{}" .-> {outputs_node}"#,
-                    escape_label(output)
+                    escape_label(output.trim())
                 ));
             }
         }
     }
 
+    if show_artifacts {
+        // Extend rails one extra tick so they visually reach "the end" even when
+        // the last step doesn't touch a given lifetime.
+        advance_lifetime_rails(&mut tracker, &mut counter);
+        emit_lifetime_rails(&tracker, &mut lines);
+    }
+
     lines.join("\n")
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+struct ArtifactKey {
+    lifetime: Option<String>,
+    name: String,
+}
+
+impl ArtifactKey {
+    fn new(lifetime: Option<&str>, name: &str) -> Self {
+        Self {
+            lifetime: lifetime.map(|v| v.to_string()),
+            name: name.to_string(),
+        }
+    }
+}
+
+#[derive(Clone)]
 struct ArtifactTracker {
-    owned: HashMap<String, String>,
+    owned: HashMap<ArtifactKey, String>,
     inputs_node: Option<String>,
     ctx_node: Option<String>,
-    frame_node: Option<String>,
+    lifetimes: Arc<RefCell<HashMap<String, LifetimeRail>>>,
+    lifetime_order: Arc<Vec<String>>,
+}
+
+impl Default for ArtifactTracker {
+    fn default() -> Self {
+        Self {
+            owned: HashMap::new(),
+            inputs_node: None,
+            ctx_node: None,
+            lifetimes: Arc::new(RefCell::new(HashMap::new())),
+            lifetime_order: Arc::new(Vec::new()),
+        }
+    }
+}
+
+#[derive(Clone, Default)]
+struct LifetimeRail {
+    /// Mermaid node id of the rail's start point.
+    start: String,
+    /// Mermaid node id of the last point added to the rail.
+    last: String,
+    /// Tap ids aligned to the main graph "positions" (one per rendered step).
+    taps: Vec<String>,
+    /// Lines that define nodes/edges inside the lifetime subgraph.
+    lines: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -163,12 +226,18 @@ fn append_steps(
     linkable_graphs: &HashSet<String>,
     lines: &mut Vec<String>,
     counter: &mut usize,
+    show_artifacts: bool,
 ) -> RenderedSteps {
     let mut head: Option<String> = None;
     let mut previous_tail: Option<String> = None;
 
     for step in steps {
-        let rendered = render_step(step, tracker, linkable_graphs, lines, counter);
+        if show_artifacts {
+            // Keep the lifetime rails in sync with the main graph progression.
+            // This ensures each lifetime line spans the full diagram.
+            advance_lifetime_rails(tracker, counter);
+        }
+        let rendered = render_step(step, tracker, linkable_graphs, lines, counter, show_artifacts);
         if head.is_none() {
             head = Some(rendered.head.clone());
         }
@@ -190,6 +259,7 @@ fn render_step(
     linkable_graphs: &HashSet<String>,
     lines: &mut Vec<String>,
     counter: &mut usize,
+    show_artifacts: bool,
 ) -> RenderedSteps {
     match step {
         GraphStepDto::Node {
@@ -224,7 +294,13 @@ fn render_step(
                 escape_label(&normalize_symbol(name))
             ));
             lines.push(format!(r#"style {node_id} cursor:pointer"#));
-            emit_artifact_edges(tracker, &node_id, *ctx, inputs, outputs, None, lines);
+            if show_artifacts {
+                emit_artifact_edges(tracker, &node_id, *ctx, inputs, outputs, None, lines);
+                emit_lifetime_rail_links(tracker, &node_id, inputs, outputs, lines);
+            } else {
+                // Still track owned outputs so the rest of the graph renders.
+                track_owned_outputs(tracker, &node_id, outputs);
+            }
             RenderedSteps {
                 head: node_id.clone(),
                 tail: node_id,
@@ -248,7 +324,12 @@ fn render_step(
                 r#"{node_id}[["{}"]]:::stepGraph"#,
                 escape_label(&format!("{}{}", graph.name, ctx_label))
             ));
-            emit_artifact_edges(tracker, &node_id, *ctx, inputs, outputs, None, lines);
+            if show_artifacts {
+                emit_artifact_edges(tracker, &node_id, *ctx, inputs, outputs, None, lines);
+                emit_lifetime_rail_links(tracker, &node_id, inputs, outputs, lines);
+            } else {
+                track_owned_outputs(tracker, &node_id, outputs);
+            }
             if linkable_graphs.contains(&graph.id) {
                 lines.push(format!(
                     r#"click {node_id} "/graph/{}" "Open {}" _self"#,
@@ -273,15 +354,17 @@ fn render_step(
             lines.push(format!(r#"{join}(("join")):::control"#));
 
             let fanout = parallel_fanout(branches);
-            emit_artifact_edges(
-                tracker,
-                &fork,
-                CtxAccessDto::None,
-                inputs,
-                &[],
-                Some(&fanout),
-                lines,
-            );
+            if show_artifacts {
+                emit_artifact_edges(
+                    tracker,
+                    &fork,
+                    CtxAccessDto::None,
+                    inputs,
+                    &[],
+                    Some(&fanout),
+                    lines,
+                );
+            }
 
             for (idx, branch) in branches.iter().enumerate() {
                 if branch.is_empty() {
@@ -289,33 +372,40 @@ fn render_step(
                 }
                 let mut branch_tracker = tracker.clone();
                 let rendered =
-                    append_steps(branch, &mut branch_tracker, linkable_graphs, lines, counter);
+                    append_steps(branch, &mut branch_tracker, linkable_graphs, lines, counter, show_artifacts);
                 lines.push(format!(r#"{fork} -->|b{}| {}"#, idx + 1, rendered.head));
                 lines.push(format!("{} --> {join}", rendered.tail));
 
-                for output in outputs.iter() {
-                    let (base, access) = parse_artifact(output);
-                    if access != ArtifactAccess::Owned {
-                        continue;
-                    }
-                    if let Some(src) = branch_tracker.owned.get(base) {
-                        lines.push(format!(r#"{src} -. "{}" .-> {join}"#, escape_label(base)));
+                if show_artifacts {
+                    for output in outputs.iter() {
+                        let parsed = parse_artifact(output);
+                        if parsed.access != ArtifactAccess::Owned {
+                            continue;
+                        }
+                        let key = ArtifactKey::new(None, parsed.name);
+                        if let Some(src) = branch_tracker.owned.get(&key) {
+                            lines.push(format!(
+                                r#"{src} -. "{}" .-> {join}"#,
+                                escape_label(parsed.name)
+                            ));
+                        }
                     }
                 }
             }
 
             // Join outputs are the union of branch exit artifacts.
-            let mut borrowed_outputs: Vec<&str> = Vec::new();
             for output in outputs.iter() {
-                let (base, access) = parse_artifact(output);
-                match access {
-                    ArtifactAccess::Borrowed => borrowed_outputs.push(base),
+                let parsed = parse_artifact(output);
+                match parsed.access {
+                    ArtifactAccess::Borrowed => {}
                     ArtifactAccess::Owned | ArtifactAccess::Taken => {
-                        tracker.owned.insert(base.to_string(), join.clone());
+                        tracker.owned.insert(
+                            ArtifactKey::new(None, parsed.name),
+                            join.clone(),
+                        );
                     }
                 }
             }
-            apply_frame_updates(tracker, &join, &borrowed_outputs, lines);
 
             RenderedSteps {
                 head: fork,
@@ -338,15 +428,17 @@ fn render_step(
             lines.push(format!(r#"{join}(("join")):::control"#));
 
             let fanout = route_selector_fanout(cases, inputs);
-            emit_artifact_edges(
-                tracker,
-                &decision,
-                CtxAccessDto::None,
-                inputs,
-                &[],
-                Some(&fanout),
-                lines,
-            );
+            if show_artifacts {
+                emit_artifact_edges(
+                    tracker,
+                    &decision,
+                    CtxAccessDto::None,
+                    inputs,
+                    &[],
+                    Some(&fanout),
+                    lines,
+                );
+            }
 
             for case in cases {
                 if case.steps.is_empty() {
@@ -359,6 +451,7 @@ fn render_step(
                     linkable_graphs,
                     lines,
                     counter,
+                    show_artifacts,
                 );
                 lines.push(format!(
                     r#"{decision} -->|"{}"| {}"#,
@@ -367,28 +460,35 @@ fn render_step(
                 ));
                 lines.push(format!("{} --> {join}", rendered.tail));
 
-                for output in outputs.iter() {
-                    let (base, access) = parse_artifact(output);
-                    if access != ArtifactAccess::Owned {
-                        continue;
-                    }
-                    if let Some(src) = case_tracker.owned.get(base) {
-                        lines.push(format!(r#"{src} -. "{}" .-> {join}"#, escape_label(base)));
+                if show_artifacts {
+                    for output in outputs.iter() {
+                        let parsed = parse_artifact(output);
+                        if parsed.access != ArtifactAccess::Owned {
+                            continue;
+                        }
+                        let key = ArtifactKey::new(None, parsed.name);
+                        if let Some(src) = case_tracker.owned.get(&key) {
+                            lines.push(format!(
+                                r#"{src} -. "{}" .-> {join}"#,
+                                escape_label(parsed.name)
+                            ));
+                        }
                     }
                 }
             }
 
-            let mut borrowed_outputs: Vec<&str> = Vec::new();
             for output in outputs.iter() {
-                let (base, access) = parse_artifact(output);
-                match access {
-                    ArtifactAccess::Borrowed => borrowed_outputs.push(base),
+                let parsed = parse_artifact(output);
+                match parsed.access {
+                    ArtifactAccess::Borrowed => {}
                     ArtifactAccess::Owned | ArtifactAccess::Taken => {
-                        tracker.owned.insert(base.to_string(), join.clone());
+                        tracker.owned.insert(
+                            ArtifactKey::new(None, parsed.name),
+                            join.clone(),
+                        );
                     }
                 }
             }
-            apply_frame_updates(tracker, &join, &borrowed_outputs, lines);
 
             RenderedSteps {
                 head: decision,
@@ -409,28 +509,39 @@ fn render_step(
             ));
             lines.push(format!(r#"{exit}(("exit")):::control"#));
 
-            emit_artifact_edges(tracker, &cond, CtxAccessDto::None, inputs, &[], None, lines);
+            if show_artifacts {
+                emit_artifact_edges(
+                    tracker,
+                    &cond,
+                    CtxAccessDto::None,
+                    inputs,
+                    &[],
+                    None,
+                    lines,
+                );
+            }
 
             if !body.is_empty() {
                 let mut body_tracker = tracker.clone();
                 let rendered =
-                    append_steps(body, &mut body_tracker, linkable_graphs, lines, counter);
+                    append_steps(body, &mut body_tracker, linkable_graphs, lines, counter, show_artifacts);
                 lines.push(format!(r#"{cond} -->|"true"| {}"#, rendered.head));
                 lines.push(format!("{} --> {cond}", rendered.tail));
             }
             lines.push(format!(r#"{cond} -->|"false"| {exit}"#));
 
-            let mut borrowed_outputs: Vec<&str> = Vec::new();
             for output in outputs.iter() {
-                let (base, access) = parse_artifact(output);
-                match access {
-                    ArtifactAccess::Borrowed => borrowed_outputs.push(base),
+                let parsed = parse_artifact(output);
+                match parsed.access {
+                    ArtifactAccess::Borrowed => {}
                     ArtifactAccess::Owned | ArtifactAccess::Taken => {
-                        tracker.owned.insert(base.to_string(), exit.clone());
+                        tracker.owned.insert(
+                            ArtifactKey::new(None, parsed.name),
+                            exit.clone(),
+                        );
                     }
                 }
             }
-            apply_frame_updates(tracker, &exit, &borrowed_outputs, lines);
 
             RenderedSteps {
                 head: cond,
@@ -448,37 +559,40 @@ fn render_step(
             lines.push(format!(r#"{exit}(("exit")):::control"#));
             lines.push(format!(r#"{start} -->|"exit"| {exit}"#));
 
-            emit_artifact_edges(
-                tracker,
-                &start,
-                CtxAccessDto::None,
-                inputs,
-                &[],
-                None,
-                lines,
-            );
+            if show_artifacts {
+                emit_artifact_edges(
+                    tracker,
+                    &start,
+                    CtxAccessDto::None,
+                    inputs,
+                    &[],
+                    None,
+                    lines,
+                );
+            }
 
             if !body.is_empty() {
                 let mut body_tracker = tracker.clone();
                 let rendered =
-                    append_steps(body, &mut body_tracker, linkable_graphs, lines, counter);
+                    append_steps(body, &mut body_tracker, linkable_graphs, lines, counter, show_artifacts);
                 lines.push(format!("{start} --> {}", rendered.head));
                 lines.push(format!("{} --> {start}", rendered.tail));
             }
 
             // The macro's `Break` is modeled as a step; leave the explicit break
             // node to visually indicate exits.
-            let mut borrowed_outputs: Vec<&str> = Vec::new();
             for output in outputs.iter() {
-                let (base, access) = parse_artifact(output);
-                match access {
-                    ArtifactAccess::Borrowed => borrowed_outputs.push(base),
+                let parsed = parse_artifact(output);
+                match parsed.access {
+                    ArtifactAccess::Borrowed => {}
                     ArtifactAccess::Owned | ArtifactAccess::Taken => {
-                        tracker.owned.insert(base.to_string(), exit.clone());
+                        tracker.owned.insert(
+                            ArtifactKey::new(None, parsed.name),
+                            exit.clone(),
+                        );
                     }
                 }
             }
-            apply_frame_updates(tracker, &exit, &borrowed_outputs, lines);
 
             RenderedSteps {
                 head: start,
@@ -530,46 +644,6 @@ fn graph_uses_ctx(steps: &[GraphStepDto]) -> bool {
     false
 }
 
-fn graph_uses_artifact_frame(steps: &[GraphStepDto]) -> bool {
-    for step in steps {
-        match step {
-            GraphStepDto::Node {
-                inputs, outputs, ..
-            }
-            | GraphStepDto::Nested {
-                inputs, outputs, ..
-            } => {
-                if inputs
-                    .iter()
-                    .any(|v| v.starts_with('&') || v.starts_with('*'))
-                    || outputs
-                        .iter()
-                        .any(|v| v.starts_with('&') || v.starts_with('*'))
-                {
-                    return true;
-                }
-            }
-            GraphStepDto::Parallel { branches, .. } => {
-                if branches.iter().any(|b| graph_uses_artifact_frame(b)) {
-                    return true;
-                }
-            }
-            GraphStepDto::Route { cases, .. } => {
-                if cases.iter().any(|c| graph_uses_artifact_frame(&c.steps)) {
-                    return true;
-                }
-            }
-            GraphStepDto::While { body, .. } | GraphStepDto::Loop { body, .. } => {
-                if graph_uses_artifact_frame(body) {
-                    return true;
-                }
-            }
-            GraphStepDto::Break => {}
-        }
-    }
-    false
-}
-
 fn route_label(on: &str, inputs: &[String]) -> String {
     if inputs.len() == 1 {
         return format!("match {}", inputs[0]);
@@ -607,15 +681,11 @@ fn emit_artifact_edges(
         }
     }
 
-    let mut borrowed_inputs: Vec<&str> = Vec::new();
-    let mut taken_inputs: Vec<&str> = Vec::new();
     let mut owned_inputs: Vec<&str> = Vec::new();
     for input in inputs {
-        let (base, access) = parse_artifact(input);
-        match access {
-            ArtifactAccess::Borrowed => borrowed_inputs.push(base),
-            ArtifactAccess::Taken => taken_inputs.push(base),
-            ArtifactAccess::Owned => owned_inputs.push(base),
+        let parsed = parse_artifact(input);
+        if parsed.access == ArtifactAccess::Owned {
+            owned_inputs.push(parsed.name);
         }
     }
 
@@ -624,12 +694,13 @@ fn emit_artifact_edges(
     for base in owned_inputs {
         let fanout = owned_fanout.and_then(|m| m.get(base)).copied().unwrap_or(1);
         let label = if fanout > 1 {
-            format!("clone x{} + move: {base}", fanout - 1)
+            // Show the artifact name first, then the action, so it's easy to scan.
+            format!("{base} [clone x{} + move]", fanout - 1)
         } else {
-            format!("move: {base}")
+            format!("{base} [move]")
         };
 
-        if let Some(src) = tracker.owned.get(base) {
+        if let Some(src) = tracker.owned.get(&ArtifactKey::new(None, base)) {
             lines.push(format!(
                 r#"{src} -. "{}" .-> {step_node}"#,
                 escape_label(&label)
@@ -639,50 +710,40 @@ fn emit_artifact_edges(
                 r#"{inputs_node} -. "{}" .-> {step_node}"#,
                 escape_label(&label)
             ));
-            tracker.owned.insert(base.to_string(), inputs_node.clone());
+            tracker
+                .owned
+                .insert(ArtifactKey::new(None, base), inputs_node.clone());
         }
     }
 
-    if !borrowed_inputs.is_empty() {
-        borrowed_inputs.sort();
-        borrowed_inputs.dedup();
-        if let Some(frame) = &tracker.frame_node {
-            let label = format!("borrow: {}", borrowed_inputs.join(", "));
-            lines.push(format!(
-                r#"{frame} -. "{}" .- {step_node}"#,
-                escape_label(&label)
-            ));
-        }
-    }
-
-    if !taken_inputs.is_empty() {
-        taken_inputs.sort();
-        taken_inputs.dedup();
-        if let Some(frame) = &tracker.frame_node {
-            let label = format!("take: {}", taken_inputs.join(", "));
-            lines.push(format!(
-                r#"{frame} -. "{}" .-> {step_node}"#,
-                escape_label(&label)
-            ));
-        }
-    }
-
-    let mut borrowed_outputs: Vec<&str> = Vec::new();
     for output in outputs {
-        let (base, access) = parse_artifact(output);
-        match access {
+        let parsed = parse_artifact(output);
+        match parsed.access {
             ArtifactAccess::Borrowed => {
-                borrowed_outputs.push(base);
                 continue;
             }
             ArtifactAccess::Owned | ArtifactAccess::Taken => {}
         }
-        tracker
-            .owned
-            .insert(base.to_string(), step_node.to_string());
+        tracker.owned.insert(
+            // Owned/Taken outputs are normal data-flow values; don't associate
+            // them with a lifetime abstraction node.
+            ArtifactKey::new(None, parsed.name),
+            step_node.to_string(),
+        );
     }
+}
 
-    apply_frame_updates(tracker, step_node, &borrowed_outputs, lines);
+fn track_owned_outputs(tracker: &mut ArtifactTracker, step_node: &str, outputs: &[String]) {
+    for output in outputs {
+        let parsed = parse_artifact(output);
+        if parsed.access == ArtifactAccess::Borrowed {
+            continue;
+        }
+        tracker.owned.insert(
+            ArtifactKey::new(None, parsed.name),
+            step_node.to_string(),
+        );
+    }
 }
 
 fn parallel_fanout(branches: &[Vec<GraphStepDto>]) -> HashMap<String, usize> {
@@ -707,13 +768,13 @@ fn route_selector_fanout(
 
     let mut out: HashMap<String, usize> = HashMap::new();
     for input in selector_inputs {
-        let (base, access) = parse_artifact(input);
-        if access != ArtifactAccess::Owned {
+        let parsed = parse_artifact(input);
+        if parsed.access != ArtifactAccess::Owned {
             continue;
         }
-        if branch_required.contains(base) {
+        if branch_required.contains(parsed.name) {
             // Selector needs a clone so the chosen branch can still consume the value.
-            out.insert(base.to_string(), 2);
+            out.insert(parsed.name.to_string(), 2);
         }
     }
     out
@@ -730,9 +791,9 @@ fn collect_steps_owned_requirements(steps: &[GraphStepDto], out: &mut HashSet<St
         match step {
             GraphStepDto::Node { inputs, .. } | GraphStepDto::Nested { inputs, .. } => {
                 for input in inputs {
-                    let (base, access) = parse_artifact(input);
-                    if access == ArtifactAccess::Owned {
-                        out.insert(base.to_string());
+                    let parsed = parse_artifact(input);
+                    if parsed.access == ArtifactAccess::Owned {
+                        out.insert(parsed.name.to_string());
                     }
                 }
             }
@@ -743,9 +804,9 @@ fn collect_steps_owned_requirements(steps: &[GraphStepDto], out: &mut HashSet<St
             }
             GraphStepDto::Route { inputs, cases, .. } => {
                 for input in inputs {
-                    let (base, access) = parse_artifact(input);
-                    if access == ArtifactAccess::Owned {
-                        out.insert(base.to_string());
+                    let parsed = parse_artifact(input);
+                    if parsed.access == ArtifactAccess::Owned {
+                        out.insert(parsed.name.to_string());
                     }
                 }
                 for case in cases {
@@ -754,9 +815,9 @@ fn collect_steps_owned_requirements(steps: &[GraphStepDto], out: &mut HashSet<St
             }
             GraphStepDto::While { body, inputs, .. } | GraphStepDto::Loop { body, inputs, .. } => {
                 for input in inputs {
-                    let (base, access) = parse_artifact(input);
-                    if access == ArtifactAccess::Owned {
-                        out.insert(base.to_string());
+                    let parsed = parse_artifact(input);
+                    if parsed.access == ArtifactAccess::Owned {
+                        out.insert(parsed.name.to_string());
                     }
                 }
                 collect_steps_owned_requirements(body, out);
@@ -766,26 +827,345 @@ fn collect_steps_owned_requirements(steps: &[GraphStepDto], out: &mut HashSet<St
     }
 }
 
-fn apply_frame_updates(
+#[derive(Clone, Copy, Default)]
+struct LifetimeOps {
+    reads: usize,
+    edits: usize,
+    takes: usize,
+    stores: usize,
+}
+
+fn collect_lifetime_ops(inputs: &[String], outputs: &[String]) -> HashMap<String, LifetimeOps> {
+    let mut per_lt: HashMap<String, LifetimeOps> = HashMap::new();
+
+    for input in inputs {
+        let parsed = parse_artifact(input);
+        if parsed.access == ArtifactAccess::Owned {
+            continue;
+        }
+        let Some(lt) = parsed.lifetime else {
+            continue;
+        };
+
+        let ops = per_lt.entry(lt.to_string()).or_default();
+        match parsed.access {
+            ArtifactAccess::Borrowed => {
+                if parsed.mutable {
+                    ops.edits += 1;
+                } else {
+                    ops.reads += 1;
+                }
+            }
+            ArtifactAccess::Taken => ops.takes += 1,
+            ArtifactAccess::Owned => {}
+        }
+    }
+
+    for output in outputs {
+        let parsed = parse_artifact(output);
+        if parsed.access != ArtifactAccess::Borrowed {
+            continue;
+        }
+        let Some(lt) = parsed.lifetime else {
+            continue;
+        };
+
+        let ops = per_lt.entry(lt.to_string()).or_default();
+        // Any `&'a ...` output means the step stores (assigns) an artifact
+        // into the graph-managed lifetime scope.
+        ops.stores += 1;
+    }
+
+    per_lt
+}
+
+fn lifetime_in_label(ops: LifetimeOps) -> String {
+    let mut actions: Vec<String> = Vec::new();
+    if ops.reads > 0 {
+        actions.push(if ops.reads == 1 {
+            "read".to_string()
+        } else {
+            format!("read x{}", ops.reads)
+        });
+    }
+    if ops.edits > 0 {
+        actions.push(if ops.edits == 1 {
+            "edit".to_string()
+        } else {
+            format!("edit x{}", ops.edits)
+        });
+    }
+    if ops.takes > 0 {
+        actions.push(if ops.takes == 1 {
+            "take".to_string()
+        } else {
+            format!("take x{}", ops.takes)
+        });
+    }
+    actions.join(", ")
+}
+
+fn lifetime_out_label(ops: LifetimeOps) -> String {
+    if ops.stores == 0 {
+        return String::new();
+    }
+    if ops.stores == 1 {
+        "store".to_string()
+    } else {
+        format!("store x{}", ops.stores)
+    }
+}
+
+fn ensure_lifetime_rail(tracker: &mut ArtifactTracker, lt: &str, counter: &mut usize) {
+    // We store rails behind a RefCell so cloned trackers (for parallel branches)
+    // all contribute to the same set of rail nodes. This prevents "dangling"
+    // tap references like `n8`/`n10` that Mermaid otherwise renders as unlabeled
+    // squares.
+    let mut rails = tracker.lifetimes.borrow_mut();
+    if !rails.contains_key(lt) {
+        let start = next_id(counter);
+        let mut lines = Vec::new();
+        // Start node is labeled so the rail is identifiable even when zoomed out.
+        lines.push(format!(
+            r#"{start}(["{}"]):::lifetime"#,
+            escape_label(&format!("{lt}"))
+        ));
+        rails.insert(
+            lt.to_string(),
+            LifetimeRail {
+                start: start.clone(),
+                last: start,
+                taps: Vec::new(),
+                lines,
+            },
+        );
+    }
+}
+
+fn with_lifetime_rail_mut<F: FnOnce(&mut LifetimeRail)>(
+    tracker: &mut ArtifactTracker,
+    lt: &str,
+    counter: &mut usize,
+    f: F,
+) {
+    ensure_lifetime_rail(tracker, lt, counter);
+    let mut rails = tracker.lifetimes.borrow_mut();
+    let rail = rails
+        .get_mut(lt)
+        .expect("lifetime rail must exist after ensure");
+    f(rail);
+}
+
+fn init_lifetime_rails(tracker: &mut ArtifactTracker, steps: &[GraphStepDto], counter: &mut usize) {
+    let mut lts: HashSet<String> = HashSet::new();
+    collect_lifetimes_in_steps(steps, &mut lts);
+    let mut order: Vec<String> = lts.into_iter().collect();
+    order.sort();
+
+    tracker.lifetime_order = Arc::new(order.clone());
+    for lt in order {
+        ensure_lifetime_rail(tracker, &lt, counter);
+    }
+}
+
+fn advance_lifetime_rails(tracker: &mut ArtifactTracker, counter: &mut usize) {
+    let order: Vec<String> = tracker.lifetime_order.iter().cloned().collect();
+    for lt in order {
+        let tap = next_id(counter);
+        with_lifetime_rail_mut(tracker, &lt, counter, |rail| {
+            // Timeline look: |---|---|...|
+            // Mermaid can sometimes render a lone `|` label oddly; use the HTML entity
+            // so it consistently shows as a visible tick mark instead of falling back
+            // to the node id.
+            rail.lines
+                .push(format!(r#"{tap}(["&#124;"]):::lifetime"#));
+            rail.lines.push(format!("{} --- {tap}", rail.last));
+            rail.last = tap.clone();
+            rail.taps.push(tap);
+        });
+    }
+}
+
+fn emit_lifetime_rail_links(
     tracker: &mut ArtifactTracker,
     step_node: &str,
-    borrowed_outputs: &[&str],
+    inputs: &[String],
+    outputs: &[String],
     lines: &mut Vec<String>,
 ) {
-    let Some(frame) = &tracker.frame_node else {
-        return;
-    };
-    if borrowed_outputs.is_empty() {
+    let mut per_lt: Vec<(String, LifetimeOps)> =
+        collect_lifetime_ops(inputs, outputs).into_iter().collect();
+    per_lt.sort_by(|(a, _), (b, _)| a.cmp(b));
+
+    // Also collect artifact names so lifetime interactions are concrete.
+    let mut names_per_lt: HashMap<String, (Vec<String>, Vec<String>, Vec<String>, Vec<String>)> =
+        HashMap::new(); // (read, edit, take, store)
+    for input in inputs {
+        let parsed = parse_artifact(input);
+        if parsed.access == ArtifactAccess::Owned {
+            continue;
+        }
+        let Some(lt) = parsed.lifetime else { continue };
+        let entry = names_per_lt.entry(lt.to_string()).or_default();
+        match parsed.access {
+            ArtifactAccess::Borrowed => {
+                if parsed.mutable {
+                    entry.1.push(parsed.name.to_string());
+                } else {
+                    entry.0.push(parsed.name.to_string());
+                }
+            }
+            ArtifactAccess::Taken => entry.2.push(parsed.name.to_string()),
+            ArtifactAccess::Owned => {}
+        }
+    }
+    for output in outputs {
+        let parsed = parse_artifact(output);
+        if parsed.access != ArtifactAccess::Borrowed {
+            continue;
+        }
+        let Some(lt) = parsed.lifetime else { continue };
+        let entry = names_per_lt.entry(lt.to_string()).or_default();
+        entry.3.push(parsed.name.to_string());
+    }
+
+    for (lt, ops) in per_lt {
+        let rails = tracker.lifetimes.borrow();
+        let Some(rail) = rails.get(&lt) else {
+            continue;
+        };
+        let Some(tap) = rail.taps.last() else {
+            continue;
+        };
+
+        // Read/edit/take: lifetime -> step (arrow into the node)
+        let mut in_label = lifetime_in_label(ops);
+        if let Some((mut r, mut e, mut t, _)) = names_per_lt.get(&lt).cloned() {
+            r.sort(); r.dedup();
+            e.sort(); e.dedup();
+            t.sort(); t.dedup();
+            let mut parts: Vec<String> = Vec::new();
+            if !r.is_empty() { parts.push(format!("read: {}", r.join(", "))); }
+            if !e.is_empty() { parts.push(format!("edit: {}", e.join(", "))); }
+            if !t.is_empty() { parts.push(format!("take: {}", t.join(", "))); }
+            if !parts.is_empty() {
+                // Prefer concrete names over just counts.
+                in_label = parts.join(" | ");
+            }
+        }
+        if !in_label.is_empty() {
+            lines.push(format!(
+                r#"{tap} -. "{}" .-> {step_node}"#,
+                escape_label(&in_label)
+            ));
+        }
+
+        // Store: step -> lifetime (arrow into the rail)
+        let mut out_label = lifetime_out_label(ops);
+        if let Some((_, _, _, mut s)) = names_per_lt.get(&lt).cloned() {
+            s.sort(); s.dedup();
+            if !s.is_empty() {
+                out_label = format!("store: {}", s.join(", "));
+            }
+        }
+        if !out_label.is_empty() {
+            lines.push(format!(
+                r#"{step_node} -. "{}" .-> {tap}"#,
+                escape_label(&out_label)
+            ));
+        }
+    }
+}
+
+fn emit_lifetime_rails(tracker: &ArtifactTracker, lines: &mut Vec<String>) {
+    if tracker.lifetimes.borrow().is_empty() {
         return;
     }
-    let mut outputs = borrowed_outputs.to_vec();
-    outputs.sort();
-    outputs.dedup();
-    let label = format!("store ref: {}", outputs.join(", "));
-    lines.push(format!(
-        r#"{step_node} -. "{}" .- {frame}"#,
-        escape_label(&label)
-    ));
+
+    // Group all rails under one container to encourage Mermaid to keep them
+    // together (typically below the main execution chain).
+    lines.push(r#"subgraph lifetimes[" "]"#.to_string());
+    lines.push("direction TB".to_string());
+
+    // Render each lifetime as its own LR subgraph (a straight rail).
+    for lt in tracker.lifetime_order.iter() {
+        let rails = tracker.lifetimes.borrow();
+        let rail = &rails[lt];
+        let sg_id = format!("lt_{}", slugify(lt));
+        // Unlabeled subgraph keeps contrast low; the start node carries the label.
+        lines.push(format!(r#"subgraph {sg_id}[" "]"#));
+        lines.push("direction LR".to_string());
+        // Keep the rail visually close to the main graph by chaining a hidden
+        // ordering edge from the graph root area via the first tap.
+        // (Mermaid doesn't guarantee placement, but this helps.)
+        for l in &rail.lines {
+            lines.push(l.clone());
+        }
+        lines.push("end".to_string());
+    }
+
+    lines.push("end".to_string());
+}
+
+fn collect_lifetimes_in_steps(steps: &[GraphStepDto], out: &mut HashSet<String>) {
+    for step in steps {
+        match step {
+            GraphStepDto::Node { inputs, outputs, .. }
+            | GraphStepDto::Nested { inputs, outputs, .. } => {
+                for v in inputs.iter().chain(outputs.iter()) {
+                    let parsed = parse_artifact(v);
+                    if parsed.access == ArtifactAccess::Owned {
+                        continue;
+                    }
+                    if let Some(lt) = parsed.lifetime {
+                        out.insert(lt.to_string());
+                    }
+                }
+            }
+            GraphStepDto::Parallel { branches, inputs, outputs } => {
+                for v in inputs.iter().chain(outputs.iter()) {
+                    let parsed = parse_artifact(v);
+                    if parsed.access == ArtifactAccess::Owned {
+                        continue;
+                    }
+                    if let Some(lt) = parsed.lifetime {
+                        out.insert(lt.to_string());
+                    }
+                }
+                for b in branches {
+                    collect_lifetimes_in_steps(b, out);
+                }
+            }
+            GraphStepDto::Route { cases, inputs, outputs, .. } => {
+                for v in inputs.iter().chain(outputs.iter()) {
+                    let parsed = parse_artifact(v);
+                    if parsed.access == ArtifactAccess::Owned {
+                        continue;
+                    }
+                    if let Some(lt) = parsed.lifetime {
+                        out.insert(lt.to_string());
+                    }
+                }
+                for c in cases {
+                    collect_lifetimes_in_steps(&c.steps, out);
+                }
+            }
+            GraphStepDto::While { body, inputs, outputs, .. }
+            | GraphStepDto::Loop { body, inputs, outputs } => {
+                for v in inputs.iter().chain(outputs.iter()) {
+                    let parsed = parse_artifact(v);
+                    if parsed.access == ArtifactAccess::Owned {
+                        continue;
+                    }
+                    if let Some(lt) = parsed.lifetime {
+                        out.insert(lt.to_string());
+                    }
+                }
+                collect_lifetimes_in_steps(body, out);
+            }
+            GraphStepDto::Break => {}
+        }
+    }
 }
 
 #[cfg(test)]
@@ -806,12 +1186,12 @@ mod tests {
                         name: "A".to_string(),
                         ctx: CtxAccessDto::None,
                         inputs: vec![],
-                        outputs: vec!["&x".to_string()],
+                        outputs: vec!["&'a x".to_string()],
                     },
                     GraphStepDto::Node {
                         name: "B".to_string(),
                         ctx: CtxAccessDto::None,
-                        inputs: vec!["&x".to_string()],
+                        inputs: vec!["&'a x".to_string()],
                         outputs: vec![],
                     },
                 ],
@@ -819,12 +1199,14 @@ mod tests {
             ..Default::default()
         };
 
-        let rendered = to_mermaid(&graph, None, &HashSet::new());
-        assert!(rendered.contains("graph lifetime"));
+        let rendered = to_mermaid(&graph, None, &HashSet::new(), true);
         assert!(!rendered.contains(":::ctx"));
         assert!(!rendered.contains("ctx set:"));
-        assert!(rendered.contains("store ref: x"));
-        assert!(rendered.contains("borrow: x"));
+        // Lifetimes are rendered as rails with tap links.
+        assert!(rendered.contains("subgraph lt_a"));
+        assert!(rendered.contains("'a"));
+        assert!(rendered.contains("store"));
+        assert!(rendered.contains("read"));
     }
 
     #[test]
@@ -845,8 +1227,8 @@ mod tests {
             ..Default::default()
         };
 
-        let rendered = to_mermaid(&graph, None, &HashSet::new());
+        let rendered = to_mermaid(&graph, None, &HashSet::new(), true);
         assert!(rendered.contains(":::ctx"));
-        assert!(!rendered.contains("graph lifetime"));
+        assert!(!rendered.contains("subgraph lt-"));
     }
 }
