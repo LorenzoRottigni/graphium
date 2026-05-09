@@ -9,6 +9,28 @@ use syn::{FnArg, ItemFn, Pat, ReturnType, Type};
 
 use crate::ir::{MetricsSpec, NodeDef, ParamKind, doc_string_from_attrs, pascal_case};
 
+fn extract_single_ident(pat: &Pat) -> Option<syn::Ident> {
+    match pat {
+        Pat::Ident(pat_ident) => Some(pat_ident.ident.clone()),
+        Pat::Type(pat_type) => extract_single_ident(&pat_type.pat),
+        Pat::Paren(pat_paren) => extract_single_ident(&pat_paren.pat),
+        Pat::Reference(pat_ref) => extract_single_ident(&pat_ref.pat),
+        Pat::TupleStruct(pat_tuple_struct) => {
+            if pat_tuple_struct.elems.len() != 1 {
+                return None;
+            }
+            extract_single_ident(&pat_tuple_struct.elems[0])
+        }
+        Pat::Tuple(pat_tuple) => {
+            if pat_tuple.elems.len() != 1 {
+                return None;
+            }
+            extract_single_ident(&pat_tuple.elems[0])
+        }
+        _ => None,
+    }
+}
+
 /// Extracts the compile-time metadata the graph macro needs from a node
 /// function signature.
 ///
@@ -39,11 +61,10 @@ pub fn parse_node_def(func: &ItemFn, metrics: MetricsSpec) -> NodeDef {
             panic!("unexpected receiver in node function");
         };
 
-        let Pat::Ident(pat_ident) = &*pat.pat else {
-            panic!("expected ident pattern for node input");
-        };
+        let ident = extract_single_ident(&pat.pat)
+            .unwrap_or_else(|| panic!("expected single ident binding for node input"));
 
-        let name = pat_ident.ident.to_string();
+        let name = ident.to_string();
         if name == "ctx" || name == "_ctx" {
             if ctx_type.is_some() {
                 panic!("node function must declare at most one context parameter");
@@ -64,7 +85,7 @@ pub fn parse_node_def(func: &ItemFn, metrics: MetricsSpec) -> NodeDef {
         // wiring artifacts between nodes.
 
         let index = inputs.len();
-        inputs.push((pat_ident.ident.clone(), (*pat.ty).clone()));
+        inputs.push((ident, (*pat.ty).clone()));
         param_kinds.push(ParamKind::Input(index));
     }
 
@@ -201,6 +222,23 @@ mod tests {
         };
         let def = parse_node_def(&func, MetricsSpec::default());
         assert!(def.return_is_result);
+    }
+
+    #[test]
+    fn parse_node_def_accepts_tuple_struct_pattern() {
+        let func: ItemFn = parse_quote! {
+            pub async fn create_product(
+                State(state): State<AppState>,
+                mut multipart: axum::extract::Multipart,
+            ) -> Result<(), (StatusCode, String)> {
+                Ok(())
+            }
+        };
+
+        let def = parse_node_def(&func, MetricsSpec::default());
+        assert_eq!(def.inputs.len(), 2);
+        assert_eq!(def.inputs[0].0.to_string(), "state");
+        assert_eq!(def.inputs[1].0.to_string(), "multipart");
     }
 
     #[test]

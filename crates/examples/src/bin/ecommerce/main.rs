@@ -27,7 +27,7 @@ pub async fn main() {
 
     {
         let mut ctx = state.graphium_ctx.lock().await;
-        crate::nodes::product_service::MigrateProductsTable::run_async(&mut ctx)
+        crate::nodes::product::MigrateProductsTable::run_async(&mut ctx)
             .await
             .expect("migrate products table");
     }
