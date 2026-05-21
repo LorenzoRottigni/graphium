@@ -46,3 +46,8 @@ pub fn clone_artifact<T: Artifact>(value: &T) -> T {
 
 #[derive(Default)]
 pub struct Context {}
+
+// Include the Markdown docs as rustdoc pages so their Rust code blocks can be
+// compiled as doctests.
+#[cfg(doc)]
+mod __docs;

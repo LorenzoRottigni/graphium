@@ -1,6 +1,6 @@
 use graphium_ui::{config::GraphiumUiConfig, graphs};
 
-use crate::graphs::{
+use crate::graphs::product::{
     CreateProductGraph, DeleteProductGraph, GetProductGraph, ListProductsGraph, UpdateProductGraph,
 };
 

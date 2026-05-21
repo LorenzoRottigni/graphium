@@ -20,3 +20,4 @@
 - should graph become Result<> based? adding tokens like ! ? for managing them?
 - graphium-ui use wasm to load config at runtime (Docker build compile rust and wasm is provided to rust at runtime)
 - Logs API: allow graph and nodes to scope their logs and visualize grouped and ordered logs from within the UI
+- Allow an API similar to && and >> to pass child nodes to the previous node as argument as an executor
