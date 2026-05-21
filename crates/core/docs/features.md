@@ -7,6 +7,12 @@ Graphium is intentionally split into:
 
 This document describes what each feature flag does in the `graphium` crate (`crates/core`) and how it affects generated code, runtime overhead, and UI/dashboard support.
 
+**See also**
+
+- `index.md` (documentation map)
+- `telemetry.md` (metrics/traces/logs details)
+- `dashboard.md` (UI usage, playground constraints)
+
 ---
 
 ## Where features are defined
@@ -203,4 +209,3 @@ Full observability (Grafana stack):
 Metadata export over the wire:
 
 - `macros`, `export` (and usually `dto`)
-

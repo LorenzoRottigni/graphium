@@ -10,6 +10,10 @@ The framework focuses on **zero-cost abstractions**: DSL parsing and graph expan
 
 Runtime behavior is optional and controlled via feature flags. Using Graphium with only the `"macro"` feature results in near-zero runtime overhead, since all computation is resolved at compile time.
 
+## Documentation
+
+Core docs live in `crates/core/docs/index.md`.
+
 ---
 
 ## Architecture

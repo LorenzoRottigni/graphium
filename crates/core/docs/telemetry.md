@@ -10,6 +10,12 @@ Graphium uses **OpenTelemetry** exporters over **OTLP/HTTP**:
 
 The Graphium UI dashboard (`crates/ui`) can then *query* those backends over their normal HTTP APIs.
 
+**See also**
+
+- `index.md` (documentation map)
+- `features.md` (what enabling `metrics`/`trace`/`logs` does)
+- `dashboard.md` (how the UI queries Prometheus/Loki/Tempo)
+
 ---
 
 ## Feature flags (what gets compiled in)
@@ -190,4 +196,3 @@ The dashboard expects three distinct concepts to work at once:
 3. Grafana as a UI that can visualize those backends (optional, but recommended)
 
 Graphium itself does not ship a compose file in `crates/core/docs`; the defaults are chosen to match common local setups.
-

@@ -10,6 +10,7 @@ This document is the “examples + gotchas” companion to `dsl.md`.
 
 Related docs:
 
+- `index.md` (documentation map)
 - `dsl.md` (operators + grammar)
 - `artifacts.md` (owned vs borrowed vs taken)
 - `async.md` (async graphs caveats)
@@ -97,9 +98,9 @@ node! { fn dec(x: u32) -> u32 { x - 1 } }
 graph! {
     IfChain -> (out: u32) {
         Compute() -> (x) >>
-        @if x > 10 -> (y) {
+        @if |x| x > 10 -> (y) {
             Inc(x) -> (y)
-        } else -> (y) {
+        } @else {
             Dec(x) -> (y)
         } >>
         Inc(y) -> (out)
@@ -165,6 +166,7 @@ pub struct Context { pub i: u32 }
 
 node! { fn inc(ctx: &mut Context) { ctx.i += 1; } }
 node! { fn read(ctx: &Context) -> u32 { ctx.i } }
+node! { fn noop() {} }
 
 graph! {
     LoopBreak<Context> -> (out: u32) {
@@ -172,6 +174,8 @@ graph! {
             Inc() >>
             @if ctx.i >= 3 {
                 @break
+            } @else {
+                Noop()
             }
         } >>
         Read() -> (out)
@@ -208,4 +212,3 @@ If you want to follow the exact code paths:
   - `crates/macro/src/graph_macro/expr/loops.rs`
 - Expansion:
   - `crates/macro/src/graph_macro/expr/*`
-

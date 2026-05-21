@@ -4,8 +4,9 @@ Graphium supports async graphs through the `async` keyword on `graph!` definitio
 
 This document describes what async graphs mean *in the current implementation* and how they differ from sync graphs.
 
-Related docs:
+**See also**
 
+- `index.md` (documentation map)
 - `graphs.md` for the outer `graph!` signature and generated `run`/`run_async`
 - `dsl.md` for `>>`, `&&`, and control-flow atoms
 - `nodes.md` for `node!` wrappers (`run` vs `run_async`)
@@ -99,4 +100,3 @@ Right now:
 - `dsl.md` documents the syntax, precedence, and where validation/codegen lives.
 
 If you want “exhaustive” documentation (many examples + gotchas + patterns), it’s worth adding a dedicated `control_flow.md` later, but it doesn’t need to be separate immediately unless `dsl.md` becomes too long.
-

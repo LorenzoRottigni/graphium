@@ -4,6 +4,7 @@ This is a practical “first steps” guide for using Graphium in your own crate
 
 Recommended reading order after this:
 
+0. `index.md` — documentation map
 1. `dsl.md`
 2. `artifacts.md`
 3. `graphs.md`
@@ -34,7 +35,7 @@ use graphium_macro::{graph, node};
 Nodes are normal Rust functions wrapped by `node!`:
 
 ```rust
-use graphium::node;
+use graphium_macro::node;
 
 node! {
     fn get_number() -> u32 {
@@ -58,7 +59,7 @@ See `nodes.md`.
 Graphs are defined with `graph!` and composed from node calls:
 
 ```rust
-use graphium::{graph, node};
+use graphium_macro::{graph, node};
 
 node! { fn get_number() -> u32 { 42 } }
 node! { fn inc(n: u32) -> u32 { n + 1 } }
@@ -74,8 +75,18 @@ graph! {
 Run it:
 
 ```rust
+# use graphium_macro::{graph, node};
+# node! { fn get_number() -> u32 { 42 } }
+# node! { fn inc(n: u32) -> u32 { n + 1 } }
+# graph! {
+#     MyGraph -> (out: u32) {
+#         GetNumber() -> (n) >>
+#         Inc(n) -> (out)
+#     }
+# }
 let mut ctx = graphium::Context::default();
 let out = MyGraph::run(&mut ctx);
+assert_eq!(out, 43);
 ```
 
 See `graphs.md` for signature options (inputs/outputs/context/lifetimes/async).
@@ -122,4 +133,3 @@ See `features.md` and `telemetry.md`.
 
 - “`@break` can only be used inside `@loop` or `@while`”
   - Fix: move the `@break` into a loop body.
-

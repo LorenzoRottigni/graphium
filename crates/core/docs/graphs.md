@@ -2,11 +2,14 @@
 
 `graph! { ... }` defines a **typed workflow** (a DAG) in Graphium’s DSL and expands it into plain Rust code at compile time.
 
-If you’re new to Graphium, read in this order:
+**See also**
 
-1. `dsl.md` (operators, control-flow, syntax)
-2. `artifacts.md` (owned vs borrowed vs taken)
-3. `nodes.md` (how `node!` wrappers are generated)
+- `index.md` (documentation map)
+- `getting_started.md` (first graph)
+- `dsl.md` (operators, control-flow, syntax)
+- `artifacts.md` (owned vs borrowed vs taken)
+- `nodes.md` (how `node!` wrappers are generated)
+- `async.md` (async graphs behavior)
 
 ---
 
@@ -33,7 +36,7 @@ Graphium can express workflows at different abstraction levels (examples adapted
 Nodes are small pure-ish transformations and the graph behaves like an explicit pipeline:
 
 ```rust
-use graphium::{graph, node};
+use graphium_macro::{graph, node};
 
 node! { fn add(a: u32, b: u32) -> u32 { a + b } }
 node! { fn pow(a: u32) -> u32 { a * a } }
@@ -51,7 +54,7 @@ graph! {
 Nodes become domain operations; artifacts represent domain objects flowing through the pipeline:
 
 ```rust
-use graphium::{graph, node};
+use graphium_macro::{graph, node};
 
 #[derive(Default)]
 pub struct Context { /* services, config, etc. */ }
@@ -72,7 +75,11 @@ graph! {
 A graph can orchestrate subsystems and call nested graphs:
 
 ```rust
-use graphium::graph;
+use graphium_macro::{graph, node};
+
+node! { fn setup_storage() {} }
+node! { fn launch_ingestion_pipeline() {} }
+node! { fn start_http_api() {} }
 
 graph! {
     App<'a, graphium::Context> {
@@ -98,13 +105,27 @@ The `graph!` signature defines:
 Examples:
 
 ```rust
+use graphium_macro::{graph, node};
+
+#[derive(Default)]
+pub struct MyCtx;
+
+node! { fn a() {} }
+node! { fn b() {} }
+node! { fn add(a: u32, b: u32) -> u32 { a + b } }
+node! { fn inc(a: u32) -> u32 { a + 1 } }
+node! { fn uses_ctx(ctx: &MyCtx) { let _ = ctx; } }
+node! { fn get() -> u32 { 1 } }
+node! { fn use_value(v: &u32) { let _ = v; } }
+node! { fn noop() {} }
+
 graph! { NoIO { A() >> B() } }
-graph! { WithInputs(a: u32, b: u32) { Add(a, b) } }
+graph! { WithInputs(a: u32, b: u32) -> (out: u32) { Add(a, b) -> (out) } }
 graph! { WithOutput(a: u32) -> (b: u32) { Inc(a) -> (b) } }
 graph! { WithCtx<MyCtx> { UsesCtx() } }
-graph! { WithLifetime<'a> { Get() -> (&'a value) >> Use(&'a value) } }
-graph! { WithLifetimeAndCtx<'a, MyCtx> { /* ... */ } }
-graph! { async AsyncGraph<'a, MyCtx> { /* ... */ } }
+graph! { WithLifetime<'a> { Get() -> (&'a value) >> UseValue(&'a value) } }
+graph! { WithLifetimeAndCtx<'a, MyCtx> { Noop() } }
+graph! { async AsyncGraph<'a, MyCtx> { Noop() } }
 ```
 
 ### Context injection (how nodes receive `ctx`)
@@ -137,9 +158,11 @@ In the DSL, calling another graph’s `run` is treated specially: it executes th
 Example:
 
 ```rust
-use graphium_macro::graph;
+use graphium_macro::{graph, node};
 
-graph! { Inner(a: u32) -> (b: u32) { /* ... */ } }
+node! { fn inc(a: u32) -> u32 { a + 1 } }
+
+graph! { Inner(a: u32) -> (b: u32) { Inc(a) -> (b) } }
 
 graph! {
     Outer(a: u32) -> (b: u32) {
@@ -228,4 +251,3 @@ Finally, `execution.rs`:
 - Builds the return expression for declared graph outputs
 
 If the graph is declared `async`, the sync `run` body is intentionally not generated (only `run_async` is meaningful).
-

@@ -4,6 +4,13 @@ This document explains how the Graphium UI “dashboard” works: what it render
 
 The “dashboard” lives in the `graphium-ui` crate (`crates/ui`) and is a local Axum server that renders server-side HTML (Askama templates) with HTMX/Alpine.js on the client.
 
+**See also**
+
+- `index.md` (documentation map)
+- `features.md` (feature flags required for export/playground/telemetry)
+- `telemetry.md` (metrics/traces/logs backends)
+- `testing.md` (UI test runner)
+
 ---
 
 ## What the dashboard is
@@ -153,4 +160,3 @@ See:
 
 - `crates/ui/src/config.rs`
 - `crates/ui/src/state/build.rs`
-

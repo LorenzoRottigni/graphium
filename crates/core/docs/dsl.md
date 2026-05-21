@@ -2,8 +2,9 @@
 
 This document describes the **Graphium DSL** used inside `graph! { ... }` bodies: operators, control-flow atoms, and the rules that make a schema valid.
 
-Related docs:
+**See also**
 
+- `index.md` (documentation map)
 - `graphs.md` for the outer `graph!` signature and runtime entrypoints
 - `nodes.md` for how `node!` wrappers are called
 - `artifacts.md` for artifact ownership (`owned` / `&borrowed` / `*taken`)
@@ -80,7 +81,7 @@ SomeNode(inputs...) -> (outputs...)
 
 Examples:
 
-```rust
+```text
 GetNumber() -> (n)
 Inc(n) -> (n)
 Store(n) -> (&n)
@@ -181,4 +182,3 @@ If you want to understand exactly how a DSL schema becomes Rust code, start here
 - `crates/macro/src/graph_macro/expr/single.rs`: move/clone/borrow/take semantics for a single node call
 - `crates/macro/src/graph_macro/execution.rs`: build `run`/`run_async` bodies (root payload + borrowed slots + return)
 - `crates/macro/src/ir.rs`: all IR types used by parsing and expansion
-

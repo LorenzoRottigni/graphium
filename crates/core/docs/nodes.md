@@ -4,8 +4,9 @@
 
 Graphs defined with `graph!` do not call your function directly; they call the generated wrapper.
 
-Related docs:
+**See also**
 
+- `index.md` (documentation map)
 - `graphs.md` (how graphs orchestrate nodes)
 - `dsl.md` (how nodes are composed with `>>`, `&&`, `@match`, loops, ...)
 - `artifacts.md` (owned vs borrowed vs taken artifacts)
@@ -17,7 +18,7 @@ Related docs:
 Define a node:
 
 ```rust
-use graphium::node;
+use graphium_macro::node;
 
 node! {
     fn get_number() -> u32 {
@@ -29,7 +30,7 @@ node! {
 Use it inside a graph:
 
 ```rust
-use graphium::{graph, node};
+use graphium_macro::{graph, node};
 
 node! { fn get_number() -> u32 { 42 } }
 node! { fn inc(n: u32) -> u32 { n + 1 } }
@@ -49,6 +50,8 @@ graph! {
 Given:
 
 ```rust
+use graphium_macro::node;
+
 node! { fn my_node(input: String) -> String { input } }
 ```
 
@@ -88,7 +91,7 @@ If a node function declares a parameter named `ctx` or `_ctx`, it is treated as 
 Example:
 
 ```rust
-use graphium::node;
+use graphium_macro::node;
 
 #[derive(Default)]
 pub struct Ctx { pub counter: u32 }
@@ -163,4 +166,3 @@ The wrapper’s job is to present a consistent “call surface” for graphs:
 - It can generate parsing helpers for simple primitive inputs/outputs for interactive “playground” execution.
 
 These code paths are in `crates/macro/src/node_macro/expand.rs` and are typically consumed by `graphium-ui`.
-

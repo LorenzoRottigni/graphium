@@ -9,6 +9,7 @@ This document explains the macros and wiring used for (2), while still keeping y
 
 Related docs:
 
+- `index.md` (documentation map)
 - `dashboard.md` (UI test runner surfaces these tests)
 - `features.md` (`dto`/`export` affects which metadata is available)
 - `graphs.md` / `nodes.md` (how `#[tests(...)]` is attached to graphs/nodes)
@@ -34,7 +35,23 @@ Implementation:
 ### Basic usage
 
 ```rust
-use graphium_macro::{graph_test, node_test};
+#![allow(dead_code)]
+use graphium_macro::{graph, graph_test, node, node_test};
+
+#[derive(Default)]
+pub struct Context;
+
+node! { fn seven() -> u32 { 7 } }
+node! { fn my_node(x: u32) -> u32 { x } }
+node! { fn inc(x: u32) -> u32 { x + 1 } }
+
+graph! {
+    MyGraph<Context> -> (out: u32) {
+        Seven() -> (x) >>
+        MyNode(x) -> (x) >>
+        Inc(x) -> (out)
+    }
+}
 
 node_test! {
     #[test]
@@ -52,6 +69,8 @@ graph_test! {
         assert!(out > 0);
     }
 }
+
+fn main() {}
 ```
 
 ### Injected `graph` / `node` parameters (UI ergonomics)
@@ -66,14 +85,26 @@ This parameter is “injected” by the UI runner (and default-constructed by th
 Example (from the examples crate):
 
 ```rust
+#![allow(dead_code)]
+use graphium_macro::{graph, graph_test, node};
+
+#[derive(Default)]
+pub struct Context;
+
+node! { fn out() -> u32 { 42 } }
+
+graph! { OwnedGraph<Context> -> (out: u32) { Out() -> (out) } }
+
 graph_test! {
     #[test]
     fn owned_graph_returns_non_zero_split(graph: &OwnedGraph, threshold: u32) {
         let mut ctx = Context::default();
-        let out = graph::run(&mut ctx);
+        let out = OwnedGraph::run(&mut ctx);
         assert!(out > threshold);
     }
 }
+
+fn main() {}
 ```
 
 The remaining parameters (like `threshold: u32`) become UI inputs. The test macro infers basic input kinds (text/number/bool).
@@ -90,7 +121,13 @@ To associate tests with a graph or node so they show up in Graphium UI:
 ### Graph example
 
 ```rust
-use graphium_macro::{graph, graph_test};
+#![allow(dead_code)]
+use graphium_macro::{graph, graph_test, node};
+
+#[derive(Default)]
+pub struct Context;
+
+node! { fn out() -> u32 { 1 } }
 
 graph_test! {
     #[test]
@@ -103,20 +140,23 @@ graph_test! {
 graph! {
     #[tests(MyGraphSmokeTest)]
     MyGraph<Context> {
-        /* ... */
+        Out() -> (out)
     }
 }
+
+fn main() {}
 ```
 
 ### Node example
 
 ```rust
+#![allow(dead_code)]
 use graphium_macro::{node, node_test};
 
 node_test! {
     #[test]
     fn my_node_smoke_test() {
-        let _ = MyNode::run(&(), 1);
+        let _ = MyNode::run(&(), 1u32);
     }
 }
 
@@ -124,6 +164,8 @@ node! {
     #[tests(MyNodeSmokeTest)]
     fn my_node(x: u32) -> u32 { x }
 }
+
+fn main() {}
 ```
 
 Notes:
@@ -156,4 +198,3 @@ The UI can then:
 
 - UI test runner does not support `async fn` tests yet (the macros mark them unsupported for UI).
 - UI parameter typing is intentionally simple (text/number/bool).
-

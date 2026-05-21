@@ -5,7 +5,7 @@ edition = "2024"
 
 [lib]
 name = "graphium"
-doctest = false
+doctest = true
 
 [dependencies]
 serde = { version = "1", features = ["derive"], optional = true }
@@ -41,3 +41,8 @@ playground = []
 # Back-compat alias (deprecated): prefer `export`.
 serialize = ["export"]
 macros = ["dep:graphium-macro"]
+
+[dev-dependencies]
+# Used by documentation doctests so examples can `use graphium_macro::{graph, node, ...}`
+# without requiring consumers to enable `graphium`'s `macros` feature.
+graphium-macro = { version = "0.1.0", path = "../macro" }
