@@ -11,9 +11,20 @@ use crate::{
         CreateProductGraph, DeleteProductGraph, GetProductGraph, ListProductsGraph,
         UpdateProductGraph,
     },
+    models::{ApiError, ApiErrorCode},
     models::{ListProductsQuery, UpdateProduct},
     state::AppState,
 };
+
+fn api_error_to_http(err: ApiError) -> (StatusCode, String) {
+    let status = match err.code {
+        ApiErrorCode::BadRequest => StatusCode::BAD_REQUEST,
+        ApiErrorCode::NotFound => StatusCode::NOT_FOUND,
+        ApiErrorCode::Conflict => StatusCode::CONFLICT,
+        ApiErrorCode::Internal => StatusCode::INTERNAL_SERVER_ERROR,
+    };
+    (status, err.message)
+}
 
 node! {
     #[axum::debug_handler]
@@ -63,7 +74,9 @@ node! {
         ))?;
 
         let mut ctx = state.graphium_ctx.lock().await;
-        Ok(CreateProductGraph::run_async(&mut ctx, name, price).await)
+        CreateProductGraph::run_async(&mut ctx, name, price)
+            .await
+            .map_err(api_error_to_http)
     }
 }
 
@@ -71,20 +84,24 @@ node! {
 pub async fn get_product(
     State(state): State<AppState>,
     Path(product_id): Path<i64>,
-) -> Json<crate::models::Product> {
+) -> Result<Json<crate::models::Product>, (StatusCode, String)> {
     let mut ctx = state.graphium_ctx.lock().await;
-    GetProductGraph::run_async(&mut ctx, product_id).await
+    GetProductGraph::run_async(&mut ctx, product_id)
+        .await
+        .map_err(api_error_to_http)
 }
 
 #[axum::debug_handler]
 pub async fn list_products(
     State(state): State<AppState>,
     Query(query): Query<ListProductsQuery>,
-) -> Json<Vec<crate::models::Product>> {
+) -> Result<Json<Vec<crate::models::Product>>, (StatusCode, String)> {
     let limit = query.limit.unwrap_or(50).clamp(1, 200);
     let offset = query.offset.unwrap_or(0).max(0);
     let mut ctx = state.graphium_ctx.lock().await;
-    ListProductsGraph::run_async(&mut ctx, limit, offset).await
+    ListProductsGraph::run_async(&mut ctx, limit, offset)
+        .await
+        .map_err(api_error_to_http)
 }
 
 #[axum::debug_handler]
@@ -92,16 +109,20 @@ pub async fn update_product(
     State(state): State<AppState>,
     Path(product_id): Path<i64>,
     Json(update): Json<UpdateProduct>,
-) -> Json<crate::models::Product> {
+) -> Result<Json<crate::models::Product>, (StatusCode, String)> {
     let mut ctx = state.graphium_ctx.lock().await;
-    UpdateProductGraph::run_async(&mut ctx, product_id, update).await
+    UpdateProductGraph::run_async(&mut ctx, product_id, update)
+        .await
+        .map_err(api_error_to_http)
 }
 
 #[axum::debug_handler]
 pub async fn delete_product(
     State(state): State<AppState>,
     Path(product_id): Path<i64>,
-) -> Json<crate::models::DeleteResult> {
+) -> Result<Json<crate::models::DeleteResult>, (StatusCode, String)> {
     let mut ctx = state.graphium_ctx.lock().await;
-    DeleteProductGraph::run_async(&mut ctx, product_id).await
+    DeleteProductGraph::run_async(&mut ctx, product_id)
+        .await
+        .map_err(api_error_to_http)
 }

@@ -39,6 +39,7 @@ pub async fn serve(config: GraphiumUiConfig) -> Result<(), UiError> {
         config.prometheus_url,
         config.loki_url,
         config.tempo_url,
+        config.service_name,
         config.graphs,
     ));
 

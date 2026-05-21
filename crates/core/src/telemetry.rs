@@ -534,7 +534,19 @@ fn init_metrics(
         .build()
         .expect("build otlp metric exporter");
 
-    let reader = PeriodicReader::builder(exporter, TokioCurrentThread).build();
+    // The OTLP metric exporter uses a periodic reader; keep the default snappy
+    // for local demos so the UI updates within a few seconds.
+    //
+    // Override with `GRAPHIUM_METRICS_EXPORT_INTERVAL_MS`.
+    let export_interval = std::env::var("GRAPHIUM_METRICS_EXPORT_INTERVAL_MS")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .map(std::time::Duration::from_millis)
+        .unwrap_or(std::time::Duration::from_secs(5));
+
+    let reader = PeriodicReader::builder(exporter, TokioCurrentThread)
+        .with_interval(export_interval)
+        .build();
 
     let provider = SdkMeterProvider::builder()
         .with_reader(reader)

@@ -16,7 +16,8 @@ pub(crate) async fn fetch_graph_traces(
     graph_name: &str,
 ) -> Vec<TraceSummaryView> {
     let q = format!(
-        r#"{{ .service.name = "graphium" && .graph = "{}" }}"#,
+        r#"{{ .service.name = "{}" && .graph = "{}" }}"#,
+        state.service_name.replace('"', "\\\""),
         graph_name.replace('"', "\\\"")
     );
     tempo_search(state, &q, 10).await
@@ -28,7 +29,8 @@ pub(crate) async fn fetch_node_traces(
     node_name: &str,
 ) -> Vec<TraceSummaryView> {
     let q = format!(
-        r#"{{ .service.name = "graphium" && .graph = "{}" && .node = "{}" }}"#,
+        r#"{{ .service.name = "{}" && .graph = "{}" && .node = "{}" }}"#,
+        state.service_name.replace('"', "\\\""),
         graph_name.replace('"', "\\\""),
         node_name.replace('"', "\\\"")
     );

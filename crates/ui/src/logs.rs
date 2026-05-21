@@ -10,8 +10,11 @@ pub(crate) struct LogLineView {
 }
 
 pub(crate) async fn fetch_graph_logs(state: &AppState, graph_name: &str) -> Vec<LogLineView> {
+    // The OTLP->Loki pipeline ships Graphium fields as JSON log attributes.
+    // Query by parsing JSON rather than relying on Loki labels.
     let query = format!(
-        "{{service_name=\"graphium\",graph=\"{}\"}}",
+        "{{service_name=\"{}\"}} | json | attributes_graph=\"{}\"",
+        state.service_name.replace('"', "\\\""),
         graph_name.replace('"', "\\\"")
     );
     fetch_loki_logs(state, &query, 30).await
@@ -23,7 +26,8 @@ pub(crate) async fn fetch_node_logs(
     node_name: &str,
 ) -> Vec<LogLineView> {
     let query = format!(
-        "{{service_name=\"graphium\",graph=\"{}\",node=\"{}\"}}",
+        "{{service_name=\"{}\"}} | json | attributes_graph=\"{}\" | attributes_node=\"{}\"",
+        state.service_name.replace('"', "\\\""),
         graph_name.replace('"', "\\\""),
         node_name.replace('"', "\\\"")
     );

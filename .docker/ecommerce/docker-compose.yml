@@ -1,4 +1,7 @@
-# NOTE: this file is expected to be run from the repo root:
+# NOTE: Paths in a Compose file are resolved relative to the location of this
+# file (not the current working directory).
+#
+# This compose file is intended to be run from the repo root:
 # `docker compose -f .docker/ecommerce/docker-compose.yml up`
 #
 # It mirrors `.docker/docker-compose.yml`, but is kept here to keep ecommerce
@@ -21,7 +24,7 @@ services:
     image: grafana/loki:3.0.0
     command: ["-config.file=/etc/loki/config.yml"]
     volumes:
-      - ./loki.yml:/etc/loki/config.yml:ro
+      - ../loki.yml:/etc/loki/config.yml:ro
     ports:
       - "3100:3100"
 
@@ -29,7 +32,7 @@ services:
     image: grafana/tempo:2.5.0
     command: ["-config.file=/etc/tempo/config.yml"]
     volumes:
-      - ./tempo.yml:/etc/tempo/config.yml:ro
+      - ../tempo.yml:/etc/tempo/config.yml:ro
     ports:
       - "3200:3200"
 
@@ -37,7 +40,7 @@ services:
     image: otel/opentelemetry-collector-contrib:0.103.0
     command: ["--config=/etc/otelcol/config.yml"]
     volumes:
-      - ./otel-collector.yml:/etc/otelcol/config.yml:ro
+      - ../otel-collector.yml:/etc/otelcol/config.yml:ro
     ports:
       - "4318:4318"
       - "8889:8889"
@@ -50,7 +53,7 @@ services:
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../prometheus.yml:/etc/prometheus/prometheus.yml:ro
     ports:
       - "9090:9090"
     depends_on:
@@ -62,7 +65,7 @@ services:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
     volumes:
-      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../grafana/provisioning:/etc/grafana/provisioning:ro
     ports:
       - "3002:3000"
     depends_on:
@@ -72,7 +75,7 @@ services:
 
   ecommerce-prod:
     build:
-      context: ..
+      context: ../..
       dockerfile: .docker/ecommerce/Dockerfile
     environment:
       ECOMMERCE_BIND: 0.0.0.0:3000
@@ -89,13 +92,14 @@ services:
 
   ecommerce-admin:
     build:
-      context: ..
+      context: ../..
       dockerfile: .docker/ecommerce/Dockerfile.ui
     environment:
       GRAPHIUM_UI_BIND: 0.0.0.0:4000
       GRAPHIUM_PROMETHEUS_URL: http://prometheus:9090
       GRAPHIUM_LOKI_URL: http://loki:3100
       GRAPHIUM_TEMPO_URL: http://tempo:3200
+      GRAPHIUM_SERVICE_NAME: ecommerce-prod
     ports:
       - "4000:4000"
     depends_on:

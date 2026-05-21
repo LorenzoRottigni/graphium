@@ -14,24 +14,33 @@ pub(crate) struct MetricsView {
 }
 
 pub(crate) async fn fetch_metrics(state: &AppState, graph_name: &str) -> MetricsView {
+    // PromQL string values are quoted with `"..."`. We escape embedded quotes
+    // for PromQL (not for Rust), so use `\"` in the resulting query string.
     let esc = graph_name.replace('"', "\\\"");
-    let count_q = format!(r#"sum(graphium_graph_count_total{{graph=\"{esc}\"}})"#);
-    let errors_q = format!(r#"sum(graphium_graph_errors_total{{graph=\"{esc}\"}})"#);
-    let success_q = format!(r#"sum(graphium_graph_success_total{{graph=\"{esc}\"}})"#);
-    let fail_q = format!(r#"sum(graphium_graph_fail_total{{graph=\"{esc}\"}})"#);
+    let count_q = format!(r#"sum(graphium_graph_count_total{{graph="{esc}"}})"#);
+    let errors_q = format!(r#"sum(graphium_graph_errors_total{{graph="{esc}"}})"#);
+    let success_q = format!(r#"sum(graphium_graph_success_total{{graph="{esc}"}})"#);
+    let fail_q = format!(r#"sum(graphium_graph_fail_total{{graph="{esc}"}})"#);
     let p50_q = format!(
-        r#"histogram_quantile(0.5, sum(rate(graphium_graph_latency_seconds_bucket{{graph=\"{esc}\"}}[5m])) by (le))"#
+        r#"histogram_quantile(0.5, sum(rate(graphium_graph_latency_seconds_bucket{{graph="{esc}"}}[5m])) by (le))"#
     );
     let p95_q = format!(
-        r#"histogram_quantile(0.95, sum(rate(graphium_graph_latency_seconds_bucket{{graph=\"{esc}\"}}[5m])) by (le))"#
+        r#"histogram_quantile(0.95, sum(rate(graphium_graph_latency_seconds_bucket{{graph="{esc}"}}[5m])) by (le))"#
     );
 
-    let count = prometheus_query_scalar(&state.client, &state.prometheus_base_url, &count_q).await;
-    let errors =
-        prometheus_query_scalar(&state.client, &state.prometheus_base_url, &errors_q).await;
-    let success =
-        prometheus_query_scalar(&state.client, &state.prometheus_base_url, &success_q).await;
-    let fail = prometheus_query_scalar(&state.client, &state.prometheus_base_url, &fail_q).await;
+    // For counters, treat "no series" as 0 rather than "n/a".
+    let count = prometheus_query_scalar(&state.client, &state.prometheus_base_url, &count_q)
+        .await
+        .or(Some(0.0));
+    let errors = prometheus_query_scalar(&state.client, &state.prometheus_base_url, &errors_q)
+        .await
+        .or(Some(0.0));
+    let success = prometheus_query_scalar(&state.client, &state.prometheus_base_url, &success_q)
+        .await
+        .or(Some(0.0));
+    let fail = prometheus_query_scalar(&state.client, &state.prometheus_base_url, &fail_q)
+        .await
+        .or(Some(0.0));
     let p50_seconds =
         prometheus_query_scalar(&state.client, &state.prometheus_base_url, &p50_q).await;
     let p95_seconds =
@@ -64,23 +73,29 @@ pub(crate) async fn fetch_node_metrics(
 ) -> NodeMetricsView {
     let g = graph_label.replace('"', "\\\"");
     let n = node_label.replace('"', "\\\"");
-    let count_q = format!(r#"sum(graphium_node_count_total{{graph=\"{g}\",node=\"{n}\"}})"#);
-    let errors_q = format!(r#"sum(graphium_node_errors_total{{graph=\"{g}\",node=\"{n}\"}})"#);
-    let success_q = format!(r#"sum(graphium_node_success_total{{graph=\"{g}\",node=\"{n}\"}})"#);
-    let fail_q = format!(r#"sum(graphium_node_fail_total{{graph=\"{g}\",node=\"{n}\"}})"#);
+    let count_q = format!(r#"sum(graphium_node_count_total{{graph="{g}",node="{n}"}})"#);
+    let errors_q = format!(r#"sum(graphium_node_errors_total{{graph="{g}",node="{n}"}})"#);
+    let success_q = format!(r#"sum(graphium_node_success_total{{graph="{g}",node="{n}"}})"#);
+    let fail_q = format!(r#"sum(graphium_node_fail_total{{graph="{g}",node="{n}"}})"#);
     let p50_q = format!(
-        r#"histogram_quantile(0.5, sum(rate(graphium_node_latency_seconds_bucket{{graph=\"{g}\",node=\"{n}\"}}[5m])) by (le))"#
+        r#"histogram_quantile(0.5, sum(rate(graphium_node_latency_seconds_bucket{{graph="{g}",node="{n}"}}[5m])) by (le))"#
     );
     let p95_q = format!(
-        r#"histogram_quantile(0.95, sum(rate(graphium_node_latency_seconds_bucket{{graph=\"{g}\",node=\"{n}\"}}[5m])) by (le))"#
+        r#"histogram_quantile(0.95, sum(rate(graphium_node_latency_seconds_bucket{{graph="{g}",node="{n}"}}[5m])) by (le))"#
     );
 
-    let count = prometheus_query_scalar(&state.client, &state.prometheus_base_url, &count_q).await;
-    let errors =
-        prometheus_query_scalar(&state.client, &state.prometheus_base_url, &errors_q).await;
-    let success =
-        prometheus_query_scalar(&state.client, &state.prometheus_base_url, &success_q).await;
-    let fail = prometheus_query_scalar(&state.client, &state.prometheus_base_url, &fail_q).await;
+    let count = prometheus_query_scalar(&state.client, &state.prometheus_base_url, &count_q)
+        .await
+        .or(Some(0.0));
+    let errors = prometheus_query_scalar(&state.client, &state.prometheus_base_url, &errors_q)
+        .await
+        .or(Some(0.0));
+    let success = prometheus_query_scalar(&state.client, &state.prometheus_base_url, &success_q)
+        .await
+        .or(Some(0.0));
+    let fail = prometheus_query_scalar(&state.client, &state.prometheus_base_url, &fail_q)
+        .await
+        .or(Some(0.0));
     let p50_seconds =
         prometheus_query_scalar(&state.client, &state.prometheus_base_url, &p50_q).await;
     let p95_seconds =
@@ -98,8 +113,9 @@ pub(crate) async fn fetch_node_metrics(
 
 pub(crate) fn fmt_metric(value: Option<f64>) -> String {
     match value {
-        Some(v) => format!("{v:.4}"),
+        Some(v) if v.is_finite() => format!("{v:.4}"),
         None => "n/a".to_string(),
+        Some(_) => "n/a".to_string(),
     }
 }
 

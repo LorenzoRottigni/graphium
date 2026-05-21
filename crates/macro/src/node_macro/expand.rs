@@ -479,8 +479,15 @@ pub fn expand(input: TokenStream) -> TokenStream {
                 ctx: #ctx_param,
                 #( #input_idents: #input_types ),*
             ) #return_sig {
-                println!("Running node: {}", Self::NAME);
-                #sync_body
+                #[cfg(feature = "logs")]
+                ::graphium::telemetry::tracing::info!(graph = module_path!(), node = Self::NAME, "node started");
+
+                let __graphium_result = { #sync_body };
+
+                #[cfg(feature = "logs")]
+                ::graphium::telemetry::tracing::info!(graph = module_path!(), node = Self::NAME, "node finished");
+
+                __graphium_result
             }
         }
     };
@@ -496,6 +503,9 @@ pub fn expand(input: TokenStream) -> TokenStream {
                         .node_span(module_path!(), Self::NAME)
                         .entered();
 
+                    #[cfg(feature = "logs")]
+                    ::graphium::telemetry::tracing::info!(graph = module_path!(), node = Self::NAME, "node started");
+
                     let __graphium_metrics = Self::__graphium_node_telemetry();
                     let __graphium_start = __graphium_metrics.start_timer();
                     let value = #fn_name(#( #call_args ),*).await;
@@ -506,6 +516,10 @@ pub fn expand(input: TokenStream) -> TokenStream {
                     } else {
                         __graphium_metrics.record_success(__graphium_start);
                     }
+
+                    #[cfg(feature = "logs")]
+                    ::graphium::telemetry::tracing::info!(graph = module_path!(), node = Self::NAME, "node finished");
+
                     value
                 }
             } else {
@@ -517,10 +531,17 @@ pub fn expand(input: TokenStream) -> TokenStream {
                         .node_span(module_path!(), Self::NAME)
                         .entered();
 
+                    #[cfg(feature = "logs")]
+                    ::graphium::telemetry::tracing::info!(graph = module_path!(), node = Self::NAME, "node started");
+
                     let __graphium_metrics = Self::__graphium_node_telemetry();
                     let __graphium_start = __graphium_metrics.start_timer();
                     let value = #fn_name(#( #call_args ),*).await;
                     __graphium_metrics.record_success(__graphium_start);
+
+                    #[cfg(feature = "logs")]
+                    ::graphium::telemetry::tracing::info!(graph = module_path!(), node = Self::NAME, "node finished");
+
                     value
                 }
             }
@@ -533,7 +554,15 @@ pub fn expand(input: TokenStream) -> TokenStream {
                     .node_span(module_path!(), Self::NAME)
                     .entered();
 
-                #fn_name(#( #call_args ),*).await
+                #[cfg(feature = "logs")]
+                ::graphium::telemetry::tracing::info!(graph = module_path!(), node = Self::NAME, "node started");
+
+                let __graphium_result = #fn_name(#( #call_args ),*).await;
+
+                #[cfg(feature = "logs")]
+                ::graphium::telemetry::tracing::info!(graph = module_path!(), node = Self::NAME, "node finished");
+
+                __graphium_result
             }
         };
         quote! {
