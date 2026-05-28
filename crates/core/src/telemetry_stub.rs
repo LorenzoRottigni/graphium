@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::{sync::OnceLock, time::Instant};
 
 /// Re-export so macro-generated code can use `tracing::*` without requiring
 /// a direct dependency in the consumer crate.
@@ -36,37 +36,33 @@ pub struct GraphiumTelemetry;
 
 impl GraphiumTelemetry {
     /// No-op singleton when telemetry features are disabled.
-    pub fn global() -> Self {
-        GraphiumTelemetry
+    pub fn global() -> &'static Self {
+        static TELEMETRY: OnceLock<GraphiumTelemetry> = OnceLock::new();
+        TELEMETRY.get_or_init(|| GraphiumTelemetry)
     }
 
     /// No-op.
     pub fn shutdown(&self) {}
 
-    /// No-op start timer.
-    pub fn start_timer(&self) -> Instant {
-        Instant::now()
-    }
-
-    /// No-op.
-    pub fn record_success(&self, _start: Instant) {}
-
-    /// No-op.
-    pub fn record_failure(&self, _start: Instant) {}
-
     /// No-op graph metrics accessor used by macro-generated code.
-    pub fn graph_metrics(&self, _graph: &str, _caller: Option<&str>) -> GraphMetrics {
-        GraphMetrics
+    pub fn graph_metrics(
+        &'static self,
+        _graph: &'static str,
+        _caller: &'static str,
+        cfg: MetricConfig,
+    ) -> GraphTelemetryHandle {
+        GraphTelemetryHandle { cfg }
     }
 
     /// No-op node metrics accessor used by macro-generated code.
     pub fn node_metrics(
-        &self,
-        _graph: &str,
-        _node: &str,
-        _caller: Option<&str>,
-    ) -> NodeMetrics {
-        NodeMetrics
+        &'static self,
+        _graph: &'static str,
+        _node: &'static str,
+        _caller: &'static str,
+        cfg: MetricConfig,
+    ) -> NodeTelemetryHandle {
+        NodeTelemetryHandle { cfg }
     }
 
     /// No-op span used by macro-generated tracing.
@@ -80,24 +76,42 @@ impl GraphiumTelemetry {
     }
 }
 
-#[derive(Clone, Copy)]
-pub struct GraphMetrics;
-
-impl GraphMetrics {
-    pub fn start_timer(&self) -> Instant {
-        Instant::now()
-    }
-    pub fn record_success(&self, _start: Instant) {}
-    pub fn record_failure(&self, _start: Instant) {}
+/// Mirror of the real `MetricConfig` API so macro-generated code compiles even
+/// when telemetry is disabled.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct MetricConfig {
+    pub performance: bool,
+    pub errors: bool,
+    pub count: bool,
+    pub caller: bool,
+    pub success_rate: bool,
+    pub fail_rate: bool,
 }
 
-#[derive(Clone, Copy)]
-pub struct NodeMetrics;
+pub struct GraphTelemetryHandle {
+    cfg: MetricConfig,
+}
 
-impl NodeMetrics {
-    pub fn start_timer(&self) -> Instant {
-        Instant::now()
+impl GraphTelemetryHandle {
+    pub fn start_timer(&self) -> Option<Instant> {
+        self.cfg.performance.then_some(Instant::now())
     }
-    pub fn record_success(&self, _start: Instant) {}
-    pub fn record_failure(&self, _start: Instant) {}
+
+    pub fn record_success(&self, _start: Option<Instant>) {}
+
+    pub fn record_failure(&self, _start: Option<Instant>) {}
+}
+
+pub struct NodeTelemetryHandle {
+    cfg: MetricConfig,
+}
+
+impl NodeTelemetryHandle {
+    pub fn start_timer(&self) -> Option<Instant> {
+        self.cfg.performance.then_some(Instant::now())
+    }
+
+    pub fn record_success(&self, _start: Option<Instant>) {}
+
+    pub fn record_failure(&self, _start: Option<Instant>) {}
 }
