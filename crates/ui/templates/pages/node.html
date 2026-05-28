@@ -32,7 +32,22 @@
 <section class="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
     <section class="grid grid-cols-1 gap-4">
         <section class="border border-dark rounded-md p-4 bg-darkest">
-            <h3 class="text-lg font-semibold mb-2">Metrics</h3>
+            <div class="flex items-center justify-between gap-3 mb-2">
+                <h3 class="text-lg font-semibold">Telemetry</h3>
+                <div class="flex items-center gap-2 text-sm">
+                    <span class="text-light">Range</span>
+                    <select id="graphium-range" name="range" class="px-2 py-1 rounded-md bg-black/40 border border-dark text-white">
+                        <option value="5m">Last 5m</option>
+                        <option value="30m" selected>Last 30m</option>
+                        <option value="1h">Last 1h</option>
+                        <option value="6h">Last 6h</option>
+                        <option value="24h">Last 24h</option>
+                        <option value="7d">Last 7d</option>
+                        <option value="all">All time</option>
+                    </select>
+                </div>
+            </div>
+            <h4 class="text-lg font-semibold mb-2">Metrics</h4>
             <p class="text-sm text-light mb-3">Labels: graph=<code class="text-white">{{ metrics_graph }}</code> ·
                 node=<code class="text-white">{{ metrics_node }}</code></p>
             <div class="grid grid-cols-2 gap-3 text-sm">

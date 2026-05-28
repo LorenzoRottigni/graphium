@@ -12,7 +12,10 @@ Runtime behavior is optional and controlled via feature flags. Using Graphium wi
 
 ## Documentation
 
-Start here: `crates/core/docs/index.md`.
+Start here: [`crates/core/docs/index.md`](crates/core/docs/index.md).
+
+If you want a “full-stack” demo (APIs + dashboard + telemetry), see:
+- [`crates/examples/src/bin/ecommerce/README.md`](crates/examples/src/bin/ecommerce/README.md)
 
 ---
 
@@ -119,7 +122,7 @@ graph! {
 }
 ```
 
-For in-depth DSL rules and artifact ownership, see `crates/core/docs/index.md`.
+For in-depth DSL rules and artifact ownership, see [`crates/core/docs/index.md`](crates/core/docs/index.md).
 
 ## Graphium UI
 

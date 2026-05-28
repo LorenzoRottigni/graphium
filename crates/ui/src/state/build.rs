@@ -4,6 +4,7 @@ pub(crate) fn build_state(
     prometheus_url: String,
     loki_url: String,
     tempo_url: String,
+    service_name: String,
     graphs: Vec<UiGraph>,
 ) -> AppState {
     let mut graphs = UiIndex::from_ordered(graphs, |g| &g.id);
@@ -59,6 +60,7 @@ pub(crate) fn build_state(
         prometheus_base_url: prometheus_url,
         loki_base_url: loki_url,
         tempo_base_url: tempo_url,
+        service_name,
         client: reqwest::Client::new(),
         graphs,
         tests: UiIndex::from_ordered(tests_ordered, |t| &t.dto.id),

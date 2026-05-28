@@ -19,6 +19,9 @@ pub(crate) struct AppState {
     /// Base URL for Tempo query-frontend (used to search and fetch traces).
     pub(crate) tempo_base_url: String,
 
+    /// OTel service name used to filter logs and traces queries.
+    pub(crate) service_name: String,
+
     /// Shared HTTP client used by handlers to call Prometheus and other endpoints.
     pub(crate) client: reqwest::Client,
 

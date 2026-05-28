@@ -1,8 +1,6 @@
 #[derive(Clone)]
 pub struct Context {
     pub pool: sqlx::PgPool,
-    pub product_input: crate::models::NewProduct,
-    pub product: crate::models::Product,
 }
 
 impl Context {
@@ -18,15 +16,6 @@ impl Context {
 
         Self {
             pool,
-            product_input: crate::models::NewProduct {
-                name: String::new(),
-                price: 0,
-            },
-            product: crate::models::Product {
-                id: 0,
-                name: String::new(),
-                price: 0,
-            },
         }
     }
 }

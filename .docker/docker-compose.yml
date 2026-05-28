@@ -90,6 +90,8 @@ services:
       GRAPHIUM_PROMETHEUS_URL: http://prometheus:9090
       GRAPHIUM_LOKI_URL: http://loki:3100
       GRAPHIUM_TEMPO_URL: http://tempo:3200
+      # Must match the service name used by the instrumented app.
+      GRAPHIUM_SERVICE_NAME: ecommerce-prod
     ports:
       - "4000:4000"
     depends_on:

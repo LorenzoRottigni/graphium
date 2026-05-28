@@ -11,6 +11,11 @@ pub struct GraphiumUiConfig {
     pub prometheus_url: String,
     pub loki_url: String,
     pub tempo_url: String,
+    /// OTel service name to filter logs/traces in the dashboard.
+    ///
+    /// This must match the service name used by the instrumented application,
+    /// e.g. `GRAPHIUM_SERVICE_NAME` / `OTEL_SERVICE_NAME`.
+    pub service_name: String,
     pub graphs: Vec<UiGraph>,
 }
 
@@ -21,6 +26,7 @@ impl GraphiumUiConfig {
             prometheus_url: prometheus_url.into(),
             loki_url: "http://127.0.0.1:3100".to_string(),
             tempo_url: "http://127.0.0.1:3200".to_string(),
+            service_name: "graphium".to_string(),
             graphs: Vec::new(),
         }
     }
@@ -31,6 +37,7 @@ impl GraphiumUiConfig {
             prometheus_url: prometheus_url.into(),
             loki_url: "http://127.0.0.1:3100".to_string(),
             tempo_url: "http://127.0.0.1:3200".to_string(),
+            service_name: "graphium".to_string(),
             graphs,
         }
     }
@@ -62,6 +69,11 @@ impl GraphiumUiConfig {
         self.tempo_url = tempo_url.into();
         self
     }
+
+    pub fn with_service_name(mut self, service_name: impl Into<String>) -> Self {
+        self.service_name = service_name.into();
+        self
+    }
 }
 
 impl Default for GraphiumUiConfig {
@@ -71,6 +83,7 @@ impl Default for GraphiumUiConfig {
             prometheus_url: "http://127.0.0.1:9090".to_string(),
             loki_url: "http://127.0.0.1:3100".to_string(),
             tempo_url: "http://127.0.0.1:3200".to_string(),
+            service_name: "graphium".to_string(),
             graphs: Vec::new(),
         }
     }

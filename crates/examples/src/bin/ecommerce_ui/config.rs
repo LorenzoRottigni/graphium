@@ -16,6 +16,9 @@ pub fn config() -> GraphiumUiConfig {
             .unwrap_or_else(|_| "http://127.0.0.1:3100".to_string()),
         tempo_url: std::env::var("GRAPHIUM_TEMPO_URL")
             .unwrap_or_else(|_| "http://127.0.0.1:3200".to_string()),
+        service_name: std::env::var("GRAPHIUM_SERVICE_NAME")
+            .or_else(|_| std::env::var("OTEL_SERVICE_NAME"))
+            .unwrap_or_else(|_| "graphium".to_string()),
         graphs: graphs![
             CreateProductGraph,
             GetProductGraph,

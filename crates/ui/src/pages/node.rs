@@ -4,8 +4,9 @@ use askama::Template;
 
 use crate::http::AppHttpError;
 use crate::logs::{LogLineView, fetch_node_logs};
-use crate::metrics::{fetch_node_metrics, fmt_metric};
+use crate::metrics::{fetch_node_metrics, fmt_count_metric, fmt_metric};
 use crate::state::AppState;
+use crate::time_range::TimeRange;
 use crate::traces::{TraceSummaryView, fetch_node_traces};
 use crate::util::normalize_symbol;
 
@@ -57,6 +58,7 @@ pub(crate) struct NodeTemplate {
 pub(crate) async fn node_page_html(
     state: Arc<AppState>,
     node_id: String,
+    range: TimeRange,
 ) -> Result<String, AppHttpError> {
     let node = state
         .nodes
@@ -80,18 +82,19 @@ pub(crate) async fn node_page_html(
         .collect::<Vec<_>>();
 
     let metrics_view =
-        fetch_node_metrics(&state, &node.dto.metrics_graph, &node.dto.metrics_node).await;
+        fetch_node_metrics(&state, &node.dto.metrics_graph, &node.dto.metrics_node, range).await;
     let metrics = MetricCards {
-        count: fmt_metric(metrics_view.count),
-        errors: fmt_metric(metrics_view.errors),
-        success: fmt_metric(metrics_view.success),
-        fail: fmt_metric(metrics_view.fail),
+        count: fmt_count_metric(metrics_view.count),
+        errors: fmt_count_metric(metrics_view.errors),
+        success: fmt_count_metric(metrics_view.success),
+        fail: fmt_count_metric(metrics_view.fail),
         p50: fmt_metric(metrics_view.p50_seconds),
         p95: fmt_metric(metrics_view.p95_seconds),
     };
 
-    let logs = fetch_node_logs(&state, &node.dto.metrics_graph, &node.dto.metrics_node).await;
-    let traces = fetch_node_traces(&state, &node.dto.metrics_graph, &node.dto.metrics_node).await;
+    let logs = fetch_node_logs(&state, &node.dto.metrics_graph, &node.dto.metrics_node, range).await;
+    let traces =
+        fetch_node_traces(&state, &node.dto.metrics_graph, &node.dto.metrics_node, range).await;
 
     Ok(NodeTemplate {
         title: format!("Node: {} | Graphium UI", node.dto.label),

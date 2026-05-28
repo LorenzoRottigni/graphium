@@ -1,0 +1,135 @@
+name: Release (crates.io)
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish (e.g. v0.1.0-alpha.1)"
+        required: true
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+      - name: cargo test (workspace)
+        run: cargo test --workspace --all-features
+
+  e2e:
+    name: E2E (docker-compose)
+    runs-on: ubuntu-latest
+    needs: [test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: E2E ecommerce stack
+        run: bash .github/scripts/e2e_ecommerce.sh
+
+  publish:
+    name: Publish to crates.io
+    runs-on: ubuntu-latest
+    needs: [e2e]
+    if: ${{ startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Validate versions match tag (when tagged)
+        if: ${{ startsWith(steps.tag.outputs.tag, 'v') }}
+        run: bash .github/scripts/release_check.sh "${{ steps.tag.outputs.tag }}"
+      - name: Resolve version
+        id: ver
+        run: |
+          ver="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name==\"graphium\") | .version')"
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+      - name: Validate crate versions aligned
+        run: bash .github/scripts/release_check.sh
+      - name: Skip if already published
+        id: skip
+        run: |
+          set -euo pipefail
+          ver="${{ steps.ver.outputs.version }}"
+          exists() {
+            local crate="$1"
+            curl -fsSL "https://crates.io/api/v1/crates/${crate}" \
+              | jq -e --arg v "$ver" '.versions[]? | select(.num == $v) | .num' >/dev/null
+          }
+          macro_exists=false; core_exists=false; ui_exists=false
+          if exists graphium-macro; then macro_exists=true; fi
+          if exists graphium; then core_exists=true; fi
+          if exists graphium-ui; then ui_exists=true; fi
+          echo "macro_exists=$macro_exists" >> "$GITHUB_OUTPUT"
+          echo "core_exists=$core_exists" >> "$GITHUB_OUTPUT"
+          echo "ui_exists=$ui_exists" >> "$GITHUB_OUTPUT"
+
+          if [[ "$macro_exists" == "true" && "$core_exists" == "true" && "$ui_exists" == "true" ]]; then
+            echo "skip_all=true" >> "$GITHUB_OUTPUT"
+            echo "All crates already published at version $ver; skipping."
+          else
+            echo "skip_all=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Publish graphium-macro
+        if: ${{ steps.skip.outputs.skip_all != 'true' && steps.skip.outputs.macro_exists != 'true' }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish -p graphium-macro --token "${CARGO_REGISTRY_TOKEN}"
+      - name: Publish graphium
+        if: ${{ steps.skip.outputs.skip_all != 'true' && steps.skip.outputs.core_exists != 'true' }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          # graphium depends on graphium-macro; give crates.io index time to update.
+          for i in {1..10}; do
+            if cargo publish -p graphium --token "${CARGO_REGISTRY_TOKEN}"; then
+              exit 0
+            fi
+            echo "publish graphium failed; retrying ($i/10)..." >&2
+            sleep 20
+          done
+          exit 1
+      - name: Publish graphium-ui
+        if: ${{ steps.skip.outputs.skip_all != 'true' && steps.skip.outputs.ui_exists != 'true' }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          # graphium-ui depends on graphium; give crates.io index time to update.
+          for i in {1..10}; do
+            if cargo publish -p graphium-ui --token "${CARGO_REGISTRY_TOKEN}"; then
+              exit 0
+            fi
+            echo "publish graphium-ui failed; retrying ($i/10)..." >&2
+            sleep 20
+          done
+          exit 1
