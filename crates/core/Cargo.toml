@@ -1,6 +1,6 @@
 [package]
 name = "graphium"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 edition = "2024"
 
 [lib]
@@ -26,6 +26,9 @@ tracing-subscriber = { version = "0.3", optional = true, default-features = fals
 opentelemetry-appender-tracing = { version = "0.31.0", optional = true }
 
 [features]
+# Keep serde available by default so macro-generated code can refer to
+# `graphium::serde` without requiring users to enable extra features.
+default = ["export"]
 # Enables DTO serde support (`graphium::serde` re-export + serde derives).
 export = ["dep:serde"]
 # Enables macro-generated `Graph::dto()` / `Graph::flow()` helpers (no serde).

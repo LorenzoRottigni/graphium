@@ -68,6 +68,16 @@ impl GraphiumTelemetry {
     ) -> NodeMetrics {
         NodeMetrics
     }
+
+    /// No-op span used by macro-generated tracing.
+    pub fn graph_span(&self, _graph: &'static str) -> tracing::Span {
+        tracing::Span::none()
+    }
+
+    /// No-op span used by macro-generated tracing.
+    pub fn node_span(&self, _graph: &'static str, _node: &'static str) -> tracing::Span {
+        tracing::Span::none()
+    }
 }
 
 #[derive(Clone, Copy)]
