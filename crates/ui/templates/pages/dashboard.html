@@ -45,7 +45,7 @@
 {% block header_right %}
 <div x-data="{ graphId: '{{ selected_id }}' }" class="flex items-center gap-2">
     <form method="get" action="/graph/{{ selected_id }}" @submit.prevent>
-        <select id="graph-id" x-model="graphId" x-bind:hx-get="'/fragment/graph/' + encodeURIComponent(graphId)"
+        <select id="graph-id" x-model="graphId" x-bind:hx-get="'/fragment/graph/' + encodeURIComponent(graphId) + '?range={{ range }}'"
             hx-trigger="change" hx-target="#graph-content" hx-swap="innerHTML" hx-indicator="#loading"
             class="px-3 py-2 rounded-md bg-darkest border border-dark text-white">
             {% for graph in graphs %}
@@ -62,6 +62,6 @@
 {% endblock %}
 
 {% block content %}
-<section id="graph-content" hx-get="/fragment/graph/{{ selected_id }}" hx-trigger="load" hx-swap="innerHTML"
+<section id="graph-content" hx-get="/fragment/graph/{{ selected_id }}?range={{ range }}" hx-trigger="load" hx-swap="innerHTML"
     hx-indicator="#loading"></section>
 {% endblock %}

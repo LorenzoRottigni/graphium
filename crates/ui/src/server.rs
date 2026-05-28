@@ -28,6 +28,7 @@ use crate::{
         nodes as nodes_pages, tests as tests_pages,
     },
     state::{AppState, build::build_state},
+    time_range::{TimeRange, TimeRangeQuery},
 };
 
 pub async fn serve(config: GraphiumUiConfig) -> Result<(), UiError> {
@@ -69,14 +70,22 @@ async fn home(State(state): State<Arc<AppState>>) -> Html<String> {
     home_pages::home(State(state)).await
 }
 
-async fn dashboard(State(state): State<Arc<AppState>>) -> Html<String> {
+async fn dashboard(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<TimeRangeQuery>,
+) -> Html<String> {
+    let range = TimeRange::from_query(&q);
     let default_id = state
         .graphs
         .ordered
         .first()
         .map(|g| g.id.clone())
         .unwrap_or_else(|| "missing".to_string());
-    Html(graph_pages::dashboard_page_html(&state, &default_id))
+    Html(graph_pages::dashboard_page_html(
+        &state,
+        &default_id,
+        range.as_param_value(),
+    ))
 }
 
 async fn graphs(
@@ -111,38 +120,51 @@ async fn select_graph(Path(id): Path<String>) -> Redirect {
 async fn graph_page(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
+    Query(q): Query<TimeRangeQuery>,
 ) -> Result<Html<String>, AppHttpError> {
-    Ok(Html(graph_pages::dashboard_page_html(&state, &id)))
+    let range = TimeRange::from_query(&q);
+    Ok(Html(graph_pages::dashboard_page_html(
+        &state,
+        &id,
+        range.as_param_value(),
+    )))
 }
 
 async fn graph_fragment(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-    Query(q): Query<GraphVizQuery>,
+    Query(q): Query<GraphFragmentQuery>,
 ) -> Result<Response, AppHttpError> {
+    let range = TimeRange::from_param(q.range.as_deref());
     let html = graph_pages::render_graph_fragment(
         state,
         id.clone(),
         Default::default(),
         q.show_artifacts(),
+        range,
     )
     .await?;
     let mut resp = Html(html).into_response();
+    let mut push_url = format!("/graph/{id}?range={}", range.as_param_value());
+    if !q.show_artifacts() {
+        push_url.push_str("&artifacts=0");
+    }
     let _ = resp.headers_mut().insert(
         axum::http::HeaderName::from_static("hx-push-url"),
-        axum::http::HeaderValue::from_str(&format!("/graph/{id}"))
+        axum::http::HeaderValue::from_str(&push_url)
             .unwrap_or_else(|_| axum::http::HeaderValue::from_static("/")),
     );
     Ok(resp)
 }
 
 #[derive(Deserialize, Default)]
-struct GraphVizQuery {
+struct GraphFragmentQuery {
     /// When false ("0", "false", "off"), hide artifact ownership/flow rendering.
     artifacts: Option<String>,
+    range: Option<String>,
 }
 
-impl GraphVizQuery {
+impl GraphFragmentQuery {
     fn show_artifacts(&self) -> bool {
         match self.artifacts.as_deref() {
             None => true,
@@ -159,6 +181,13 @@ async fn run_playground(
     Path(id): Path<String>,
     Form(values): Form<HashMap<String, String>>,
 ) -> Result<Response, AppHttpError> {
+    let range = TimeRange::from_param(values.get("range").map(|v| v.as_str()));
+
+    let values = values
+        .into_iter()
+        .filter(|(k, _)| k.as_str() != "range")
+        .collect::<HashMap<_, _>>();
+
     let graph = state
         .graphs
         .by_id
@@ -178,13 +207,14 @@ async fn run_playground(
             result: Some(result),
         },
         true,
+        range,
     )
     .await?;
 
     let mut resp = Html(html).into_response();
     let _ = resp.headers_mut().insert(
         axum::http::HeaderName::from_static("hx-push-url"),
-        axum::http::HeaderValue::from_str(&format!("/graph/{id}"))
+        axum::http::HeaderValue::from_str(&format!("/graph/{id}?range={}", range.as_param_value()))
             .unwrap_or_else(|_| axum::http::HeaderValue::from_static("/")),
     );
     Ok(resp)
@@ -193,8 +223,10 @@ async fn run_playground(
 async fn node_page(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
+    Query(q): Query<TimeRangeQuery>,
 ) -> Result<Html<String>, AppHttpError> {
-    Ok(Html(node_pages::node_page_html(state, id).await?))
+    let range = TimeRange::from_query(&q);
+    Ok(Html(node_pages::node_page_html(state, id, range).await?))
 }
 
 async fn tests_page(

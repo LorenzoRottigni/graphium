@@ -1,6 +1,10 @@
 server:
   http_listen_port: 3200
 
+query_frontend:
+  search:
+    max_duration: 8760h
+
 distributor:
   receivers:
     otlp:
@@ -15,4 +19,3 @@ storage:
       path: /var/tempo/traces
     wal:
       path: /var/tempo/wal
-

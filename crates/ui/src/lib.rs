@@ -7,6 +7,7 @@ mod metrics;
 pub mod pages;
 pub mod server;
 pub mod state;
+mod time_range;
 mod traces;
 pub mod util;
 

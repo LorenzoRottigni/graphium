@@ -114,11 +114,79 @@
                 });
             } catch (_) { }
         };
+        window.__graphiumRangeValue = () => {
+            try {
+                const url = new URL(window.location.href);
+                const fromUrl = url.searchParams.get('range');
+                if (fromUrl && fromUrl.trim() !== '') return fromUrl;
+                const sel = document.getElementById('graphium-range');
+                if (sel && sel.value) return sel.value;
+            } catch (_) { }
+            return '30m';
+        };
+        window.__graphiumSyncRangeSelect = () => {
+            try {
+                const sel = document.getElementById('graphium-range');
+                if (!sel) return;
+                const url = new URL(window.location.href);
+                const v = url.searchParams.get('range');
+                sel.value = (v && v.trim() !== '') ? v : (sel.value || '30m');
+            } catch (_) { }
+        };
+        window.__graphiumSyncRangeLinks = () => {
+            try {
+                const range = window.__graphiumRangeValue?.() ?? '30m';
+                document.querySelectorAll('a[href]').forEach((a) => {
+                    const href = a.getAttribute('href') || '';
+                    if (!href.startsWith('/')) return; // internal links only
+                    if (href.startsWith('//')) return;
+                    if (href.startsWith('/assets/')) return;
+                    if (href.includes('range=')) return;
+                    const u = new URL(href, window.location.origin);
+                    u.searchParams.set('range', range);
+                    a.setAttribute('href', u.pathname + u.search + u.hash);
+                });
+            } catch (_) { }
+        };
+        window.__graphiumInitRangeSelector = () => {
+            try {
+                const sel = document.getElementById('graphium-range');
+                if (!sel) return;
+                if (sel.dataset.graphiumBound === '1') return;
+                sel.dataset.graphiumBound = '1';
+                window.__graphiumSyncRangeSelect?.();
+                sel.addEventListener('change', function () {
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('range', sel.value);
+                    // If we're on the dashboard (graph view), prefer reloading just the
+                    // graph fragment via HTMX for a snappy experience.
+                    const graphContent = document.getElementById('graph-content');
+                    if (graphContent && window.htmx && graphContent.getAttribute('hx-get')) {
+                        const hxGet = graphContent.getAttribute('hx-get') || '';
+                        const frag = new URL(hxGet, window.location.origin);
+                        frag.searchParams.set('range', sel.value);
+                        graphContent.setAttribute('hx-get', frag.pathname + frag.search + frag.hash);
+                        window.htmx.ajax('GET', frag.pathname + frag.search + frag.hash, {
+                            target: '#graph-content',
+                            swap: 'innerHTML'
+                        });
+                        // Keep the browser URL in sync for refresh/linking.
+                        window.history.replaceState({}, '', url.toString());
+                    } else {
+                        window.location.href = url.toString();
+                    }
+                });
+                window.__graphiumSyncRangeLinks?.();
+            } catch (_) { }
+        };
         document.addEventListener('DOMContentLoaded', function () {
             if (window.__graphiumHighlight) window.__graphiumHighlight();
+            if (window.__graphiumInitRangeSelector) window.__graphiumInitRangeSelector();
         });
         document.addEventListener('htmx:afterSwap', function () {
             if (window.__graphiumHighlight) window.__graphiumHighlight();
+            if (window.__graphiumSyncRangeLinks) window.__graphiumSyncRangeLinks();
+            if (window.__graphiumInitRangeSelector) window.__graphiumInitRangeSelector();
         });
     </script>
 

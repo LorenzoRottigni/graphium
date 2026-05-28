@@ -6,8 +6,9 @@ use askama::Template;
 use crate::http::AppHttpError;
 use crate::logs::{LogLineView, fetch_graph_logs};
 use crate::mermaid::to_mermaid;
-use crate::metrics::{fetch_metrics, fmt_metric};
+use crate::metrics::{fetch_metrics, fmt_count_metric, fmt_metric};
 use crate::state::{AppState, collect_graph_node_names, graph::UiGraph};
+use crate::time_range::TimeRange;
 use crate::traces::{TraceSummaryView, fetch_graph_traces};
 use crate::util::{normalize_symbol, slugify};
 
@@ -24,14 +25,16 @@ pub(crate) struct DashboardTemplate<'a> {
     pub(crate) active: &'a str,
     pub(crate) graphs: &'a [UiGraph],
     pub(crate) selected_id: &'a str,
+    pub(crate) range: &'a str,
 }
 
-pub(crate) fn dashboard_page_html(state: &AppState, selected_id: &str) -> String {
+pub(crate) fn dashboard_page_html(state: &AppState, selected_id: &str, range: &str) -> String {
     DashboardTemplate {
         title: "Dashboard | Graphium UI",
         active: "dashboard",
         graphs: &state.graphs.ordered,
         selected_id,
+        range,
     }
     .render()
     .expect("render dashboard template")
@@ -113,6 +116,7 @@ pub(crate) async fn render_graph_fragment(
     id: String,
     playground_view: PlaygroundView,
     show_artifacts: bool,
+    range: TimeRange,
 ) -> Result<String, AppHttpError> {
     let graph = state
         .graphs
@@ -128,12 +132,12 @@ pub(crate) async fn render_graph_fragment(
         show_artifacts,
     );
 
-    let metrics = fetch_metrics(&state, &graph.export.name).await;
+    let metrics = fetch_metrics(&state, &graph.export.name, range).await;
     let metrics = MetricCards {
-        count: fmt_metric(metrics.count),
-        errors: fmt_metric(metrics.errors),
-        success: fmt_metric(metrics.success),
-        fail: fmt_metric(metrics.fail),
+        count: fmt_count_metric(metrics.count),
+        errors: fmt_count_metric(metrics.errors),
+        success: fmt_count_metric(metrics.success),
+        fail: fmt_count_metric(metrics.fail),
         p50: fmt_metric(metrics.p50_seconds),
         p95: fmt_metric(metrics.p95_seconds),
     };
@@ -239,8 +243,8 @@ pub(crate) async fn render_graph_fragment(
         }
     });
 
-    let logs = fetch_graph_logs(&state, &graph.export.name).await;
-    let traces = fetch_graph_traces(&state, &graph.export.name).await;
+    let logs = fetch_graph_logs(&state, &graph.export.name, range).await;
+    let traces = fetch_graph_traces(&state, &graph.export.name, range).await;
 
     Ok(GraphFragmentTemplate {
         graph_id: id,
