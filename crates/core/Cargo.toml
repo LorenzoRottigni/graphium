@@ -1,7 +1,13 @@
 [package]
 name = "graphium"
-version = "0.1.0-alpha.5"
+version = "0.1.0-alpha.6"
 edition = "2024"
+description = "Core runtime types and optional telemetry for Graphium graphs."
+license = "MIT"
+repository = "https://github.com/LorenzoRottigni/graphium"
+homepage = "https://github.com/LorenzoRottigni/graphium"
+documentation = "https://docs.rs/graphium"
+readme = "README.md"
 
 [lib]
 name = "graphium"
@@ -9,7 +15,7 @@ doctest = true
 
 [dependencies]
 serde = { version = "1", features = ["derive"], optional = true }
-graphium-macro = { version = "0.1.0-alpha.5", path = "../macro", optional = true }
+graphium-macro = { version = "0.1.0-alpha.6", path = "../macro", optional = true }
 opentelemetry = { version = "0.31.0", optional = true }
 opentelemetry_sdk = { version = "0.31.0", optional = true, features = [
     "experimental_async_runtime",
@@ -56,4 +62,4 @@ macros = ["dep:graphium-macro"]
 [dev-dependencies]
 # Used by documentation doctests so examples can `use graphium_macro::{graph, node, ...}`
 # without requiring consumers to enable `graphium`'s `macros` feature.
-graphium-macro = { version = "0.1.0-alpha.5", path = "../macro" }
+graphium-macro = { version = "0.1.0-alpha.6", path = "../macro" }

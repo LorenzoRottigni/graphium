@@ -1,7 +1,13 @@
 [package]
 name = "graphium-macro"
-version = "0.1.0-alpha.5"
+version = "0.1.0-alpha.6"
 edition = "2024"
+description = "Procedural macros (graph!, node!, graph_test!, node_test!) for Graphium graphs."
+license = "MIT"
+repository = "https://github.com/LorenzoRottigni/graphium"
+homepage = "https://github.com/LorenzoRottigni/graphium"
+documentation = "https://docs.rs/graphium-macro"
+readme = "README.md"
 
 [lib]
 name = "graphium_macro"
