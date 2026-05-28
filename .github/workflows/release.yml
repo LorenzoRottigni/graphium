@@ -103,7 +103,7 @@ jobs:
         if: ${{ steps.skip.outputs.skip_all != 'true' && steps.skip.outputs.macro_exists != 'true' }}
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish -p graphium-macro --token "${CARGO_REGISTRY_TOKEN}"
+        run: cargo publish -p graphium-macro
       - name: Publish graphium
         if: ${{ steps.skip.outputs.skip_all != 'true' && steps.skip.outputs.core_exists != 'true' }}
         env:
@@ -111,7 +111,7 @@ jobs:
         run: |
           # graphium depends on graphium-macro; give crates.io index time to update.
           for i in {1..10}; do
-            if cargo publish -p graphium --token "${CARGO_REGISTRY_TOKEN}"; then
+            if cargo publish -p graphium; then
               exit 0
             fi
             echo "publish graphium failed; retrying ($i/10)..." >&2
@@ -125,7 +125,7 @@ jobs:
         run: |
           # graphium-ui depends on graphium; give crates.io index time to update.
           for i in {1..10}; do
-            if cargo publish -p graphium-ui --token "${CARGO_REGISTRY_TOKEN}"; then
+            if cargo publish -p graphium-ui; then
               exit 0
             fi
             echo "publish graphium-ui failed; retrying ($i/10)..." >&2
