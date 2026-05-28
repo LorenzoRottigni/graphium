@@ -4,6 +4,10 @@
 
 pub mod dto;
 pub mod telemetry;
+#[cfg(any(feature = "metrics", feature = "trace", feature = "logs"))]
+mod telemetry_real;
+#[cfg(not(any(feature = "metrics", feature = "trace", feature = "logs")))]
+mod telemetry_stub;
 
 #[cfg(feature = "export")]
 pub use serde;
