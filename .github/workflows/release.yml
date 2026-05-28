@@ -71,7 +71,7 @@ jobs:
       - name: Resolve version
         id: ver
         run: |
-          ver="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name==\"graphium\") | .version')"
+          ver="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name=="graphium") | .version')"
           echo "version=$ver" >> "$GITHUB_OUTPUT"
       - name: Validate crate versions aligned
         run: bash .github/scripts/release_check.sh

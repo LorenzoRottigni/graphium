@@ -1,6 +1,6 @@
 [package]
 name = "graphium-ui"
-version = "0.1.0-alpha.3"
+version = "0.1.0-alpha.4"
 edition = "2024"
 
 [lib]
@@ -12,6 +12,6 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-graphium = { version = "0.1.0-alpha.3", path = "../core", features = ["export"] }
+graphium = { version = "0.1.0-alpha.4", path = "../core", features = ["export"] }
 askama = "0.15.6"
 tower-http = { version = "0.6", features = ["fs"] }
